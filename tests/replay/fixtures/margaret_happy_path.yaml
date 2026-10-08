@@ -1,0 +1,70 @@
+name: margaret_happy_path
+scenario: default
+today: "2026-10-07"
+turns:
+  - user: "I'm the policyholder. My name is Margaret Chen, policy POL-9921. I'm calling about my denied healthcare claim from January. DOB is 1985-03-15, SSN last four is 4472."
+    analysis:
+      identity: {full_name: "Margaret Chen", policy_number: "POL-9921", dob: "1985-03-15", id_last4: "4472"}
+      caller_role: policyholder
+      case_hints: {case_type: healthcare, status: denied, month: 1}
+      intent: denial_question
+      scope: in_scope
+    expect:
+      phase: PROCESS_CASE
+      verified: true
+      party_id: P9
+      attempts: 0
+      pending_ask: anything_else
+      reply_contains: ["CL-2048", "pathology report", "office note", "March 18, 2026", "denied"]
+      reply_not_contains: ["4472", "1985-03-15", "6505212836", "margaret@email.com", "POL-9921", "which claim"]
+      guard_ok: true
+  - user: "What do I need to send and how do I submit it?"
+    analysis:
+      intent: document_submission
+      followup_topic: submission_method
+      scope: in_scope
+    expect:
+      phase: PROCESS_CASE
+      pending_ask: anything_else
+      reply_contains: ["member portal", "pathology report", "office note", "fax or mail"]
+      guard_ok: true
+  - user: "How long after I send them will it take?"
+    analysis:
+      intent: next_steps
+      followup_topic: processing_time_after_submission
+      scope: in_scope
+    expect:
+      phase: PROCESS_CASE
+      pending_ask: anything_else
+      reply_contains: ["less than a week", "restarts"]
+      guard_ok: true
+  - user: "No, that's all."
+    analysis:
+      requests: {confirmation: "no", closing: true}
+      scope: in_scope
+    expect:
+      phase: POST_PROCESS
+      pending_ask: email_offer
+      reply_contains: ["m*******@email.com"]
+      reply_not_contains: ["margaret@email.com"]
+      guard_ok: true
+  - user: "Yes please."
+    analysis:
+      requests: {confirmation: "yes", email_summary: "yes"}
+      scope: in_scope
+    expect:
+      phase: POST_PROCESS
+      pending_ask: email_confirm
+      reply_contains: ["CL-2048", "denied", "pathology report", "office note", "member portal", "less than a week", "March 18, 2026"]
+      reply_not_contains: ["1985-03-15", "4472", "6505212836", "margaret@email.com"]
+      guard_ok: true
+  - user: "Yes, send it."
+    analysis:
+      requests: {confirmation: "yes"}
+      scope: in_scope
+    expect:
+      phase: POST_PROCESS
+      pending_ask: none
+      outbox_len: 1
+      reply_contains: ["EML-"]
+      guard_ok: true
