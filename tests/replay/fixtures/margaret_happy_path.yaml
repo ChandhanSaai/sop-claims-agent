@@ -46,7 +46,7 @@ turns:
       phase: POST_PROCESS
       pending_ask: email_offer
       reply_contains: ["m*******@email.com"]
-      reply_not_contains: ["margaret@email.com"]
+      reply_not_contains: ["margaret@email.com", "disregard", "I need to correct", "sorry"]
       guard_ok: true
   - user: "Yes please."
     analysis:
@@ -56,7 +56,8 @@ turns:
       phase: POST_PROCESS
       pending_ask: email_confirm
       reply_contains: ["CL-2048", "denied", "pathology report", "office note", "member portal", "less than a week", "March 18, 2026"]
-      reply_not_contains: ["1985-03-15", "4472", "6505212836", "margaret@email.com"]
+      reply_not_contains: ["1985-03-15", "4472", "6505212836", "margaret@email.com", "disregard", "I need to correct",
+                           "sorry"]
       guard_ok: true
   - user: "Yes, send it."
     analysis:

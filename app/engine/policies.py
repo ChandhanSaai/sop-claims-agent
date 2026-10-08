@@ -10,9 +10,8 @@ MIXED_LINE = ("The caller also asked about something outside claims support; say
               "that you can't help with that part here.")
 EARLIER_DETAILS_STAND = ("Do not revisit, correct or disclaim the claim details given earlier in this "
                          "conversation; they stand. This reply covers only what this brief asks for.")
-NEW_DEVELOPMENT = ("State the new development plainly. Do not apologize for, correct or comment on "
-                   "earlier replies: they were right when "
-                   "given; this turn reports a new development.")
+NEW_DEVELOPMENT = ("Open with the new development as plain news. Do not say you are correcting, updating or "
+                   "taking back anything you said earlier: those replies were right when given.")
 STATE_CHANGE_EVENTS = ("verification_reset", "consent_timed_out")
 SCOPE_LINE = ("This assistant handles questions about your claims with us: status, denials, documents, "
               "deadlines and next steps.")

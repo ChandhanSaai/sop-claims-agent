@@ -32,7 +32,7 @@ turns:
       verified: false
       pending_ask: human_offer
       reply_contains: ["representative"]
-      reply_not_contains: ["CL-2048", "pathology"]
+      reply_not_contains: ["CL-2048", "pathology", "I need to correct", "sorry", "still pending"]
       guard_ok: true
   - user: "Yes"
     analysis:
