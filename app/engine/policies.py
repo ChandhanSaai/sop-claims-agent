@@ -1,7 +1,15 @@
 from app.config import Settings
 from app.engine.context import HUMAN_ASK, TurnContext
-from app.engine.state import PendingAsk, Session
+from app.engine.state import Escalation, PendingAsk, Session
 from app.llm.schemas import ReplyBrief
+
+META_LINE = ("The caller asked about the assistant itself: say plainly that this is an automated assistant, "
+             "that identity verification protects their claim information, and that details from this "
+             "conversation are used only to handle their request.")
+MIXED_LINE = ("The caller also asked about something outside claims support; say in one short sentence "
+              "that you can't help with that part here.")
+SCOPE_LINE = ("This assistant handles questions about your claims with us: status, denials, documents, "
+              "deadlines and next steps.")
 
 
 def _acknowledgment_seed(session: Session) -> str:
@@ -10,8 +18,58 @@ def _acknowledgment_seed(session: Session) -> str:
     return "I can tell this has been frustrating, and I want to get it sorted out for you."
 
 
+def escalate(session: Session, reason: str) -> str:
+    """Issue a reference and log the hand-off packet once. The session keeps its phase and gates."""
+    if not session.escalation.requested:
+        ref = "ESC-" + session.id[:6].upper()
+        session.escalation = Escalation(requested=True, reference=ref, reason=reason)
+        session.log("escalated", reference=ref, reason=reason, packet={
+            "phase": session.phase.value, "verified": session.verification.status,
+            "role": session.verification.role,
+            "case_id": session.case.selected_case_id, "intent": session.case.intent,
+            "off_topic": session.counters.off_topic,
+            "frustration_streak": session.counters.frustration_streak,
+        })
+    return session.escalation.reference
+
+
+def escalation_brief(session: Session, first: bool, lead: list[str] | None = None) -> ReplyBrief:
+    must_say = list(lead or [])
+    must_say.append("A representative will follow up on this conversation." if first
+                    else "A representative has already been asked to follow up on this conversation.")
+    must_say.append("Give the handoff_reference and say you remain available for claim questions, "
+                    "with the same verification rules.")
+    return ReplyBrief(phase=session.phase.value, goal="Confirm the hand-off and give the reference.",
+                      allowed_facts={"handoff_reference": session.escalation.reference}, must_say=must_say,
+                      must_not=["Do not disclose any claim details beyond what was already allowed."])
+
+
+def _can_help_with(session: Session) -> str:
+    if session.verification.status == "verified":
+        return "the status of this claim, what documents are needed, how to submit them and what happens next"
+    return ("verifying your identity so we can look at your claim, and general questions about how claim "
+            "documents are submitted")
+
+
+def _decline_brief(session: Session, n: int, settings: Settings) -> ReplyBrief:
+    must_say = [SCOPE_LINE, f"Offer what you can help with: {_can_help_with(session)}."]
+    if session.last_brief and session.last_brief.ask and n == 1:
+        must_say.append(f"Then return to the open question: {session.last_brief.ask}")
+    goal = ("Decline the off-topic request briefly" + (" in different words than before" if n > 1 else "")
+            + " and restate scope.")
+    offer = n >= settings.offtopic_human_offer_at
+    brief = ReplyBrief(phase=session.phase.value, goal=goal, must_say=must_say,
+                       must_not=["Do not answer the off-topic question.",
+                                 "Do not sound robotic; vary the wording."],
+                       offer_human=offer, ask=HUMAN_ASK if offer else None)
+    if offer:
+        session.pending_ask = PendingAsk.HUMAN_OFFER
+    return brief
+
+
 def pass1(session: Session, ctx: TurnContext, settings: Settings) -> None:
-    """Before the phase chain: update counters and state from the caller's message."""
+    """Before the phase chain: update counters and state from the caller's message;
+    may short-circuit the chain."""
     a = ctx.analysis
     heat = max(a.affect.frustration, a.affect.anger)
     if heat >= 2 or a.affect.refusal:
@@ -24,6 +82,37 @@ def pass1(session: Session, ctx: TurnContext, settings: Settings) -> None:
     if session.counters.frustration_streak >= 2:
         ctx.offer_human = True
 
+    if a.requests.wants_human or ctx.human_yes:
+        first = not session.escalation.requested
+        escalate(session, "caller asked for a representative")
+        session.pending_ask = PendingAsk.NONE
+        ctx.offer_human = False
+        ctx.policy_brief = escalation_brief(session, first)
+        return
+    if ctx.human_no:
+        session.pending_ask = PendingAsk.NONE
+
+    if a.injection_suspected:
+        session.log("injection_suspected")
+    off_topic = a.scope == "out_of_scope" or (a.injection_suspected and a.scope != "meta")
+    if off_topic:
+        session.counters.off_topic += 1
+        n = session.counters.off_topic
+        if n > settings.offtopic_human_offer_at:
+            first = not session.escalation.requested
+            escalate(session, "repeated off-topic requests")
+            session.pending_ask = PendingAsk.NONE
+            ctx.offer_human = False
+            ctx.policy_brief = escalation_brief(session, first, lead=[SCOPE_LINE])
+        else:
+            ctx.policy_brief = _decline_brief(session, n, settings)
+        return
+    session.counters.off_topic = 0
+    if a.scope == "meta":
+        ctx.extra_must_say.append(META_LINE)
+    elif a.scope == "mixed":
+        ctx.extra_must_say.append(MIXED_LINE)
+
 
 def pass2(session: Session, ctx: TurnContext, brief: ReplyBrief) -> ReplyBrief:
     """After the chain: overlay tone, acknowledgment and the human offer onto the merged brief."""
@@ -32,7 +121,7 @@ def pass2(session: Session, ctx: TurnContext, brief: ReplyBrief) -> ReplyBrief:
         update["tone"] = ctx.tone
     if ctx.acknowledge and not brief.acknowledge:
         update["acknowledge"] = ctx.acknowledge
-    if ctx.offer_human and not brief.offer_human:
+    if ctx.offer_human and not brief.offer_human and not session.escalation.requested:
         update["offer_human"] = True
         update["ask"] = HUMAN_ASK
         session.pending_ask = PendingAsk.HUMAN_OFFER
