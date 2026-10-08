@@ -57,7 +57,7 @@ def _decline_brief(session: Session, n: int, settings: Settings) -> ReplyBrief:
         must_say.append(f"Then return to the open question: {session.last_brief.ask}")
     goal = ("Decline the off-topic request briefly" + (" in different words than before" if n > 1 else "")
             + " and restate scope.")
-    offer = n >= settings.offtopic_human_offer_at
+    offer = n == settings.offtopic_human_offer_at  # past it only after a declined offer: no re-offer
     brief = ReplyBrief(phase=session.phase.value, goal=goal, must_say=must_say,
                        must_not=["Do not answer the off-topic question.",
                                  "Do not sound robotic; vary the wording."],
@@ -82,6 +82,8 @@ def pass1(session: Session, ctx: TurnContext, settings: Settings) -> None:
     if session.counters.frustration_streak >= 2:
         ctx.offer_human = True
 
+    if a.injection_suspected:
+        session.log("injection_suspected")
     if a.requests.wants_human or ctx.human_yes:
         first = not session.escalation.requested
         escalate(session, "caller asked for a representative")
@@ -91,14 +93,14 @@ def pass1(session: Session, ctx: TurnContext, settings: Settings) -> None:
         return
     if ctx.human_no:
         session.pending_ask = PendingAsk.NONE
+        session.counters.human_declined = True
 
-    if a.injection_suspected:
-        session.log("injection_suspected")
     off_topic = a.scope == "out_of_scope" or (a.injection_suspected and a.scope != "meta")
     if off_topic:
         session.counters.off_topic += 1
         n = session.counters.off_topic
-        if n > settings.offtopic_human_offer_at:
+        if session.escalation.requested or (n > settings.offtopic_human_offer_at
+                                            and not session.counters.human_declined):
             first = not session.escalation.requested
             escalate(session, "repeated off-topic requests")
             session.pending_ask = PendingAsk.NONE
