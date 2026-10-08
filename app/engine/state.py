@@ -35,9 +35,10 @@ class SlotStatus(StrEnum):
 
 IDENTITY_SLOTS = ("full_name", "dob", "phone", "email", "id_last4", "policy_number")
 HINT_SLOTS = ("case_type", "status_hint", "month", "year", "case_id", "free_text", "intent")
+REP_SLOTS = ("rep_name", "rep_relationship", "rep_policyholder_name")
 # Slot values that are safe to show in the inspector; everything else (free_text is the caller's own words,
 # which may hold an identifier) is masked.
-UNMASKED_SLOTS = ("full_name", "case_type", "status_hint", "month", "year", "case_id", "intent")
+UNMASKED_SLOTS = ("full_name", "case_type", "status_hint", "month", "year", "case_id", "intent", *REP_SLOTS)
 
 
 class Slot(BaseModel):

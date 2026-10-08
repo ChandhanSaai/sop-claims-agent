@@ -1,4 +1,13 @@
-from app.engine.state import IDENTITY_SLOTS, CaseState, PendingAsk, Phase, Session, SlotStatus, Verification
+from app.engine.state import (
+    IDENTITY_SLOTS,
+    REP_SLOTS,
+    CaseState,
+    PendingAsk,
+    Phase,
+    Session,
+    SlotStatus,
+    Verification,
+)
 from app.llm.schemas import TurnAnalysis
 
 
@@ -10,6 +19,10 @@ def merge_analysis(session: Session, analysis: TurnAnalysis) -> list[str]:
     for name in IDENTITY_SLOTS:
         val = getattr(ident, name)
         if val and session.memory.set(name, str(val).strip(), t):
+            changed.append(name)
+    rep = analysis.representative
+    for name, val in zip(REP_SLOTS, (rep.name, rep.relationship, rep.policyholder_name), strict=True):
+        if val and session.memory.set(name, val.strip(), t):
             changed.append(name)
     h = analysis.case_hints
     pairs = (
