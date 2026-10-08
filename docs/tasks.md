@@ -21,7 +21,7 @@ Merge order for the reviewer: merge PRs in task order (T01, T02, T03, then the f
 | T09 | Output guard (echo-aware), redacted per-turn trace, disclosure events | 4 | Opus 5.5 | T03, T04 | ready to merge | #9 | two fix rounds on the brief's guard/trace code (fb8e2b8, 68c732a); re-review approved; base task/T04-llm-layer |
 | T10 | End-to-end integration: ConversationService, replay runner, both golden transcripts green, HTTP integration test | 5 | Fable 5.1 | T04, T05, T06, T07, T08, T09 | ready to merge | #10 | both golden transcripts green with the FakeLLM; regenerate-failure observability fixed (ad12570); PR against main, merge after #1-#9; live smoke test skipped (no key) |
 | T11 | Replay suite for every brief scenario, zero-tolerance leak check, CI gating | 6 | Opus 5.5 | T10 | ready to merge | #11 | 9 scenarios + 9 leak checks green; review approved; base task/T10-integration |
-| T12 | Dockerfile, compose, CLI, transcript renderer, README with golden transcripts, demo recording | 6 | Opus 5.5 | T10 | in progress | | base task/T10-integration; demo recording needs a human and a key |
+| T12 | Dockerfile, compose, CLI, transcript renderer, README with golden transcripts, demo recording | 6 | Opus 5.5 | T10 | in review | #12 | review found 3 items (README overstates replay checks, false fixtures sentence, Linux bind mount); fixed in the consolidated final pass; base task/T10-integration |
 
 ## Stretch (after T12 is merged, in this order; each gets its own plan)
 
@@ -35,6 +35,7 @@ Merge order for the reviewer: merge PRs in task order (T01, T02, T03, then the f
 
 ## Deferred findings (for the final whole-branch review)
 
+- T12 (open, fixed in the final pass): README overstates what the replay asserts and omits two Appendix B bullets the engine does not meet (exact missing-identifier count; the "what I can do meanwhile" line); the sentence about every turn listing forbidden facts is false; compose bind mount is root-owned on Linux (named volume); Testing section predates T11; `.env.example` placeholder key defeats the startup check; `chat_cli.py` does not configure logging; `.dockerignore` patterns and the Dockerfile README copy.
 - T11 (minors): the leak test matches amounts as exact text and claim ids case-sensitively (looser than the guard); three scenarios have no unverified turn and pass vacuously (skip instead); turns ending in VERIFY_ID could be checked regardless of the verified flag; the docstring overstates guard independence.
 - T10 (minors): `guard_ok: false` can never pass in the replay runner because every `ok: False` result also carries a `fallback`; the live-model transcript has not been run (no API key available).
 - T09 (re-review minors): a partial raw DOB in memory (for example "March") over-fires the echo rule (gate on two digit runs; fixed in T10); a full DOB that `parse_dob` cannot parse is caught only when echoed verbatim (ordinal support in `parse_dob`; fixed in T10); document names in a different word order pass before verification; the VERIFY_ID re-ask example "15 March 1985" is Margaret's real DOB (changed in T10).
@@ -54,6 +55,7 @@ Merge order for the reviewer: merge PRs in task order (T01, T02, T03, then the f
 ## Log
 
 - 2026-10-07: spec v0.5 frozen, plan written, tracker created.
+- 2026-10-08: T10, T11 approved; T12 reviewed with fixes pending; all merged into task/T10-integration (171 tests); whole-branch review on Fable started; one consolidated fix pass follows.
 - 2026-10-08: wave 3 complete: T04, T05, T06, T07, T08, T09 all approved after fix rounds; integration branch assembled (131 tests before T09); T10 started on Fable.
 - 2026-10-07: T03 review found two plan-mandated verify_id defects (fingerprint on raw strings; unmatched identifiers marked verified), fix dispatched; T04, T05, T06, T07 started in parallel off the T03 tip; T08 re-sequenced after T06.
 - 2026-10-07: T02 implemented (PR #2); review found the plan's `find` stopped at the first identifier present (lockout risk), fixed with four minors; re-review approved. T03 implemented on Fable (PR #3), in review.
