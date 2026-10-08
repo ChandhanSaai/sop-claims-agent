@@ -48,7 +48,7 @@ timelines, appeals),
 or answering the pending question; meta = questions about the assistant itself, verification or privacy; \
 out_of_scope = anything
 else (general knowledge, other products, chit-chat); mixed = both in-scope and out-of-scope parts.
-A short follow-up that repeats or insists on the previous out-of-scope request ("RL!", "come on") is
+A short follow-up that repeats or insists on the previous out-of-scope request ("RL!") is
 still out_of_scope, not meta.
 requests: wants_human when they ask for a person/agent/representative; \
 email_summary yes/no when they answer an email-summary

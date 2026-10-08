@@ -161,7 +161,8 @@ def pass2(session: Session, ctx: TurnContext, brief: ReplyBrief) -> ReplyBrief:
     """After the chain: overlay tone, acknowledgment and the human offer onto the merged brief."""
     update: dict = {"must_say": list(brief.must_say) + ctx.extra_must_say}
     must_not = list(brief.must_not)
-    if "claim_id" not in brief.allowed_facts and any(e.type == "answered" for e in session.events):
+    has_claim_facts = any(k == "claim_id" or k.startswith("option_") for k in brief.allowed_facts)
+    if not has_claim_facts and any(e.type == "answered" for e in session.events):
         must_not.append(EARLIER_DETAILS_STAND)  # a goodbye, offer or decline after claim details were given
     if any(e.turn == session.turn and e.type in STATE_CHANGE_EVENTS for e in session.events):
         must_not.append(NEW_DEVELOPMENT)
