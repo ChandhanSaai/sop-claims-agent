@@ -622,8 +622,8 @@ timeout), the Writer "corrected" or apologized for replies that had been right w
 now hold it: the Writer prompt says earlier replies were grounded when written and are never retracted or
 commented on; every later brief without claim facts says the details given earlier stand; and the brief
 for a verification-reset or consent-timeout turn says to open with the news and take nothing back.
-The committed run has no retraction and no apology, but 1 reply still refers back to an earlier reply: 
-`question_after_goodbye` turn 4 ("should have").
+The committed run has no retraction and no apology; one reply still refers back to an earlier reply
+(`question_after_goodbye` turn 4 opens a fact with "one thing I should have said earlier").
 
 Live persona evaluations (simulated callers scored as pass^k with an LLM judge) remain stretch item S02.
 
