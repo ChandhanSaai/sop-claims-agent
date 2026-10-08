@@ -41,3 +41,4 @@ def test_reader_prompt_identity_rules():
     assert "normalized to YYYY-MM-DD" in READER_SYSTEM  # any language or format: the Reader normalizes
     assert "copy it as written" in READER_SYSTEM  # the ambiguous case still reaches the code re-ask
     assert "new_value in the same form" in READER_SYSTEM
+    assert "still out_of_scope, not meta" in READER_SYSTEM  # a terse repeat of an off-topic ask
