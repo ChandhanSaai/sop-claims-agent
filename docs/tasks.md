@@ -28,7 +28,7 @@ Merge order for the reviewer: #1, #2, #3, then the wave-3 PRs #4 to #8, then #9,
 | ID | Task | Model | Depends on | Status | PR | Notes |
 |---|---|---|---|---|---|---|
 | S01 | Representative and consent sub-flow (approve and timeout scenarios) | Fable 5.1 | T10 | ready to merge | #13 | plan `docs/superpowers/plans/2026-10-08-s01-representative-consent.md`; also routes a claimed power of attorney to a human and makes CONSENT_SCENARIO the default scenario; base task/T10-integration, merge after #10 |
-| S02 | Live persona evaluations with pass^k and an LLM judge (opt-in) | Opus 5.5 | T11 | todo | | |
+| S02 | Live persona evaluations with pass^k and an LLM judge (opt-in) | Opus 5.5 | T11 | partly done | #15 | live replay of all 14 fixtures against the real models (`scripts/live_replay.py`, `docs/live-transcripts.md`): 14/14 hard and wording checks; Writer no-retraction rule; pass^k judge still todo; PR stacked on #14 |
 | S03 | Hosted demo behind DEMO_ACCESS_TOKEN | Opus 5.5 | T12 | todo | | |
 | S04 | Abuse handling policy | Opus 5.5 | T07 | ready to merge | #14 | plan `docs/superpowers/plans/2026-10-08-s04-abuse-policy.md`; branch task/S04-abuse-policy stacked on task/S01-representative, merge after #13 |
 | S05 | OpenAI provider adapter | Opus 5.5 | T04 | todo | | |
@@ -54,6 +54,7 @@ Merge order for the reviewer: #1, #2, #3, then the wave-3 PRs #4 to #8, then #9,
 
 ## Log
 
+- 2026-10-08 (morning): user provided the API key; live run of all 14 fixtures against Sonnet 5.5 passed every state, leak and wording check (51 turns, no regeneration). One Writer habit found and fixed (self-correction of earlier grounded facts at the goodbye step). PR #15 (stacked on #14) carries the script, transcripts, prompt rule and README; in review.
 - 2026-10-08 (night, end): S04 implemented (PR #14, stacked on #13) and approved on Opus 5.5 with minors only, fixed; 220 tests. Stack to merge: #1, #2, #3, #4-#8, #9, #10, then #13, then #14 (delete each head branch on merge so the next PR retargets). Remaining: the live-model run and demo recording (need ANTHROPIC_API_KEY); S02, S03, S05 not started.
 - 2026-10-08: S01 implemented (PR #13, six commits plus review minors) and approved on Fable with no critical or important findings; 210 tests. S04 in progress on task/S04-abuse-policy (stacked on S01).
 - 2026-10-08: whole-branch review on Fable returned 4 critical, 6 important and 9 minor findings (lookup shadowing by a near-miss phone, declared representative verifiable as the policyholder, README testing claims, invented dates after verification, Reader failures silent, and more); one consolidated fix pass landed on task/T10-integration (9f554ff, e50f7b2, 7ca8e67; 186 tests); re-review (Fable) approved the fix pass with no critical or important findings and nine minors: four fixed directly on the integration branch (736a918: wider invented-date check, outbox write guard, README and plan notes; 187 tests), four folded into S01, one left as spec-conformant. The live-model run (C4) stays blocked until an ANTHROPIC_API_KEY is provided. S01 started on task/S01-representative.
