@@ -181,3 +181,15 @@ def test_engine_no_with_a_switch_at_offer_answers_the_new_claim_once(repos, sett
     fact = "The claim you mentioned is CL-2102, auto claim opened February 28, 2026, status open."
     assert b.must_say.count(fact) == 1
     assert b.ask and s.pending_ask == PendingAsk.ANYTHING_ELSE
+
+
+def test_engine_reentry_answer_states_the_passed_deadline_once(repos, settings):
+    eng, s = engine_with_claim(repos, settings)
+    say(eng, s, "No, that's all.", requests={"confirmation": "no", "closing": True})
+    say(eng, s, "No thanks.", requests={"confirmation": "no", "email_summary": "no"})
+    b = say(eng, s, "Wait, what documents did you say I need?", intent="document_submission",
+            followup_topic="submission_method", question="what documents do I need")
+    m = b.must_say  # the first answer and the submission answer in one brief
+    assert s.phase == Phase.PROCESS_CASE and any(x.startswith("State appeal_deadline") for x in m)
+    assert sum("deadline" in x for x in m) == 1 and process_case.DEADLINE_CAVEAT not in m
+    assert m.index(process_case.NO_CHAT_UPLOAD) + 1 == m.index(process_case.SUBMISSION_SHORT)

@@ -11,8 +11,8 @@ from app.engine.state import PendingAsk, Phase, Session
 from app.llm.schemas import ReplyBrief
 
 ANYTHING_ELSE_ASK = "Is there anything else about this claim I can help with?"
-NO_CHAT_UPLOAD = ("Say first, as plain information and not as something missed earlier, that documents "
-                  "cannot be sent through this chat; they go through the channels in submission_guidance.")
+NO_CHAT_UPLOAD = ("Before naming the documents and channel, say as plain information that documents cannot "
+                  "be sent through this chat; they go through the channels in submission_guidance.")
 SUBMISSION_SHORT = ("Name documents_needed and the channel from submission_guidance in at most four "
                     "sentences, then offer the checklist of what each document must show instead of "
                     "reciting it.")
@@ -91,6 +91,7 @@ def handle(
     q = (a.question or ctx.user_text).lower()
     docs = claim.documents_needed
     deadline_passed = facts.get("deadline_passed") == "yes"
+    caveat = deadline_passed  # the passed deadline is said once: dropped when a first answer states it
 
     if not session.case.answered_once or intent in ("denial_question", "status_inquiry"):
         must_say.append("Give the claim's status using claim_status and claim_summary.")
@@ -100,6 +101,7 @@ def handle(
             tail = (" and that it has passed, so a representative would need to review any options."
                     if deadline_passed else ".")
             must_say.append("State appeal_deadline" + tail)
+            caveat = False
 
     wants_submission = (intent in ("document_submission", "next_steps")
                         and topic in (None, *SUBMISSION_TOPICS)) or topic in SUBMISSION_TOPICS
@@ -115,14 +117,14 @@ def handle(
             facts["case_type_guidance"] = ctg
         must_say.append(NO_CHAT_UPLOAD)
         must_say.append(SUBMISSION_DETAIL if t == "file_format_requirements" else SUBMISSION_SHORT)
-        if deadline_passed:
+        if caveat:
             must_say.append(DEADLINE_CAVEAT)
 
     if topic == "processing_time_after_submission":
         if txt := g.topic_text(topic, claim):
             facts["topic_processing_time_after_submission"] = txt
             must_say.append("Explain the processing time using topic_processing_time_after_submission.")
-            if deadline_passed:
+            if caveat:
                 must_say.append(DEADLINE_CAVEAT)
         else:
             facts["fallback_guidance"] = g.fallback()

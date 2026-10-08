@@ -162,6 +162,7 @@ def test_explicit_switch_answers_new_claim_in_same_turn(repos, settings):
 
 def test_submission_answer_says_no_chat_upload_and_offers_the_checklist(repos, settings):
     s = in_case(repos, settings)
+    turn(s, repos, settings, process_case.handle, intent="denial_question")
     r = turn(s, repos, settings, process_case.handle, intent="document_submission",
              followup_topic="submission_method")
     assert process_case.NO_CHAT_UPLOAD in r.brief.must_say
@@ -178,7 +179,19 @@ def test_submission_answer_says_no_chat_upload_and_offers_the_checklist(repos, s
 
 def test_processing_time_answer_carries_the_passed_deadline_caveat(repos, settings):
     s = in_case(repos, settings)
+    turn(s, repos, settings, process_case.handle, intent="denial_question")
     r = turn(s, repos, settings, process_case.handle, intent="next_steps",
              followup_topic="processing_time_after_submission")
     assert "topic_processing_time_after_submission" in r.brief.allowed_facts
     assert process_case.DEADLINE_CAVEAT in r.brief.must_say
+
+
+def test_no_deadline_caveat_before_the_deadline(repos, settings):
+    s = in_case(repos, settings)
+    before = date(2026, 3, 1)  # CL-2048's appeal deadline is March 18, 2026
+    turn(s, repos, settings, process_case.handle, today=before, intent="denial_question")
+    for topic in ("submission_method", "processing_time_after_submission"):
+        r = turn(s, repos, settings, process_case.handle, today=before, intent="next_steps",
+                 followup_topic=topic)
+        assert r.brief.allowed_facts["deadline_passed"] == "no"
+        assert process_case.DEADLINE_CAVEAT not in r.brief.must_say
