@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.config import Settings
 from app.data.models import Claim, ConsentScenario, EmailRecord, Guideline, Policyholder, Representative
@@ -26,6 +26,7 @@ STRONG_FIELDS = ("dob", "id_last4")
 class VerificationResult(BaseModel):
     passed: bool
     matched_count: int
+    matched: list[str] = Field(default_factory=list)
 
 
 class PolicyholderRepo:
@@ -86,7 +87,7 @@ class PolicyholderRepo:
         passed = len(matched) >= min_fields and (
             not require_strong or any(m in STRONG_FIELDS for m in matched)
         )
-        return VerificationResult(passed=passed, matched_count=len(matched))
+        return VerificationResult(passed=passed, matched_count=len(matched), matched=matched)
 
 
 class ClaimsRepo:

@@ -3,7 +3,7 @@ import json
 from datetime import date
 
 from app.config import Settings
-from app.data.normalize import parse_dob
+from app.data.normalize import normalize_email, normalize_id4, normalize_name, normalize_phone, parse_dob
 from app.data.repos import IDENTIFIERS, Repos
 from app.engine.briefs import HandlerResult
 from app.engine.context import HUMAN_ASK, TurnContext
@@ -35,11 +35,15 @@ ALT_OPTIONS = [
     "the phone number and email address on file",
     "a representative who can verify your identity another way",
 ]
-ONE_SENTENCE_ACK = "Acknowledge the caller's frustration in one specific sentence, then move on."
+_NORMALIZERS = {"full_name": normalize_name, "dob": lambda s: parse_dob(s)[0], "phone": normalize_phone,
+                "email": normalize_email, "id_last4": normalize_id4}
 
 
 def _fingerprint(provided: dict[str, str]) -> str:
-    return hashlib.sha256(json.dumps(sorted(provided.items())).encode()).hexdigest()
+    """Hash of the normalized identifiers, so a format-only restatement ("March 15, 1985" vs "1985-03-15")
+    is not a new attempt. A value that does not normalize is hashed as given; str(date) is ISO."""
+    canonical = sorted((n, str(_NORMALIZERS[n](v) or v)) for n, v in provided.items())
+    return hashlib.sha256(json.dumps(canonical).encode()).hexdigest()
 
 
 def _human_brief(session: Session, goal: str, must_say: list[str]) -> HandlerResult:
@@ -71,22 +75,20 @@ def handle(
              "A representative can arrange that consent."],
         )
 
-    provided = {n: s.value for n in IDENTIFIERS if (s := session.memory.get(n)) and s.value}
+    provided = {n: val for n in IDENTIFIERS if (val := session.memory.value(n))}
     if "dob" in provided:
         d, ambiguous = parse_dob(provided["dob"])
-        if d is None or ambiguous:
-            del provided["dob"]
-            if ambiguous:
-                session.pending_ask = PendingAsk.DOB_FORMAT
-                brief = ReplyBrief(
-                    phase=Phase.VERIFY_ID.value,
-                    goal="Re-ask the date of birth with the month spelled out.",
-                    must_say=["I want to make sure I read your date of birth correctly."],
-                    must_not=BASE_MUST_NOT,
-                    ask="Could you give your date of birth with the month spelled out, "
-                        "for example 15 March 1985?",
-                )
-                return HandlerResult(brief=brief)
+        if d is None or ambiguous:  # unreadable, or day and month could swap: re-ask, not an attempt
+            session.pending_ask = PendingAsk.DOB_FORMAT
+            brief = ReplyBrief(
+                phase=Phase.VERIFY_ID.value,
+                goal="Re-ask the date of birth with the month spelled out.",
+                must_say=["I want to make sure I read your date of birth correctly."],
+                must_not=BASE_MUST_NOT,
+                ask="Could you give your date of birth with the month spelled out, "
+                    "for example 15 March 1985?",
+            )
+            return HandlerResult(brief=brief)
 
     hints_noted = any(
         session.memory.value(n)
@@ -122,13 +124,14 @@ def handle(
         policy_number=session.memory.value("policy_number"), phone=provided.get("phone"),
         email=provided.get("email"), name=provided.get("full_name"),
     )
-    passes = [r for r in candidates
-              if repos.policyholders.verify(r, provided, min_fields=settings.verify_min_fields,
-                                            require_strong=settings.verify_require_strong_field).passed]
+    checks = [(r, repos.policyholders.verify(r, provided, min_fields=settings.verify_min_fields,
+                                             require_strong=settings.verify_require_strong_field))
+              for r in candidates]
+    passes = [(r, res) for r, res in checks if res.passed]
     if len(passes) == 1:
-        rec = passes[0]
+        rec, result = passes[0]
         v.status, v.party_id, v.role = "verified", rec.party_id, "policyholder"
-        session.memory.mark_verified(provided.keys())
+        session.memory.mark_verified(result.matched)  # a wrong extra identifier stays provisional
         session.log("verified", party_id=rec.party_id, fields=len(provided))
         session.phase = Phase.RESOLVE_INTENT
         session.pending_ask = PendingAsk.NONE

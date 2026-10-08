@@ -1,4 +1,4 @@
-from app.engine.state import HINT_SLOTS, IDENTITY_SLOTS, PendingAsk, Phase, Session, SlotStatus, Verification
+from app.engine.state import IDENTITY_SLOTS, PendingAsk, Phase, Session, SlotStatus, Verification
 from app.llm.schemas import TurnAnalysis
 
 
@@ -32,5 +32,4 @@ def merge_analysis(session: Session, analysis: TurnAnalysis) -> list[str]:
             session.phase = Phase.VERIFY_ID
             session.pending_ask = PendingAsk.NONE
             session.log("verification_reset", slot=c.slot)
-    assert all(n in IDENTITY_SLOTS or n in HINT_SLOTS for n in changed)
     return changed

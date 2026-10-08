@@ -86,16 +86,37 @@ def test_failed_attempts_are_generic_and_exhaust_at_three(repos, settings):
     assert s.verification.status == "exhausted" and r4.brief.offer_human
 
 
+def test_format_only_restatement_is_not_a_new_attempt(repos, settings):
+    s = Session.new()
+    run(s, repos, settings,
+        identity={"full_name": "Margaret Chen", "dob": "1985-03-15", "phone": "650-521-2830"})
+    assert s.verification.attempts == 1
+    r = run(s, repos, settings,
+            identity={"full_name": "margaret chen", "dob": "March 15, 1985", "phone": "(650) 521-2830"})
+    assert s.verification.attempts == 1 and GENERIC_FAIL in r.brief.must_say
+
+
+def test_pass_marks_only_matched_identifiers_verified(repos, settings):
+    s = Session.new()
+    run(s, repos, settings,  # the wrong phone matches no record, so lookup falls through to the name
+        identity={"full_name": "Margaret Chen", "dob": "1985-03-15", "id_last4": "4472",
+                  "phone": "650-000-0000"})
+    assert s.verification.status == "verified" and s.verification.party_id == "P9"
+    assert s.memory.get("phone").status == SlotStatus.PROVISIONAL
+    assert all(s.memory.get(n).status == SlotStatus.VERIFIED for n in ("full_name", "dob", "id_last4"))
+
+
 def test_lookup_miss_with_three_fields_costs_one_attempt(repos, settings):
     s = Session.new()
     run(s, repos, settings, identity={"full_name": "Nobody Here", "dob": "1985-03-15", "id_last4": "4472"})
     assert s.verification.attempts == 1 and s.verification.status == "unverified"
 
 
-def test_ambiguous_dob_is_reasked_not_counted(repos, settings):
+@pytest.mark.parametrize("dob", ["03/05/1985", "March 15th, 1985"])  # ambiguous, unparseable
+def test_ambiguous_or_unparseable_dob_is_reasked_not_counted(repos, settings, dob):
     s = Session.new()
     r = run(s, repos, settings,
-            identity={"full_name": "Margaret Chen", "dob": "03/05/1985", "id_last4": "4472"})
+            identity={"full_name": "Margaret Chen", "dob": dob, "id_last4": "4472"})
     assert s.pending_ask == PendingAsk.DOB_FORMAT and s.verification.attempts == 0
     assert "month" in r.brief.ask.lower()
 

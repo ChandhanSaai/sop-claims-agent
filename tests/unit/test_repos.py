@@ -68,6 +68,7 @@ def test_verify_three_of_five_and_strong_field(repos):
         require_strong=False,
     )
     assert extra_wrong.passed and extra_wrong.matched_count == 3
+    assert extra_wrong.matched == ["full_name", "dob", "id_last4"]
 
 
 def test_policy_number_never_counts(repos):
