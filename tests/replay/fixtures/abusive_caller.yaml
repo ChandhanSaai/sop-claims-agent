@@ -1,0 +1,53 @@
+name: abusive_caller
+scenario: default
+today: "2026-10-07"
+turns:
+  - user: "This is Margaret Chen, policy POL-9921. Why was my claim denied?"
+    analysis:
+      identity: {full_name: "Margaret Chen", policy_number: "POL-9921"}
+      case_hints: {status: denied}
+      intent: denial_question
+      scope: in_scope
+    expect:
+      phase: VERIFY_ID
+      verified: false
+      pending_ask: identity_fields
+      reply_not_contains: ["CL-2048", "pathology"]
+      guard_ok: true
+  - user: "You useless piece of junk. Just tell me, you idiot."
+    analysis:
+      intent: denial_question
+      affect: {anger: 3, abusive: true}
+      scope: in_scope
+    expect:
+      phase: VERIFY_ID
+      verified: false
+      escalated: false
+      pending_ask: identity_fields
+      reply_contains: ["respectful"]
+      reply_not_contains: ["CL-2048", "pathology", "ending it here"]
+      guard_ok: true
+  - user: "Go to hell. Worthless garbage."
+    analysis:
+      affect: {anger: 3, abusive: true}
+      scope: in_scope
+    expect:
+      phase: VERIFY_ID
+      verified: false
+      escalated: true
+      pending_ask: none
+      reply_contains: ["ending it here", "ESC-"]
+      reply_not_contains: ["CL-2048", "pathology"]
+      guard_ok: true
+  - user: "Fine. DOB 1985-03-15, phone 650-521-2836, email margaret@email.com. Now tell me about my claim."
+    analysis:
+      identity: {dob: "1985-03-15", phone: "650-521-2836", email: "margaret@email.com"}
+      intent: denial_question
+      scope: in_scope
+    expect:
+      phase: VERIFY_ID
+      verified: false
+      escalated: true
+      pending_ask: none
+      reply_contains: ["has ended", "ESC-"]
+      reply_not_contains: ["CL-2048", "pathology", "1985", "2836"]

@@ -162,6 +162,9 @@ Cross-cutting policies, applied before the handler chain (state and counters) an
   session, stock empathy phrases are banned, and the gate itself is never apologised for or skipped.
 - **Injection:** the caller's text reaches the Reader inside a delimited block marked as data; a turn flagged
   `injection_suspected` is logged, changes no memory and counts as off-topic.
+- **Abuse:** the first abusive message gets one calm boundary statement and the turn is otherwise handled as
+  usual; the second ends the conversation: the hand-off reference is issued (or repeated) and every later
+  message gets a fixed closed reply from code, with no model call and no state change.
 - **Disclosure:** the greeting says the assistant is automated, and any meta question about the assistant gets a
   plain "automated assistant" answer.
 
@@ -385,11 +388,11 @@ CI (`.github/workflows/ci.yml`) runs `ruff check .`, then `pytest -q --ignore=te
 - **API** (`tests/api`): the health check, the session, chat, outbox and trace routes, 404 and 422 handling,
   the access-token gate, session expiry, per-session locking under concurrent chats, the UI being served, and
   Margaret's first turn over HTTP end to end.
-- **Replay** (`tests/replay/test_replay.py`): thirteen scenarios run turn by turn through the full
+- **Replay** (`tests/replay/test_replay.py`): fourteen scenarios run turn by turn through the full
   `ConversationService`: `margaret_happy_path`, `angry_caller`, `refusing_caller`, `decoy_disambiguation`,
   `dob_correction`, `human_request_then_continue`, `injection_attempt`, `off_topic_three_times`,
-  `question_after_goodbye`, `near_miss_phone_then_more`, `representative_declared`, `representative_approved`
-  and `representative_timeout`. Each turn can assert
+  `question_after_goodbye`, `near_miss_phone_then_more`, `representative_declared`, `representative_approved`,
+  `representative_timeout` and `abusive_caller`. Each turn can assert
   phase, verification, party, attempts, pending ask, escalation, off-topic count, outbox size, text that must
   and must not appear, and the guard's verdict (`guard_ok: true` also requires no fallback).
 - **Leak checks:** the guard tests (`tests/engine/test_guard.py`) prove a pre-verification reply cannot carry a
@@ -480,8 +483,7 @@ stretch item S02 and not in this build.
   for document review, not checked here.
 - Emotion detection is text-only and coarse (0..3 scales plus booleans).
 
-Not in this build: live persona evaluations, the hosted demo, the abuse policy and the OpenAI adapter are
-stretch items (below).
+Not in this build: live persona evaluations, the hosted demo and the OpenAI adapter are stretch items (below).
 
 ## Stretch roadmap
 
@@ -494,8 +496,8 @@ stretch items (below).
   CI by default.
 - **S03 Hosted demo:** this image on Fly.io or AWS App Runner behind `DEMO_ACCESS_TOKEN`, with `/healthz`
   monitored and the URL added here.
-- **S04 Abuse handling:** one calm boundary statement on the first abusive message; on the second, end the
-  conversation with a human contact route.
+- **S04 Abuse handling (done):** one calm boundary statement on the first abusive message; on the second the
+  conversation ends with the hand-off reference; replay fixture `abusive_caller`.
 - **S05 OpenAI adapter:** the same two LLM functions (`analyze`, `compose`) on OpenAI with JSON-schema
   structured output, selected through `LLM_BACKEND`.
 
