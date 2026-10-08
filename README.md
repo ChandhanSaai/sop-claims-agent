@@ -162,6 +162,22 @@ record.
 For a terminal instead of the browser, `python scripts/chat_cli.py [scenario]` runs the same pipeline with the
 same `.env` and prints the phase, verification status, pending ask and guard result after each reply.
 
+### API
+
+The UI is a thin client over four JSON endpoints, so the same conversation can be driven by any HTTP client:
+
+```bash
+curl -s -X POST localhost:8000/api/session -H 'Content-Type: application/json' -d '{"scenario": "default"}'
+# -> {"session_id": "...", "greeting": "Hello, I'm an automated assistant...", "state": {...}}
+curl -s -X POST localhost:8000/api/chat -H 'Content-Type: application/json' \n  -d '{"session_id": "<id>", "message": "Margaret Chen, POL-9921, born 15 March 1985, last four 4472"}'
+# -> {"reply": "...", "state": {...}, "trace": {...}}
+```
+
+`GET /api/session/{id}/outbox` lists the simulated emails and `GET /api/session/{id}/trace` the redacted
+per-turn traces; `GET /healthz` is open. When `DEMO_ACCESS_TOKEN` is set, every `/api/*` call needs the
+`X-Access-Token` header. Replies are buffered, not streamed. The interactive docs are switched off on purpose
+(`docs_url=None`); the request and response models are in `app/api/schemas.py`.
+
 ### Hosted demo (optional)
 
 `fly.toml` is ready for Fly.io. With the `fly` CLI signed in, from the repo root:
