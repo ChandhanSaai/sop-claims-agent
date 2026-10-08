@@ -1,0 +1,30 @@
+name: spanish_caller
+scenario: default
+today: "2026-10-07"
+turns:
+  - user: "Hola, soy Margaret Chen, póliza POL-9921. Nací el quince de marzo de 1985 y los últimos cuatro de mi seguro social son 4472. ¿Por qué rechazaron mi reclamo médico de enero?"
+    analysis:
+      identity: {full_name: "Margaret Chen", policy_number: "POL-9921", dob: "1985-03-15", id_last4: "4472"}
+      caller_role: policyholder
+      case_hints: {case_type: healthcare, status: denied, month: 1}
+      intent: denial_question
+      scope: in_scope
+    expect:
+      phase: PROCESS_CASE
+      verified: true
+      party_id: P9
+      attempts: 0
+      pending_ask: anything_else
+      reply_contains: ["CL-2048"]
+      reply_not_contains: ["4472", "1985", "15 de marzo", "POL-9921"]
+      guard_ok: true
+  - user: "No, eso es todo. Gracias."
+    analysis:
+      requests: {confirmation: "no", closing: true}
+      scope: in_scope
+    expect:
+      phase: POST_PROCESS
+      pending_ask: email_offer
+      reply_contains: ["m*******@email.com"]
+      reply_not_contains: ["4472", "1985"]
+      guard_ok: true

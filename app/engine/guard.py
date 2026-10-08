@@ -36,7 +36,7 @@ def date_variants(d: date) -> list[str]:
     o = f"{d.day}{_suffix(d.day)}"  # "15th"
     return [d.isoformat(), fmt_date(d), f"{d:%B} {d.day}", f"{d:%b} {d.day}", f"{d.day} {d:%B} {d.year}",
             f"{d:%m}/{d:%d}/{d.year}", f"{d.month}/{d.day}/{d.year}", f"{d:%B} {o}, {d.year}", f"{d:%B} {o}",
-            f"{d:%b} {o}", f"{o} {d:%B} {d.year}",
+            f"{d:%b} {o}", f"{o} {d:%B} {d.year}", f"{d.year} {d:%B} {d.day}", f"{d:%d}.{d:%m}.{d.year}",
             f"{d:%B} {d.year}"]  # month-year stays last: pre-verification checks drop it
 
 

@@ -389,11 +389,12 @@ CI (`.github/workflows/ci.yml`) runs `ruff check .`, then `pytest -q --ignore=te
 - **API** (`tests/api`): the health check, the session, chat, outbox and trace routes, 404 and 422 handling,
   the access-token gate, session expiry, per-session locking under concurrent chats, the UI being served, and
   Margaret's first turn over HTTP end to end.
-- **Replay** (`tests/replay/test_replay.py`): fifteen scenarios run turn by turn through the full
+- **Replay** (`tests/replay/test_replay.py`): sixteen scenarios run turn by turn through the full
   `ConversationService`: `margaret_happy_path`, `angry_caller`, `refusing_caller`, `decoy_disambiguation`,
   `dob_correction`, `human_request_then_continue`, `injection_attempt`, `off_topic_three_times`,
   `question_after_goodbye`, `near_miss_phone_then_more`, `representative_declared`, `representative_approved`,
-  `representative_timeout`, `abusive_caller` and `casual_identity_phrasing`. Each turn can assert
+  `representative_timeout`, `abusive_caller`, `casual_identity_phrasing` and `spanish_caller`. Each turn can
+  assert
   phase, verification, party, attempts, pending ask, escalation, off-topic count, outbox size, text that must
   and must not appear, and the guard's verdict (`guard_ok: true` also requires no fallback).
 - **Leak checks:** the guard tests (`tests/engine/test_guard.py`) prove a pre-verification reply cannot carry a
@@ -494,6 +495,10 @@ Live persona evaluations (simulated callers scored as pass^k with an LLM judge) 
   only names and the relationship, so the match is by name, and the policyholder's consent is simulated by the
   scenario file rather than obtained from the policyholder. A claimed power of attorney is routed to a human
   for document review, not checked here.
+- The Reader reads identifiers, dates and requests in any language or format and normalizes the date of birth
+  itself (code still validates it and re-asks when day and month cannot be told apart); replies follow the
+  caller's language. Guideline text exists only in English and the guard recognizes English date forms, so
+  claim ids, dates, amounts and the email address are quoted in their English form inside a translated reply.
 - Emotion detection is text-only and coarse (0..3 scales plus booleans).
 
 Not in this build: live persona evaluations, the hosted demo and the OpenAI adapter are stretch items (below).

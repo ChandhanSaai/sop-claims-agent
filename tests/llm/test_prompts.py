@@ -25,6 +25,8 @@ def test_writer_prompt_rules():
     assert "do not comment on them" in WRITER_SYSTEM
     assert "friendly human agent" in WRITER_SYSTEM
     assert "Digits given as the policy number" in READER_SYSTEM  # bare policy digits are not id_last4
+    assert "normalized to YYYY-MM-DD" in READER_SYSTEM  # any language or format: the Reader normalizes
+    assert "Reply in the language of the caller" in WRITER_SYSTEM
     brief = ReplyBrief(phase="VERIFY_ID", goal="g", must_not=["no claim details"])
     block = format_brief(brief, violation="mentioned CL-2048")
     assert '"must_not"' in block and "mentioned CL-2048" in block

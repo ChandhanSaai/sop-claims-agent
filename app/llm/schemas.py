@@ -34,7 +34,7 @@ class _Strict(BaseModel):
 
 class IdentityFields(_Strict):
     full_name: str | None = None
-    dob: str | None = None  # as the caller said it; code parses it
+    dob: str | None = None  # YYYY-MM-DD from the Reader (any language or format); as written if ambiguous
     phone: str | None = None
     email: str | None = None
     id_last4: str | None = None
