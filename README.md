@@ -23,7 +23,7 @@ owns the SOP; the model reads and phrases:** one LLM call reads each message int
 - **Live transcripts:** [docs/live-transcripts.md](docs/live-transcripts.md) replays all 17 scenarios against
   the real Reader and Writer (Sonnet 5.5) and shows each reply with its state, guard verdict, latency and
   checks, and [docs/live-reliability.md](docs/live-reliability.md) repeats every scenario and reports pass^N.
-- **Replay suite:** `pytest -q` runs 232 tests offline with no key or network, including the 17 scenarios turn
+- **Replay suite:** `pytest -q` runs 233 tests offline with no key or network, including the 17 scenarios turn
   by turn and a leak check on every reply that ends unverified.
 - **Where each requirement and attack lives:** the [Grader's map](#graders-map) names the code, the test that
   pins each requirement and the live turn that shows it, and [Attacks we tried](#attacks-we-tried) pairs each
@@ -33,7 +33,11 @@ owns the SOP; the model reads and phrases:** one LLM call reads each message int
   [How the backend works](#how-the-backend-works-and-how-enterprises-do-it) compares the build with larger
   deployments.
 
-<!-- screenshots: chat + inspector -->
+![The chat page beside the SOP inspector at the start of a conversation](docs/demo/chat-and-inspector.jpg)
+
+The inspector on the right is the harness made visible: the phase stepper, verification state and attempts,
+memory slots with their source turn and status, the brief the Writer received, the guard verdict, the
+outbox and the redacted trace of the last turn.
 
 ## Architecture at a glance
 
@@ -157,6 +161,18 @@ record.
 
 For a terminal instead of the browser, `python scripts/chat_cli.py [scenario]` runs the same pipeline with the
 same `.env` and prints the phase, verification status, pending ask and guard result after each reply.
+
+### Hosted demo (optional)
+
+`fly.toml` is ready for Fly.io. With the `fly` CLI signed in, from the repo root:
+
+```bash
+fly launch --no-deploy --copy-config --name <your-app-name>
+fly secrets set ANTHROPIC_API_KEY=<key> DEMO_ACCESS_TOKEN=<a long random token>
+fly deploy
+```
+
+Visitors paste the token into the page's "Access token" field; `/healthz` stays open. Traces are ephemeral there.
 
 ### Offline demo (`LLM_BACKEND=fake`)
 
@@ -607,7 +623,8 @@ Live persona evaluations (simulated callers scored as pass^k with an LLM judge) 
   `VERIFY_REQUIRE_STRONG_FIELD` in production, and treat a one-time code to the on-file phone or email as the
   production upgrade. Attempts are counted per session.
 - **Identifiers are never echoed.** The Writer is told not to repeat them, and the output guard rejects any
-  reply containing the caller's date of birth in any format, phone digits, email, ID last 4 or policy number,
+  reply containing the caller's date of birth in its numeric and English forms, phone digits, email, ID last 4
+  or policy number,
   verified or not. A violation is regenerated once, then replaced by a reply rendered from the brief in code.
 - **Grounded after verification.** Every claim id, every date (month name or abbreviation, ISO or
   m/d/yyyy, fixture or invented) and every number of three or more digits or with a decimal part in a verified
@@ -671,8 +688,8 @@ the OpenAI adapter are stretch items (below).
 - **S02 Live persona evaluations:** five simulated personas run four times each against the real pipeline, with
   code checks for gates and leaks, an LLM judge for tone and groundedness, and a pass^k report; opt-in, never in
   CI by default.
-- **S03 Hosted demo:** this image on Fly.io or AWS App Runner behind `DEMO_ACCESS_TOKEN`, with `/healthz`
-  monitored and the URL added here.
+- **S03 Hosted demo:** config ready, not deployed: `fly.toml` runs this image on Fly.io behind
+  `DEMO_ACCESS_TOKEN` with `/healthz` checked; the three commands are in its header and under Quick start.
 - **S04 Abuse handling:** built (see Abuse under How it works): one calm boundary statement on the first
   abusive message; on the second the conversation ends with the hand-off reference; replay fixture
   `abusive_caller`.
