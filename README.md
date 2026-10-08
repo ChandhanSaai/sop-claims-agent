@@ -376,12 +376,13 @@ CI (`.github/workflows/ci.yml`) runs `ruff check .`, then `pytest -q --ignore=te
 - **Engine** (`tests/engine`): each phase handler and the engine fed synthetic `TurnAnalysis` input:
   transitions and same-turn chaining (Margaret in one turn), attempts and exhaustion, identical wording for
   unknown callers, format-only restatements, the DOB re-ask, the gate explanation cap, memory provenance and
-  corrections, the off-topic ladder, a single escalation, meta, mixed and injection turns, the email offer,
-  draft, confirm and decline paths and the route back, the summary, brief merging, the representative sub-flow
-  (collecting the details, identical no-match wording for either wrong name, one consent request, one poll per
-  turn, approval chaining into the claim, the timeout, the closed policyholder path and the
-  policyholder-address summary), and the service's regenerate-once and template fallbacks, trouble line on a
-  Reader failure and tolerance of a failed trace write.
+  corrections, the off-topic ladder, a single escalation, meta, mixed and injection turns, the abuse boundary
+  and close, the email offer, draft, confirm and decline paths and the route back, the summary, brief merging,
+  the representative sub-flow (collecting the details, identical no-match wording for either wrong name, one
+  consent request, one poll per turn, approval chaining into the claim, the timeout, the closed policyholder
+  path and the policyholder-address summary), and the service's regenerate-once and template fallbacks,
+  trouble line on a Reader failure, tolerance of a failed trace write and the closed session's reply without a
+  model call.
 - **LLM** (`tests/llm`): prompt content, the Anthropic client's request shape (including both calls through the
   real SDK over an in-memory transport), the Reader's retry with the validation error and the `LLMError` it
   raises on refusal or a failed call, and the FakeLLM.
@@ -496,8 +497,9 @@ Not in this build: live persona evaluations, the hosted demo and the OpenAI adap
   CI by default.
 - **S03 Hosted demo:** this image on Fly.io or AWS App Runner behind `DEMO_ACCESS_TOKEN`, with `/healthz`
   monitored and the URL added here.
-- **S04 Abuse handling (done):** one calm boundary statement on the first abusive message; on the second the
-  conversation ends with the hand-off reference; replay fixture `abusive_caller`.
+- **S04 Abuse handling:** built (see Abuse under How it works): one calm boundary statement on the first
+  abusive message; on the second the conversation ends with the hand-off reference; replay fixture
+  `abusive_caller`.
 - **S05 OpenAI adapter:** the same two LLM functions (`analyze`, `compose`) on OpenAI with JSON-schema
   structured output, selected through `LLM_BACKEND`.
 

@@ -100,6 +100,8 @@ def pass1(session: Session, ctx: TurnContext, settings: Settings) -> None:
     if session.counters.frustration_streak >= 2:
         ctx.offer_human = True
 
+    if a.injection_suspected:
+        session.log("injection_suspected")
     if a.affect.abusive:
         session.counters.abusive += 1
         ctx.tone = "de_escalate"
@@ -109,13 +111,11 @@ def pass1(session: Session, ctx: TurnContext, settings: Settings) -> None:
             session.closed = True
             session.pending_ask = PendingAsk.NONE
             ctx.offer_human = False
+            ctx.acknowledge = None  # the closing reply never opens with the frustration acknowledgment
             session.log("conversation_closed", reason="abuse", reference=session.escalation.reference)
             ctx.policy_brief = closing_brief(session, first)
             return
         ctx.extra_must_say.append(BOUNDARY_LINE)
-
-    if a.injection_suspected:
-        session.log("injection_suspected")
     if a.requests.wants_human or ctx.human_yes:
         first = not session.escalation.requested
         escalate(session, "caller asked for a representative")
