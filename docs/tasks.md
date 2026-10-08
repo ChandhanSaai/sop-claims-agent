@@ -17,7 +17,7 @@ Merge order for the reviewer: merge PRs in task order (T01, T02, T03, then the f
 | T05 | HTTP API, session store, access-token gate, chat UI with SOP inspector | 3 | Opus 5.5 | T03 | ready to merge | #5 | per-session lock added in cdfc92c; re-review approved; base task/T03-engine-core |
 | T06 | RESOLVE_INTENT (disambiguation, decoy) and PROCESS_CASE (grounded facts, deadlines, alternatives, anything-else) | 3 | Fable 5.1 | T02, T03 | ready to merge | #7 | two off-path defects plus a same-turn double switch fixed (b60af46, d03f9d2); re-review approved; adds pythonpath to pyproject |
 | T07 | Cross-cutting policies: scope guard ladder, non-terminal escalation with hand-off packet, meta and mixed turns, injection flag | 3 | Opus 5.5 | T03 | ready to merge | #4 | three fix rounds on the brief's ladder code (a1d94dd, 0d54fcc, 019ebb3); final re-review approved |
-| T08 | POST_PROCESS: email offer once, code-built summary draft, confirm, outbox, route back | 4 | Opus 5.5 | T06 | in review | #8 | per-claim summary and unclear-answer handling fixed (7d307a3); route-back double switch fix in progress; base task/T06-intent-and-case |
+| T08 | POST_PROCESS: email offer once, code-built summary draft, confirm, outbox, route back | 4 | Opus 5.5 | T06 | ready to merge | #8 | three fix rounds (7d307a3, fc5d13c, 4f07713); final re-review approved; base task/T06-intent-and-case |
 | T09 | Output guard (echo-aware), redacted per-turn trace, disclosure events | 4 | Opus 5.5 | T03, T04 | in progress | #9 | implementer found 4 gaps in the brief's guard/trace code (corrections unmasked, ordinal dates, whole-line redaction, substring numbers); fix in progress before review |
 | T10 | End-to-end integration: ConversationService, replay runner, both golden transcripts green, HTTP integration test | 5 | Fable 5.1 | T04, T05, T06, T07, T08, T09 | todo | | |
 | T11 | Replay suite for every brief scenario, zero-tolerance leak check, CI gating | 6 | Opus 5.5 | T10 | todo | | |
@@ -35,6 +35,7 @@ Merge order for the reviewer: merge PRs in task order (T01, T02, T03, then the f
 
 ## Deferred findings (for the final whole-branch review)
 
+- T08 (re-review minors): a contradictory answer at the offer step builds the draft without sending; a close beats a bare claim switch in POST_PROCESS while PROCESS_CASE gives the switch precedence; a yes that also carries a question drops the question.
 - T06 (re-review minors): a same-turn double switch is still reachable when a disambiguation answer carries a hint that contradicts its own pick (one-line guard in `resolve_intent`); no positive test for the words-plus-document trigger; `hints_match` logic exists in both handlers; the trace will record the mutated `switch_claim=False`.
 - T04 (re-review minors): a 114-char test line exempted by ruff's trailing-comment rule; window tests do not pin the slice-then-trim order; a refusal with partial text costs an extra Reader call; `include_input=False` on the retry note is untested.
 - T05 (re-review minors): outbox fetch is silent on a non-OK status; no guard against a stale reply after New conversation; lock waits are unbounded and tie up worker threads (timeout plus 409 is the upgrade); no test that `put()` sweeps expired sessions.
