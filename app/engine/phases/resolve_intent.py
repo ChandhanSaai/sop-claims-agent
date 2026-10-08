@@ -31,7 +31,7 @@ def drop_stale_hints(session: Session, changed: list[str]) -> None:
 
 
 def describe(c: Claim) -> str:
-    return f"{c.case_id}, a {c.case_type} claim opened {fmt_date(c.created_at)}, status {c.status}"
+    return f"{c.case_id}, {c.case_type} claim opened {fmt_date(c.created_at)}, status {c.status}"
 
 
 def _select(session: Session, claim: Claim) -> HandlerResult:

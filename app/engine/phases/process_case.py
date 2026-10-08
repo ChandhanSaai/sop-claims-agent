@@ -64,6 +64,7 @@ def handle(
         session.phase = Phase.RESOLVE_INTENT
         session.pending_ask = PendingAsk.NONE
         ctx.anything_else_no = False  # a "no" here answered the old claim's ask, not the new claim's
+        ctx.analysis.requests.switch_claim = False  # consumed, so re-entry this turn answers
         return HandlerResult(brief=ReplyBrief(phase=Phase.RESOLVE_INTENT.value, goal="Switch claim."),
                              advanced=True, needs_input=False)
     if ctx.anything_else_no or (a.requests.closing and a.intent == "none" and not a.question):

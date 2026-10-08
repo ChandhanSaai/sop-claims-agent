@@ -144,3 +144,17 @@ def test_no_to_anything_else_while_switching_answers_new_claim(repos, settings):
     brief = eng.handle_turn(s, analysis, "No, but what about my auto claim?")
     assert s.phase == Phase.PROCESS_CASE and brief.allowed_facts["claim_id"] == "CL-2102"
     assert brief.ask == process_case.ANYTHING_ELSE_ASK and s.pending_ask == PendingAsk.ANYTHING_ELSE
+
+
+def test_explicit_switch_answers_new_claim_in_same_turn(repos, settings):
+    s = in_case(repos, settings)
+    eng = Engine(repos, settings, today=lambda: date(2026, 10, 7))
+    analysis = TurnAnalysis.model_validate({"case_hints": {"case_type": "auto"},
+                                            "requests": {"switch_claim": True}})
+    brief = eng.handle_turn(s, analysis, "Actually, can we talk about my auto claim?")
+    assert s.phase == Phase.PROCESS_CASE and s.case.selected_case_id == "CL-2102"
+    selected = [e.data["case_id"] for e in s.events if e.turn == s.turn and e.type == "claim_selected"]
+    assert selected == ["CL-2102"]
+    assert brief.ask
+    fact = "The claim you mentioned is CL-2102, auto claim opened February 28, 2026, status open."
+    assert brief.must_say.count(fact) == 1
