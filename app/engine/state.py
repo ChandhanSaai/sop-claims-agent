@@ -120,6 +120,7 @@ class Counters(BaseModel):
     gate_explanations: int = 0
     email_offered: bool = False
     human_declined: bool = False
+    abusive: int = 0
 
 
 class Event(BaseModel):
@@ -146,6 +147,7 @@ class Session(BaseModel):
     pending_ask: PendingAsk = PendingAsk.NONE
     escalation: Escalation = Field(default_factory=Escalation)
     counters: Counters = Field(default_factory=Counters)
+    closed: bool = False
     events: list[Event] = Field(default_factory=list)
     transcript: list[Turn] = Field(default_factory=list)
     pending_draft: str | None = None
@@ -182,6 +184,7 @@ class Session(BaseModel):
             "phase": self.phase.value,
             "turn": self.turn,
             "pending_ask": self.pending_ask.value,
+            "closed": self.closed,
             "verification": self.verification.model_dump(exclude={"last_fingerprint"}),
             "consent": self.consent.model_dump(exclude={"last_match"}),
             "case": self.case.model_dump(),
