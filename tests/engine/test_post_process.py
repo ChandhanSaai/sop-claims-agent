@@ -74,6 +74,14 @@ def test_new_question_after_goodbye_routes_back(repos, settings):
     assert s.phase == Phase.RESOLVE_INTENT and r.advanced and not r.needs_input
 
 
+def test_bare_switch_after_goodbye_routes_back(repos, settings):
+    s = closed_case(repos, settings)
+    turn(s, repos, settings, post_process.handle)
+    turn(s, repos, settings, post_process.handle, requests={"confirmation": "no"})
+    r = turn(s, repos, settings, post_process.handle, requests={"switch_claim": True})
+    assert s.phase == Phase.RESOLVE_INTENT and r.advanced and s.case.selected_case_id is None
+
+
 def test_unclear_answer_at_confirm_is_a_no(repos, settings):
     s = closed_case(repos, settings)
     turn(s, repos, settings, post_process.handle)
@@ -81,6 +89,20 @@ def test_unclear_answer_at_confirm_is_a_no(repos, settings):
     r = turn(s, repos, settings, post_process.handle, "hmm")
     assert r.brief.must_say[0] == "Nothing will be sent." and not r.advanced
     assert s.pending_draft is None and s.pending_ask == PendingAsk.NONE and repos.outbox.list() == []
+
+
+@pytest.mark.parametrize("requests", [
+    {"confirmation": "no", "email_summary": "yes"},
+    {"confirmation": "yes", "email_summary": "no"},
+])
+def test_contradictory_answer_at_confirm_sends_nothing(repos, settings, requests):
+    s = closed_case(repos, settings)
+    turn(s, repos, settings, post_process.handle)
+    turn(s, repos, settings, post_process.handle, requests={"confirmation": "yes"})
+    assert s.pending_ask == PendingAsk.EMAIL_CONFIRM
+    r = turn(s, repos, settings, post_process.handle, requests=requests)
+    assert repos.outbox.list() == [] and r.brief.must_say[0] == "Nothing will be sent."
+    assert s.pending_ask == PendingAsk.NONE
 
 
 def test_no_with_a_question_routes_back_after_nothing_will_be_sent(repos, settings):

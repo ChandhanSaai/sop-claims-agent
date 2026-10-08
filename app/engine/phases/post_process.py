@@ -22,7 +22,7 @@ def handle(
     holder = repos.policyholders.get(session.verification.party_id)
     masked = mask_email(holder.email)
     phase = Phase.POST_PROCESS.value
-    new_question = a.intent != "none" or bool(a.question) or any(
+    new_question = a.intent != "none" or bool(a.question) or a.requests.switch_claim or any(
         n in ctx.changed_slots for n in HINT_SLOT_NAMES)
 
     if not c.email_offered:
@@ -48,7 +48,7 @@ def handle(
                            ask="Shall I send it?", verbatim=session.pending_draft)
         return HandlerResult(brief=brief)
 
-    if ctx.email_confirm_yes and session.pending_draft:
+    if ctx.email_confirm_yes and not ctx.email_confirm_no and session.pending_draft:
         rec = repos.outbox.send(holder.email, "Summary of your claims support conversation",
                                 session.pending_draft)
         session.log("email_sent", email_id=rec.id, to_masked=rec.to_masked)
