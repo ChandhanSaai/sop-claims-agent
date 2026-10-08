@@ -216,7 +216,7 @@ What each reply must and must not do (spec Appendix A):
   similar). Must not contain any number, date or document not in `allowed_facts`.
 - **Turn 3:** must say usually less than a week; say the review restarts rather than finishing instantly; ask
   anything else.
-- **Turn 4:** must offer an email summary; show the on-file address masked (m*******@email.com). Must not show
+- **Turn 4:** must offer an email summary; show the on-file address masked (`m*******@email.com`). Must not show
   the full address; ask for an address.
 - **Turn 5:** must show the draft containing CL-2048, status denied, the two documents, the submission route,
   the processing time and the passed deadline; ask for confirmation. Must not include DOB, SSN digits, phone,
