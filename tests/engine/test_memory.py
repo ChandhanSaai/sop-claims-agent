@@ -57,6 +57,5 @@ def test_verification_reset_keeps_the_representative_flag():
     s.memory.slots["dob"].status = SlotStatus.VERIFIED
     s.verification = Verification(status="verified", party_id="P9", role="policyholder",
                                   declared_representative=True)
-    merge_analysis(s, TurnAnalysis.model_validate(
-        {"corrections": [{"slot": "dob", "old_value": "1985-03-15", "new_value": "1986-03-15"}]}))
+    merge_analysis(s, analysis(corrections=[{"slot": "dob", "new_value": "1986-03-15"}]))
     assert s.verification.status == "unverified" and s.verification.declared_representative
