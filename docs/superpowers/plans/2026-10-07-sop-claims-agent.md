@@ -10,6 +10,12 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-07-sop-claims-agent-design.md` (v0.5). Appendix A and B of the spec are the golden transcripts; Task 1 turns them into replay fixtures and Tasks 3, 6 and 10 are built against them.
 
+## Amendments during execution
+
+- 2026-10-07, Task 1 review: `RedactionFilter` must redact the fully formatted message (`record.getMessage()`) and set `record.args = None`, falling back to per-arg redaction only if formatting raises; `JsonFormatter` must redact exception text; `configure_logging` removes only the handler it installed. The code blocks in Task 1 predate this; the branch `task/T01-scaffold` carries the corrected version.
+- 2026-10-07, dependency correction: Task 3 imports `app.data`, Tasks 4 and 5 import `app.engine`, so the real order is T02 -> T03 -> {T04, T05, T06, T07, T08} -> T09 -> T10 -> {T11, T12}. `docs/tasks.md` carries the re-cut waves.
+- 2026-10-07, Task 10: the HTTP integration test derives `ROOT` from `__file__` because `tests.conftest` is not importable under pytest (already applied in the Task 10 text).
+
 ## Global Constraints
 
 - `requires-python = ">=3.12"`; Docker base image `python:3.12-slim`; local dev machine has 3.13.
@@ -5013,6 +5019,7 @@ Expected: 2 PASSED. If an assertion fails, the message names the turn and the mi
 
 ```python
 from datetime import date
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
@@ -5021,7 +5028,8 @@ from app.engine.service import build_service
 from app.llm.fake import FakeLLM
 from app.llm.schemas import TurnAnalysis
 from app.main import create_app
-from tests.conftest import ROOT
+
+ROOT = Path(__file__).resolve().parents[2]  # tests/conftest is not importable under pytest's default rootdir import mode
 
 
 def test_margaret_over_http(tmp_path):
