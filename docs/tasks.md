@@ -19,9 +19,9 @@ Merge order for the reviewer: merge PRs in task order (T01, T02, T03, then the f
 | T07 | Cross-cutting policies: scope guard ladder, non-terminal escalation with hand-off packet, meta and mixed turns, injection flag | 3 | Opus 5.5 | T03 | ready to merge | #4 | three fix rounds on the brief's ladder code (a1d94dd, 0d54fcc, 019ebb3); final re-review approved |
 | T08 | POST_PROCESS: email offer once, code-built summary draft, confirm, outbox, route back | 4 | Opus 5.5 | T06 | ready to merge | #8 | three fix rounds (7d307a3, fc5d13c, 4f07713); final re-review approved; base task/T06-intent-and-case |
 | T09 | Output guard (echo-aware), redacted per-turn trace, disclosure events | 4 | Opus 5.5 | T03, T04 | ready to merge | #9 | two fix rounds on the brief's guard/trace code (fb8e2b8, 68c732a); re-review approved; base task/T04-llm-layer |
-| T10 | End-to-end integration: ConversationService, replay runner, both golden transcripts green, HTTP integration test | 5 | Fable 5.1 | T04, T05, T06, T07, T08, T09 | in progress | | branch task/T10-integration = T03 tip + merges of T04..T09; PR against main, merge last |
-| T11 | Replay suite for every brief scenario, zero-tolerance leak check, CI gating | 6 | Opus 5.5 | T10 | todo | | |
-| T12 | Dockerfile, compose, CLI, transcript renderer, README with golden transcripts, demo recording | 6 | Opus 5.5 | T10 | todo | | |
+| T10 | End-to-end integration: ConversationService, replay runner, both golden transcripts green, HTTP integration test | 5 | Fable 5.1 | T04, T05, T06, T07, T08, T09 | in review | #10 | both golden transcripts green with the FakeLLM, 154 tests; PR against main, merge last; live smoke test skipped (no key) |
+| T11 | Replay suite for every brief scenario, zero-tolerance leak check, CI gating | 6 | Opus 5.5 | T10 | in progress | | base task/T10-integration |
+| T12 | Dockerfile, compose, CLI, transcript renderer, README with golden transcripts, demo recording | 6 | Opus 5.5 | T10 | in progress | | base task/T10-integration |
 
 ## Stretch (after T12 is merged, in this order; each gets its own plan)
 
