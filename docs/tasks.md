@@ -20,8 +20,8 @@ Merge order for the reviewer: merge PRs in task order (T01, T02, T03, then the f
 | T08 | POST_PROCESS: email offer once, code-built summary draft, confirm, outbox, route back | 4 | Opus 5.5 | T06 | ready to merge | #8 | three fix rounds (7d307a3, fc5d13c, 4f07713); final re-review approved; base task/T06-intent-and-case |
 | T09 | Output guard (echo-aware), redacted per-turn trace, disclosure events | 4 | Opus 5.5 | T03, T04 | ready to merge | #9 | two fix rounds on the brief's guard/trace code (fb8e2b8, 68c732a); re-review approved; base task/T04-llm-layer |
 | T10 | End-to-end integration: ConversationService, replay runner, both golden transcripts green, HTTP integration test | 5 | Fable 5.1 | T04, T05, T06, T07, T08, T09 | ready to merge | #10 | both golden transcripts green with the FakeLLM; regenerate-failure observability fixed (ad12570); PR against main, merge after #1-#9; live smoke test skipped (no key) |
-| T11 | Replay suite for every brief scenario, zero-tolerance leak check, CI gating | 6 | Opus 5.5 | T10 | in review | #11 | 9 scenarios + 9 leak checks green; base task/T10-integration |
-| T12 | Dockerfile, compose, CLI, transcript renderer, README with golden transcripts, demo recording | 6 | Opus 5.5 | T10 | in progress | | base task/T10-integration |
+| T11 | Replay suite for every brief scenario, zero-tolerance leak check, CI gating | 6 | Opus 5.5 | T10 | ready to merge | #11 | 9 scenarios + 9 leak checks green; review approved; base task/T10-integration |
+| T12 | Dockerfile, compose, CLI, transcript renderer, README with golden transcripts, demo recording | 6 | Opus 5.5 | T10 | in progress | | base task/T10-integration; demo recording needs a human and a key |
 
 ## Stretch (after T12 is merged, in this order; each gets its own plan)
 
@@ -35,6 +35,7 @@ Merge order for the reviewer: merge PRs in task order (T01, T02, T03, then the f
 
 ## Deferred findings (for the final whole-branch review)
 
+- T11 (minors): the leak test matches amounts as exact text and claim ids case-sensitively (looser than the guard); three scenarios have no unverified turn and pass vacuously (skip instead); turns ending in VERIFY_ID could be checked regardless of the verified flag; the docstring overstates guard independence.
 - T10 (minors): `guard_ok: false` can never pass in the replay runner because every `ok: False` result also carries a `fallback`; the live-model transcript has not been run (no API key available).
 - T09 (re-review minors): a partial raw DOB in memory (for example "March") over-fires the echo rule (gate on two digit runs; fixed in T10); a full DOB that `parse_dob` cannot parse is caught only when echoed verbatim (ordinal support in `parse_dob`; fixed in T10); document names in a different word order pass before verification; the VERIFY_ID re-ask example "15 March 1985" is Margaret's real DOB (changed in T10).
 - T08 (re-review minors): a contradictory answer at the offer step builds the draft without sending; a close beats a bare claim switch in POST_PROCESS while PROCESS_CASE gives the switch precedence; a yes that also carries a question drops the question.
