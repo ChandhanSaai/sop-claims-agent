@@ -20,6 +20,7 @@ from app.observability.trace import TraceRecord, TraceWriter, disclosure_event
 
 log = logging.getLogger(__name__)
 TROUBLE = "I'm having trouble responding right now. Could you say that again in a moment?"
+CLOSED_TEXT = ("This conversation has ended. A representative will follow up; the reference is {reference}.")
 
 
 @dataclass
@@ -44,6 +45,9 @@ class ConversationService:
         return session
 
     def chat(self, session: Session, message: str) -> ChatResult:
+        if session.closed:  # ended by policy: no model call, no state change
+            session.log("message_after_close")
+            return ChatResult(reply=CLOSED_TEXT.format(reference=session.escalation.reference))
         t0 = time.perf_counter()
         phase_before = session.phase.value
         slots_before = {k: v.value for k, v in session.memory.slots.items()}
