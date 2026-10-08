@@ -1,0 +1,28 @@
+name: near_miss_phone_then_more
+scenario: default
+today: "2026-10-07"
+turns:
+  - user: "Margaret Chen, born 1985-03-15, my phone is 650-521-2830. It's about my denied healthcare claim from January."
+    analysis:
+      identity: {full_name: "Margaret Chen", dob: "1985-03-15", phone: "650-521-2830"}
+      case_hints: {case_type: healthcare, status: denied, month: 1}
+      intent: denial_question
+    expect:
+      phase: VERIFY_ID
+      verified: false
+      attempts: 1
+      pending_ask: identity_fields
+      reply_not_contains: ["CL-2048", "pathology", "phone", "1985-03-15"]
+      guard_ok: true
+  - user: "My email is margaret@email.com."
+    analysis:
+      identity: {email: "margaret@email.com"}
+    expect:
+      phase: PROCESS_CASE
+      verified: true
+      party_id: P9
+      attempts: 1
+      pending_ask: anything_else
+      reply_contains: ["CL-2048", "denied", "pathology report"]
+      reply_not_contains: ["1985-03-15", "6505212830", "650-521-2830", "margaret@email.com"]
+      guard_ok: true

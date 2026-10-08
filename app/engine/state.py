@@ -82,6 +82,8 @@ class Verification(BaseModel):
     party_id: str | None = None
     attempts: int = 0
     role: Literal["policyholder", "representative"] | None = None
+    # the caller said they are calling for someone else; sticks until they say they are the policyholder
+    declared_representative: bool = False
     # identifiers used in the last verify call; a repeat is not a new attempt
     last_fingerprint: str | None = None
 

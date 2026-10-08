@@ -51,22 +51,15 @@ class PolicyholderRepo:
 
     def find(self, *, policy_number: str | None = None, phone: str | None = None,
              email: str | None = None, name: str | None = None) -> list[Policyholder]:
-        """First key that matches wins: policy number, phone, email, then name (which may collide)."""
-        if policy_number:
-            key = policy_number.strip().casefold()
-            if hits := [r for r in self._records if r.policy_number.casefold() == key]:
-                return hits
-        if phone and (p := normalize_phone(phone)):
-            if hits := [r for r in self._records if p in self._phones(r)]:
-                return hits
-        if email:
-            e = normalize_email(email)
-            if hits := [r for r in self._records if e in self._emails(r)]:
-                return hits
-        if name:
-            n = normalize_name(name)
-            return [r for r in self._records if n in self._names(r)]
-        return []
+        """Every record any given key matches, in record order: a near-miss phone that belongs to another
+        record must not hide the record the name, email or policy number points at (verify decides)."""
+        pn = policy_number.strip().casefold() if policy_number else None
+        p = normalize_phone(phone) if phone else None
+        e = normalize_email(email) if email else None
+        n = normalize_name(name) if name else None
+        return [r for r in self._records
+                if (pn and r.policy_number.casefold() == pn) or (p and p in self._phones(r))
+                or (e and e in self._emails(r)) or (n and n in self._names(r))]
 
     def verify(self, record: Policyholder, provided: dict[str, str], *, min_fields: int,
                require_strong: bool) -> VerificationResult:

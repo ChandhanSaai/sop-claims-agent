@@ -296,7 +296,8 @@ pytest -q        # every suite, offline with the FakeLLM; no API key or network 
 ruff check .
 ```
 
-CI (`.github/workflows/ci.yml`) runs `ruff check .` and `pytest -q` on every pull request.
+CI (`.github/workflows/ci.yml`) runs `ruff check .`, then `pytest -q --ignore=tests/replay`, then
+`pytest -q tests/replay` on every pull request.
 
 - **Unit** (`tests/unit`): normalization (names, phone formats, emails, DOB formats including ambiguous dates,
   ID last 4); lookup by each identifier and pass/fail verification over the fixture near-collisions, with the
@@ -315,16 +316,20 @@ CI (`.github/workflows/ci.yml`) runs `ruff check .` and `pytest -q` on every pul
 - **API** (`tests/api`): the health check, the session, chat, outbox and trace routes, 404 and 422 handling,
   the access-token gate, session expiry, per-session locking under concurrent chats, the UI being served, and
   Margaret's first turn over HTTP end to end.
-- **Replay** (`tests/replay`): the two golden transcripts run turn by turn through the full
-  `ConversationService`; each turn can assert phase, verification, party, attempts, pending ask, escalation,
-  off-topic count, outbox size, text that must and must not appear, and a guard pass without fallback.
+- **Replay** (`tests/replay/test_replay.py`): eleven scenarios run turn by turn through the full
+  `ConversationService`: `margaret_happy_path`, `angry_caller`, `refusing_caller`, `decoy_disambiguation`,
+  `dob_correction`, `human_request_then_continue`, `injection_attempt`, `off_topic_three_times`,
+  `question_after_goodbye`, `near_miss_phone_then_more` and `representative_declared`. Each turn can assert
+  phase, verification, party, attempts, pending ask, escalation, off-topic count, outbox size, text that must
+  and must not appear, and the guard's verdict (`guard_ok: true` also requires no fallback).
 - **Leak checks:** the guard tests (`tests/engine/test_guard.py`) prove a pre-verification reply cannot carry a
   claim id, a fixture amount, a fixture date in any format or a fixture phrase the caller did not say, and that
-  identifiers are rejected in any format; every replay turn lists the identifiers and claim facts that must not
-  appear in its reply; the summary tests check the email body carries no identifiers.
+  identifiers are rejected in any format. `tests/replay/test_leaks.py` then checks every reply of every turn
+  that ends unverified, in every scenario, for claim ids, fixture amounts, fixture dates and non-echoed fixture
+  phrases, regardless of the guard's verdict. The summary tests check the email body carries no identifiers.
 
-To add a scenario, create `tests/replay/fixtures/<name>.yaml` and add `<name>` to `SCENARIOS` in
-`tests/replay/test_replay.py`:
+To add a scenario, drop a YAML file into `tests/replay/fixtures/`; the directory is globbed, so both the replay
+and the leak test pick it up:
 
 ```yaml
 name: my_scenario

@@ -30,6 +30,13 @@ def test_find_falls_through_keys_that_miss(repos):
     assert p.find(policy_number="POL-0000", phone="650-000-0000", email="no@x.com", name="Nobody") == []
 
 
+def test_find_returns_every_key_match_in_record_order(repos):
+    p = repos.policyholders
+    # P13's phone is one digit from Margaret's: both records are candidates, verify picks between them
+    assert [r.party_id for r in p.find(phone="650-521-2830", name="Margaret Chen")] == ["P9", "P13"]
+    assert [r.party_id for r in p.find(phone="650-521-2836", name="Margaret Chen")] == ["P9"]  # no duplicate
+
+
 def test_verify_three_of_five_and_strong_field(repos):
     p = repos.policyholders
     rec = p.get("P9")

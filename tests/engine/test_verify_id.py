@@ -2,8 +2,10 @@ from datetime import date
 
 import pytest
 
+from app.engine.briefs import render_brief
 from app.engine.context import resolve_pending
 from app.engine.guard import contains_token, date_variants
+from app.engine.machine import Engine
 from app.engine.memory import merge_analysis
 from app.engine.phases.verify_id import GENERIC_FAIL, handle
 from app.engine.state import PendingAsk, Phase, Session, SlotStatus
@@ -152,6 +154,35 @@ def test_representative_is_routed_to_human_in_v1(repos, settings):
                             "policyholder_name": "Margaret Chen"})
     assert r.brief.offer_human and s.pending_ask == PendingAsk.HUMAN_OFFER
     assert s.verification.status == "unverified"
+
+
+def test_declared_representative_is_not_verified_as_the_policyholder_next_turn(repos, settings):
+    eng = Engine(repos, settings, lambda: TODAY)
+    s = Session.new()
+    eng.greeting(s)
+    b1 = eng.handle_turn(s, TurnAnalysis.model_validate({
+        "caller_role": "representative",
+        "representative": {"name": "David Chen", "relationship": "son", "policyholder_name": "Margaret Chen"},
+        "identity": {"full_name": "Margaret Chen", "policy_number": "POL-9921", "dob": "1985-03-15"},
+    }), "I'm David Chen calling for my mother Margaret Chen, POL-9921, her DOB is 1985-03-15")
+    assert b1.offer_human and s.verification.declared_representative
+    # the Reader reads the follow-up as role unknown; the declaration sticks and the identifiers do not verify
+    b2 = eng.handle_turn(s, TurnAnalysis.model_validate({"identity": {"id_last4": "4472"},
+                                                         "requests": {"confirmation": "no"}}),
+                         "no, her SSN last four is 4472")
+    assert s.verification.status == "unverified" and s.phase == Phase.VERIFY_ID
+    assert b2.allowed_facts == {} and "CL-" not in render_brief(b2)
+    assert any("consent" in m for m in b2.must_say)
+
+
+def test_wrong_phone_of_another_record_does_not_hide_the_right_one(repos, settings):
+    s = Session.new()
+    run(s, repos, settings,  # P13's phone is one digit from Margaret's: both are candidates
+        identity={"full_name": "Margaret Chen", "dob": "1985-03-15", "phone": "650-521-2830"})
+    assert s.verification.attempts == 1 and s.verification.status == "unverified"
+    run(s, repos, settings, identity={"email": "margaret@email.com"})
+    assert s.verification.status == "verified" and s.verification.party_id == "P9"
+    assert s.verification.attempts == 1 and s.memory.get("phone").status == SlotStatus.PROVISIONAL
 
 
 @pytest.mark.parametrize("strong", [False, True])

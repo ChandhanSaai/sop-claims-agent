@@ -1,0 +1,29 @@
+name: representative_declared
+scenario: default
+turns:
+  - user: "I'm David Chen calling for my mother Margaret Chen, POL-9921, her DOB is 1985-03-15. Why was her claim denied?"
+    analysis:
+      caller_role: representative
+      representative: {name: "David Chen", relationship: "son", policyholder_name: "Margaret Chen"}
+      identity: {full_name: "Margaret Chen", policy_number: "POL-9921", dob: "1985-03-15"}
+      case_hints: {status: denied}
+      intent: denial_question
+    expect:
+      phase: VERIFY_ID
+      verified: false
+      attempts: 0
+      pending_ask: human_offer
+      reply_contains: ["consent", "representative"]
+      reply_not_contains: ["CL-2048", "pathology", "1985-03-15", "POL-9921"]
+      guard_ok: true
+  - user: "no, her SSN last four is 4472"
+    analysis:
+      identity: {id_last4: "4472"}
+      requests: {confirmation: "no"}
+    expect:
+      phase: VERIFY_ID
+      verified: false
+      attempts: 0
+      reply_contains: ["consent"]
+      reply_not_contains: ["CL-2048", "pathology", "4472"]
+      guard_ok: true

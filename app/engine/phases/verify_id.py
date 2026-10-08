@@ -67,6 +67,8 @@ def handle(
              "A representative can verify your identity another way."],
         )
     if a.caller_role == "representative" or a.representative.name:
+        v.declared_representative = True
+    if v.declared_representative and a.caller_role != "policyholder":
         return _human_brief(
             session,
             "Explain representative access without confirming any record.",
