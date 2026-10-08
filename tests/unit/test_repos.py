@@ -145,3 +145,4 @@ def test_find_by_policy_digits_alone(repos):
     assert [r.party_id for r in repos.policyholders.find(policy_number="9921")] == ["P9"]
     assert [r.party_id for r in repos.policyholders.find(policy_number="pol 9921")] == ["P9"]
     assert repos.policyholders.find(policy_number="992") == []
+    assert repos.policyholders.find(policy_number="19921") == []  # digits must match exactly

@@ -1,5 +1,5 @@
 from app.engine.machine import Engine
-from app.engine.policies import BOUNDARY_LINE, CLOSE_LINE, SCOPE_LINE
+from app.engine.policies import BOUNDARY_LINE, CLOSE_LINE, NEW_DEVELOPMENT, SCOPE_LINE
 from app.engine.state import PendingAsk, Phase, Session, Verification
 from app.llm.schemas import TurnAnalysis
 
@@ -260,3 +260,17 @@ def test_second_abusive_message_that_asks_for_a_human_still_closes(repos, settin
     eng.handle_turn(s, _abusive(), "you useless bot")
     eng.handle_turn(s, _abusive(requests={"wants_human": True}), "get me a human, you idiot")
     assert s.closed and s.escalation.reason == "abusive caller"
+
+
+def test_a_correction_that_resets_verification_marks_the_turn_a_new_development(repos, settings):
+    eng = Engine(repos, settings)
+    s = Session.new()
+    eng.greeting(s)
+    eng.handle_turn(s, A(identity={"full_name": "Margaret Chen", "dob": "1985-03-15", "id_last4": "4472"},
+                         case_hints={"status": "denied", "case_type": "healthcare", "month": 1}),
+                    "Margaret Chen, DOB 1985-03-15, last four 4472, my denied January healthcare claim")
+    assert s.verification.status == "verified"
+    b = eng.handle_turn(s, A(corrections=[{"slot": "dob", "new_value": "1985-03-16"}]), "actually 1985-03-16")
+    assert s.verification.status == "unverified" and NEW_DEVELOPMENT in b.must_not
+    b2 = eng.handle_turn(s, A(identity={"dob": "1985-03-15"}), "sorry, 1985-03-15")
+    assert s.verification.status == "verified" and NEW_DEVELOPMENT not in b2.must_not

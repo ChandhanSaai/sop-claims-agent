@@ -38,9 +38,9 @@ def _policy_key(s: str) -> str:
 
 
 def _policy_matches(given_key: str, on_file: str) -> bool:
-    """The whole token, or the digits alone when the caller gives only digits ("9921")."""
+    """The whole token, or exactly the digits of the one on file when the caller gives only digits."""
     f = _policy_key(on_file)
-    return given_key == f or (given_key.isdigit() and len(given_key) >= 4 and f.endswith(given_key))
+    return given_key == f or (given_key.isdigit() and given_key == re.sub(r"\D", "", f))
 
 
 class PolicyholderRepo:

@@ -8,6 +8,9 @@ META_LINE = ("The caller asked about the assistant itself: say plainly that this
              "conversation are used only to handle their request.")
 MIXED_LINE = ("The caller also asked about something outside claims support; say in one short sentence "
               "that you can't help with that part here.")
+NEW_DEVELOPMENT = ("Do not apologize for, correct or comment on earlier replies: they were right when "
+                   "given; this turn reports a new development.")
+STATE_CHANGE_EVENTS = ("verification_reset", "consent_timed_out")
 SCOPE_LINE = ("This assistant handles questions about your claims with us: status, denials, documents, "
               "deadlines and next steps.")
 BOUNDARY_LINE = ("I'm glad to keep helping with your claim, and I need this conversation to stay respectful "
@@ -155,6 +158,9 @@ def pass1(session: Session, ctx: TurnContext, settings: Settings) -> None:
 def pass2(session: Session, ctx: TurnContext, brief: ReplyBrief) -> ReplyBrief:
     """After the chain: overlay tone, acknowledgment and the human offer onto the merged brief."""
     update: dict = {"must_say": list(brief.must_say) + ctx.extra_must_say}
+    if ctx.analysis.corrections or any(e.turn == session.turn and e.type in STATE_CHANGE_EVENTS
+                                       for e in session.events):
+        update["must_not"] = [*brief.must_not, NEW_DEVELOPMENT]
     if ctx.tone != "neutral":
         update["tone"] = ctx.tone
     if ctx.acknowledge and not brief.acknowledge:

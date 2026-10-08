@@ -36,7 +36,8 @@ def date_variants(d: date) -> list[str]:
     o = f"{d.day}{_suffix(d.day)}"  # "15th"
     return [d.isoformat(), fmt_date(d), f"{d:%B} {d.day}", f"{d:%b} {d.day}", f"{d.day} {d:%B} {d.year}",
             f"{d:%m}/{d:%d}/{d.year}", f"{d.month}/{d.day}/{d.year}", f"{d:%B} {o}, {d.year}", f"{d:%B} {o}",
-            f"{d:%b} {o}", f"{o} {d:%B} {d.year}", f"{d.year} {d:%B} {d.day}", f"{d:%d}.{d:%m}.{d.year}",
+            f"{d:%b} {o}", f"{o} {d:%B} {d.year}", f"{d:%d}/{d:%m}/{d.year}", f"{d.day}/{d.month}/{d.year}",
+            f"{d:%d}.{d:%m}.{d.year}",
             f"{d:%B} {d.year}"]  # month-year stays last: pre-verification checks drop it
 
 
@@ -68,7 +69,7 @@ class OutputGuard:
     def _identifier_leaks(self, text: str, session: Session) -> list[str]:
         low, digits, out = text.lower(), re.sub(r"\D", "", text), []
         m = session.memory
-        if dob := m.value("dob"):  # the raw value too: memory keeps it as written, parsed or not
+        if dob := m.value("dob"):  # the stored value too: ISO from the Reader, or as written when ambiguous
             d = parse_dob(dob)[0]
             # a partial value ("March") is not an echo to hunt for: the raw check needs two digit runs
             raw = len(re.findall(r"\d+", dob)) >= 2 and contains_token(text, dob)

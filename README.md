@@ -498,8 +498,10 @@ Live persona evaluations (simulated callers scored as pass^k with an LLM judge) 
   for document review, not checked here.
 - The Reader reads identifiers, dates and requests in any language or format and normalizes the date of birth
   itself (code still validates it and re-asks when day and month cannot be told apart); replies follow the
-  caller's language. Guideline text exists only in English and the guard recognizes English date forms, so
-  claim ids, dates, amounts and the email address are quoted in their English form inside a translated reply.
+  caller's language, except the templated fallback, the trouble line and the closed-session text, which stay
+  in English. Guideline text exists only in English and the guard recognizes English date forms, so claim
+  ids, dates, amounts, references and the email address are quoted in their English form inside a translated
+  reply, and a date of birth echoed in non-English words would not be caught by the guard.
 - Emotion detection is text-only and coarse (0..3 scales plus booleans).
 
 Not in this build: live persona evaluations, the hosted demo and the OpenAI adapter are stretch items (below).

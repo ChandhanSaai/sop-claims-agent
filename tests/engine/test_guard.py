@@ -32,7 +32,7 @@ def test_identifiers_are_never_echoed(store):
     s = unverified(store)
     brief = ReplyBrief(phase="VERIFY_ID", goal="g")
     for leak in ("born on 1985-03-15", "born March 15, 1985", "number 650-521-2836", "number (650) 521 2836",
-                 "born 1985 March 15", "born 15.03.1985",
+                 "born 1985 March 15", "born 15.03.1985", "born 15/03/1985", "born 15/3/1985",
                  "email margaret@email.com", "ending in 4472", "policy POL-9921"):
         r = g.check(f"Thanks, {leak}.", s, brief)
         assert not r.ok and any(v.startswith("identifier:") for v in r.violations), leak
