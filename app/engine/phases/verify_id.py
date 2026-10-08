@@ -17,6 +17,8 @@ FIELD_LABELS = {
     "email": "the email on file", "id_last4": "the last four digits of your SSN or national ID",
 }
 _WORDS = {1: "one", 2: "two", 3: "three", 4: "four", 5: "five"}
+FULL_NAME_NEEDED = "I have your first name, and I'll need your full name as it appears on the policy."
+FULL_NAME_ASK = "Could I have your full name, please?"
 GATE_WHY = (
     "Claim details are protected information, so I confirm identity before discussing them; "
     "that protects your claim and your personal information."
@@ -218,6 +220,10 @@ def _handle(
         return _representative(session, ctx, repos, hints_noted)
 
     provided = {n: val for n in IDENTIFIERS if (val := session.memory.value(n))}
+    # a single word is a first name: incomplete rather than wrong, so it costs no attempt
+    first_name_only = "full_name" in provided and len(normalize_name(provided["full_name"]).split()) < 2
+    if first_name_only:
+        provided.pop("full_name")
     if "dob" in provided:
         d, ambiguous = parse_dob(provided["dob"])
         if d is None or ambiguous:  # unreadable, or day and month could swap: re-ask, not an attempt
@@ -232,7 +238,14 @@ def _handle(
             return HandlerResult(brief=brief)
 
     if len(provided) < settings.verify_min_fields:
-        must_say = ([NOTED] if hints_noted else []) + [identity_ask(provided, settings.verify_min_fields)]
+        must_say = [NOTED] if hints_noted else []
+        ask = "Which of those can you share?"
+        if first_name_only and len(provided) == settings.verify_min_fields - 1:
+            must_say.append(FULL_NAME_NEEDED)  # the full name alone completes the set
+            ask = FULL_NAME_ASK
+        else:
+            must_say += ([FULL_NAME_NEEDED] if first_name_only else []) + [
+                identity_ask(provided, settings.verify_min_fields)]
         options: list[str] = []
         if ctx.tone == "de_escalate" and session.counters.gate_explanations < 2:
             must_say += [GATE_WHY, MEANWHILE]
@@ -242,8 +255,7 @@ def _handle(
         brief = ReplyBrief(
             phase=Phase.VERIFY_ID.value,
             goal="Collect the remaining identifiers without confirming that any record exists.",
-            must_say=must_say, must_not=BASE_MUST_NOT, options=options,
-            ask="Which of those can you share?",
+            must_say=must_say, must_not=BASE_MUST_NOT, options=options, ask=ask,
         )
         return HandlerResult(brief=brief)
 

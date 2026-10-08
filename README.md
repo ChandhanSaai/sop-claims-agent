@@ -389,12 +389,12 @@ CI (`.github/workflows/ci.yml`) runs `ruff check .`, then `pytest -q --ignore=te
 - **API** (`tests/api`): the health check, the session, chat, outbox and trace routes, 404 and 422 handling,
   the access-token gate, session expiry, per-session locking under concurrent chats, the UI being served, and
   Margaret's first turn over HTTP end to end.
-- **Replay** (`tests/replay/test_replay.py`): sixteen scenarios run turn by turn through the full
+- **Replay** (`tests/replay/test_replay.py`): seventeen scenarios run turn by turn through the full
   `ConversationService`: `margaret_happy_path`, `angry_caller`, `refusing_caller`, `decoy_disambiguation`,
   `dob_correction`, `human_request_then_continue`, `injection_attempt`, `off_topic_three_times`,
   `question_after_goodbye`, `near_miss_phone_then_more`, `representative_declared`, `representative_approved`,
-  `representative_timeout`, `abusive_caller`, `casual_identity_phrasing` and `spanish_caller`. Each turn can
-  assert
+  `representative_timeout`, `abusive_caller`, `casual_identity_phrasing`, `spanish_caller` and
+  `first_name_only`. Each turn can assert
   phase, verification, party, attempts, pending ask, escalation, off-topic count, outbox size, text that must
   and must not appear, and the guard's verdict (`guard_ok: true` also requires no fallback).
 - **Leak checks:** the guard tests (`tests/engine/test_guard.py`) prove a pre-verification reply cannot carry a
@@ -506,6 +506,9 @@ Live persona evaluations (simulated callers scored as pass^k with an LLM judge) 
   in English. Guideline text exists only in English and the guard recognizes English date forms, so claim
   ids, dates, amounts, references and the email address are quoted in their English form inside a translated
   reply, and a date of birth echoed in non-English words would not be caught by the guard.
+- A one-word name is treated as a first name: the assistant asks for the full name as it appears on the
+  policy instead of spending a verification attempt. A policyholder with a mononym would need the record to
+  carry it that way.
 - Emotion detection is text-only and coarse (0..3 scales plus booleans).
 
 Not in this build: live persona evaluations, the hosted demo and the OpenAI adapter are stretch items (below).

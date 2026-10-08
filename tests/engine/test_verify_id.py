@@ -8,7 +8,7 @@ from app.engine.guard import contains_token, date_variants
 from app.engine.machine import Engine
 from app.engine.memory import merge_analysis
 from app.engine.phases.post_process import GOODBYE
-from app.engine.phases.verify_id import GENERIC_FAIL, MEANWHILE, handle
+from app.engine.phases.verify_id import FULL_NAME_ASK, FULL_NAME_NEEDED, GENERIC_FAIL, MEANWHILE, handle
 from app.engine.state import PendingAsk, Phase, Session, SlotStatus
 from app.llm.schemas import TurnAnalysis
 
@@ -226,3 +226,16 @@ def test_strict_flag_requires_dob_or_id4(repos, settings, strong):
     run(s, repos, settings,
         identity={"full_name": "Margaret Chen", "phone": "650-521-2836", "email": "margaret@email.com"})
     assert (s.verification.status == "verified") is (not strong)
+
+
+def test_a_first_name_alone_asks_for_the_full_name_without_an_attempt(repos, settings, monkeypatch):
+    calls: list[int] = []
+    orig = repos.policyholders.verify
+    monkeypatch.setattr(repos.policyholders, "verify", lambda *a, **k: calls.append(1) or orig(*a, **k))
+    s = Session.new()
+    r = run(s, repos, settings, identity={"full_name": "margaret", "dob": "1985-03-15", "id_last4": "4472"})
+    assert calls == [] and s.verification.attempts == 0 and s.pending_ask == PendingAsk.IDENTITY_FIELDS
+    assert FULL_NAME_NEEDED in r.brief.must_say and r.brief.ask == FULL_NAME_ASK
+    r2 = run(s, repos, settings, identity={"full_name": "Margaret Chen"})
+    assert calls == [1] and s.verification.status == "verified" and s.verification.attempts == 0
+    assert r2.advanced
