@@ -57,7 +57,8 @@ def _decline_brief(session: Session, n: int, settings: Settings) -> ReplyBrief:
         must_say.append(f"Then return to the open question: {session.last_brief.ask}")
     goal = ("Decline the off-topic request briefly" + (" in different words than before" if n > 1 else "")
             + " and restate scope.")
-    offer = n == settings.offtopic_human_offer_at  # past it only after a declined offer: no re-offer
+    # A declined human offer suppresses the ladder's offer for the rest of the session.
+    offer = n == settings.offtopic_human_offer_at and not session.counters.human_declined
     brief = ReplyBrief(phase=session.phase.value, goal=goal, must_say=must_say,
                        must_not=["Do not answer the off-topic question.",
                                  "Do not sound robotic; vary the wording."],
@@ -79,7 +80,7 @@ def pass1(session: Session, ctx: TurnContext, settings: Settings) -> None:
             ctx.acknowledge = _acknowledgment_seed(session)
     else:
         session.counters.frustration_streak = 0
-    if session.counters.frustration_streak >= 2 and not session.counters.human_declined:
+    if session.counters.frustration_streak >= 2:
         ctx.offer_human = True
 
     if a.injection_suspected:

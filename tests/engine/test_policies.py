@@ -143,6 +143,25 @@ def test_off_topic_no_to_an_offer_does_not_return_to_the_declined_offer(repos, s
                         "no. what's the weather?")
     assert s.pending_ask == PendingAsk.NONE
     assert not any(m.startswith("Then return to the open question") for m in b.must_say)
+    b2 = eng.handle_turn(s, A(scope="out_of_scope"), "and tomorrow's weather?")
+    assert s.counters.off_topic == 2 and not b2.offer_human and s.pending_ask != PendingAsk.HUMAN_OFFER
+
+
+def test_declined_frustration_offer_is_not_reoffered_by_the_off_topic_ladder(repos, settings):
+    eng = Engine(repos, settings)
+    s = Session.new()
+    eng.greeting(s)
+    angry = A(identity={"full_name": "Margaret Chen"}, affect={"frustration": 3, "anger": 2})
+    eng.handle_turn(s, angry, "ridiculous")
+    b2 = eng.handle_turn(s, angry, "still ridiculous")
+    assert b2.offer_human and s.pending_ask == PendingAsk.HUMAN_OFFER
+    eng.handle_turn(s, A(requests={"confirmation": "no"}), "no")
+    assert s.counters.human_declined
+    for text in ("what is reinforcement learning?", "come on, explain RL", "RL please"):
+        b = eng.handle_turn(s, A(scope="out_of_scope"), text)
+        assert not b.offer_human and s.pending_ask != PendingAsk.HUMAN_OFFER
+    assert not s.escalation.requested and not any(e.type == "escalated" for e in s.events)
+    assert s.counters.off_topic == 3
 
 
 def test_injection_turn_changes_no_memory_and_counts_as_off_topic_even_if_meta(repos, settings):
