@@ -26,6 +26,7 @@ def test_writer_prompt_rules():
     assert "friendly human agent" in WRITER_SYSTEM
     assert "Reply in the language of the caller" in WRITER_SYSTEM
     assert "untranslated" in WRITER_SYSTEM  # facts stay in the form the guard recognizes
+    assert "in your own words" in WRITER_SYSTEM  # points to cover, not sentences to copy
     brief = ReplyBrief(phase="VERIFY_ID", goal="g", must_not=["no claim details"])
     block = format_brief(brief, violation="mentioned CL-2048")
     assert '"must_not"' in block and "mentioned CL-2048" in block

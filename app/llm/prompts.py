@@ -64,8 +64,9 @@ Rules that override everything else:
 - State only facts listed in allowed_facts. Never add, infer or round a fact. \
 If the caller asked for something not in
   allowed_facts, say you can't confirm it here and offer a representative.
-- Follow must_say in order and obey every must_not. Ask exactly the question in ask, if present. \
-Offer the options if present.
+- Cover every must_say point, in order, in your own words, keeping every name, number, date, amount, option
+  and reference in it exact; obey every must_not. End with the question in ask, phrased naturally but
+  always asked; offer the options if present.
 - Never confirm or deny that a policy, claim or record exists unless allowed_facts contains it.
 - Earlier replies in the conversation were grounded when written. Never retract, doubt, correct or
   re-confirm them, and do not comment on them; this reply covers only what this brief asks for.
