@@ -104,14 +104,16 @@ def write_markdown(results: list[dict], settings) -> None:
 
 
 def write_reliability(runs: list[list[dict]], settings) -> None:
-    """pass^N per scenario: a run passes when every turn passes every hard check; wording misses listed."""
+    """pass^N per scenario: 1 when all N runs passed every hard check on every turn, else 0; wording
+    misses listed."""
     n = len(runs)
     names = [r["name"] for r in runs[0]]
     lines = ["# Live-model reliability", "",
              f"`scripts/live_replay.py --repeat {n}` with Reader `{settings.reader_model}` and Writer "
              f"`{settings.writer_model}`: each scenario run {n} times against the real models. A run passes "
-             "when every turn passes every hard check (state, leaks, guard, model answered); pass^N is the "
-             "share of runs that passed. Soft misses are wording expectations the live Writer paraphrased.",
+             "when every turn passes every hard check (state, leaks, guard, model answered); pass^N is 1.00 "
+             "only when all N runs passed, else 0.00 (pass^k counts a task only when all k trials succeed). "
+             "Soft misses are wording expectations the live Writer paraphrased.",
              "", f"| Scenario | Turns | Hard passes | pass^{n} | Soft misses (run: turn, text) |",
              "|---|---|---|---|---|"]
     total_pass = total_runs = 0
@@ -128,7 +130,8 @@ def write_reliability(runs: list[list[dict]], settings) -> None:
         detail = "; ".join(softs) or "none"
         if hards:
             detail += " / HARD " + "; ".join(hards)
-        lines.append(f"| {name} | {turns} | {passes}/{n} | {passes / n:.2f} | {cell(detail)} |")
+        pass_n = "1.00" if passes == n else "0.00"
+        lines.append(f"| {name} | {turns} | {passes}/{n} | {pass_n} | {cell(detail)} |")
     lines += ["", f"Overall: {total_pass}/{total_runs} scenario runs passed every hard check "
                   f"({total_pass / total_runs:.0%})."]
     RELIABILITY.write_text("\n".join(lines) + "\n", encoding="utf-8")

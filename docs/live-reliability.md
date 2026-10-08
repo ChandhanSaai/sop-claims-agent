@@ -1,6 +1,6 @@
 # Live-model reliability
 
-`scripts/live_replay.py --repeat 3` with Reader `claude-sonnet-5-5` and Writer `claude-sonnet-5-5`: each scenario run 3 times against the real models. A run passes when every turn passes every hard check (state, leaks, guard, model answered); pass^N is the share of runs that passed. Soft misses are wording expectations the live Writer paraphrased.
+`scripts/live_replay.py --repeat 3` with Reader `claude-sonnet-5-5` and Writer `claude-sonnet-5-5`: each scenario run 3 times against the real models. A run passes when every turn passes every hard check (state, leaks, guard, model answered); pass^N is 1.00 only when all N runs passed, else 0.00 (pass^k counts a task only when all k trials succeed). Soft misses are wording expectations the live Writer paraphrased.
 
 | Scenario | Turns | Hard passes | pass^3 | Soft misses (run: turn, text) |
 |---|---|---|---|---|
