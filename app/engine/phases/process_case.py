@@ -11,8 +11,8 @@ from app.engine.state import PendingAsk, Phase, Session
 from app.llm.schemas import ReplyBrief
 
 ANYTHING_ELSE_ASK = "Is there anything else about this claim I can help with?"
-NO_CHAT_UPLOAD = ("Say first that documents cannot be sent through this chat; they go through the "
-                  "channels in submission_guidance.")
+NO_CHAT_UPLOAD = ("Say first, as plain information and not as something missed earlier, that documents "
+                  "cannot be sent through this chat; they go through the channels in submission_guidance.")
 SUBMISSION_SHORT = ("Name documents_needed and the channel from submission_guidance in at most four "
                     "sentences, then offer the checklist of what each document must show instead of "
                     "reciting it.")
