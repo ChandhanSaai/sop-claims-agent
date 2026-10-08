@@ -45,8 +45,13 @@ class ConversationService:
         t0 = time.perf_counter()
         phase_before = session.phase.value
         slots_before = {k: v.value for k, v in session.memory.slots.items()}
-        analysis = self.llm.analyze(user_text=message, pending_ask=session.pending_ask.value,
-                                    last_assistant=session.last_assistant_text())
+        try:
+            analysis = self.llm.analyze(user_text=message, pending_ask=session.pending_ask.value,
+                                        last_assistant=session.last_assistant_text())
+        except LLMError as e:  # the turn is dropped whole: no turn count, no transcript, no trace
+            log.warning("reader failed: %s", e)
+            session.log("llm_error", stage="reader")
+            return ChatResult(reply=TROUBLE)
         brief = self.engine.handle_turn(session, analysis, message)
         text, guard = self._compose_guarded(session, brief)
         if brief.verbatim:
@@ -62,9 +67,13 @@ class ConversationService:
             reader_model=self.settings.reader_model, writer_model=self.settings.writer_model,
             latency_ms=int((time.perf_counter() - t0) * 1000), reply_text=text,
         )
-        session.traces.append(record.model_dump())
-        self.trace_writer.write(record)
-        return ChatResult(reply=text, trace=record.model_dump())
+        try:
+            trace = self.trace_writer.write(record)
+        except OSError:  # observability never fails the caller's turn
+            log.exception("trace write failed")
+            trace = self.trace_writer.redact(record)
+        session.traces.append(trace)
+        return ChatResult(reply=text, trace=trace)
 
     def _compose_guarded(self, session: Session, brief: ReplyBrief) -> tuple[str, dict[str, Any]]:
         try:

@@ -7,7 +7,7 @@ from app.engine.context import resolve_pending
 from app.engine.guard import contains_token, date_variants
 from app.engine.machine import Engine
 from app.engine.memory import merge_analysis
-from app.engine.phases.verify_id import GENERIC_FAIL, handle
+from app.engine.phases.verify_id import GENERIC_FAIL, MEANWHILE, handle
 from app.engine.state import PendingAsk, Phase, Session, SlotStatus
 from app.llm.schemas import TurnAnalysis
 
@@ -46,6 +46,18 @@ def test_name_only_asks_for_more_without_counting_or_confirming(repos, settings)
     assert "date of birth" in text and "noted" in text
     assert any("Do not confirm or deny" in m for m in r.brief.must_not)
     assert r.brief.allowed_facts == {}
+
+
+def test_identity_ask_asks_only_for_what_is_still_missing(repos, settings):
+    nothing = " ".join(run(Session.new(), repos, settings).brief.must_say)
+    assert "at least three of these" in nothing and "your full name" in nothing
+    name_only = " ".join(run(Session.new(), repos, settings,
+                             identity={"full_name": "Margaret Chen"}).brief.must_say)
+    assert "at least two more of these" in name_only and "full name" not in name_only
+    assert "date of birth" in name_only and "policy number" in name_only
+    two = " ".join(run(Session.new(), repos, settings,
+                       identity={"full_name": "Margaret Chen", "dob": "1985-03-15"}).brief.must_say)
+    assert "at least one more of these: the phone number on file, the email on file, or the last four" in two
 
 
 def test_unknown_name_gets_identical_wording(repos, settings):
@@ -144,7 +156,25 @@ def test_gate_explained_at_most_twice_when_frustrated(repos, settings):
         r = handle(s, ctx, repos, settings, TODAY)
         explained = any("protect" in m for m in r.brief.must_say)
         assert explained == (i < 2)
+        assert (MEANWHILE in r.brief.must_say) == (i < 2)  # what the assistant can do in the meantime
     assert s.counters.gate_explanations == 2
+
+
+def test_declined_human_offer_is_not_repeated_after_exhaustion(repos, settings):
+    eng = Engine(repos, settings, lambda: TODAY)
+    s = Session.new()
+    eng.greeting(s)
+    for phone in ("650-521-2830", "650-521-2831", "650-521-2832"):
+        b = eng.handle_turn(s, TurnAnalysis.model_validate(
+            {"identity": {"full_name": "Margaret Chen", "dob": "1985-03-15", "phone": phone}}), phone)
+    assert s.verification.status == "exhausted" and b.offer_human and s.pending_ask == PendingAsk.HUMAN_OFFER
+    b_no = eng.handle_turn(s, TurnAnalysis.model_validate({"requests": {"confirmation": "no"}}), "no")
+    assert s.counters.human_declined and not b_no.offer_human and b_no.ask is None
+    assert s.pending_ask == PendingAsk.NONE
+    b_more = eng.handle_turn(s, TurnAnalysis.model_validate({"identity": {"email": "margaret@email.com"}}),
+                             "margaret@email.com")
+    assert s.verification.status == "exhausted" and not b_more.offer_human and b_more.ask is None
+    assert s.pending_ask == PendingAsk.NONE and any("representative" in m for m in b_more.must_say)
 
 
 def test_representative_is_routed_to_human_in_v1(repos, settings):

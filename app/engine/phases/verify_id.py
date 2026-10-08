@@ -7,18 +7,22 @@ from app.data.normalize import normalize_email, normalize_id4, normalize_name, n
 from app.data.repos import IDENTIFIERS, Repos
 from app.engine.briefs import HandlerResult
 from app.engine.context import HUMAN_ASK, TurnContext
+from app.engine.phases.process_case import SUBMISSION_TOPICS
 from app.engine.state import PendingAsk, Phase, Session
 from app.llm.schemas import ReplyBrief
 
-IDENTITY_ASK = (
-    "To verify your identity, please share at least three of these: your full name, date of birth, "
-    "the phone number on file, the email on file, or the last four digits of your SSN or national ID. "
-    "Your policy number also helps me find your record."
-)
+FIELD_LABELS = {
+    "full_name": "your full name", "dob": "your date of birth", "phone": "the phone number on file",
+    "email": "the email on file", "id_last4": "the last four digits of your SSN or national ID",
+}
+_WORDS = {1: "one", 2: "two", 3: "three", 4: "four", 5: "five"}
 GATE_WHY = (
     "Claim details are protected information, so I confirm identity before discussing them; "
     "that protects your claim and your personal information."
 )
+MEANWHILE = "Meanwhile, I can answer general questions about how claim documents are submitted."
+GENERAL_SUBMISSION = ("Answer the general question about submitting claim documents from "
+                      "submission_guidance, without reference to any claim.")
 GENERIC_FAIL = (
     "I wasn't able to verify your identity with those details. Please check them and try again, "
     "or share different identifiers."
@@ -46,14 +50,38 @@ def _fingerprint(provided: dict[str, str]) -> str:
     return hashlib.sha256(json.dumps(canonical).encode()).hexdigest()
 
 
+def identity_ask(provided: dict[str, str], min_fields: int) -> str:
+    """Ask for exactly what is still missing. The wording depends only on what the caller said, never on
+    whether a lookup found anything."""
+    need = min_fields - len(provided)
+    labels = [FIELD_LABELS[n] for n in IDENTIFIERS if n not in provided]
+    items = (", ".join(labels[:-1]) + f", or {labels[-1]}") if len(labels) > 1 else labels[0]
+    return (f"To verify your identity, please share at least {_WORDS.get(need, str(need))}"
+            f"{' more' if provided else ''} of these: {items}. "
+            "Your policy number also helps me find your record.")
+
+
 def _human_brief(session: Session, goal: str, must_say: list[str]) -> HandlerResult:
-    session.pending_ask = PendingAsk.HUMAN_OFFER
+    offer = not session.counters.human_declined  # explained once; a declined offer is not repeated
+    session.pending_ask = PendingAsk.HUMAN_OFFER if offer else PendingAsk.NONE
     brief = ReplyBrief(phase=Phase.VERIFY_ID.value, goal=goal, must_say=must_say, must_not=BASE_MUST_NOT,
-                       offer_human=True, ask=HUMAN_ASK)
+                       offer_human=offer, ask=HUMAN_ASK if offer else None)
     return HandlerResult(brief=brief)
 
 
 def handle(
+    session: Session, ctx: TurnContext, repos: Repos, settings: Settings, today: date
+) -> HandlerResult:
+    result = _handle(session, ctx, repos, settings, today)
+    a = ctx.analysis
+    # spec 7: a general process question is answered from the guideline's default guidance before verification
+    if not result.advanced and (a.intent == "document_submission" or a.followup_topic in SUBMISSION_TOPICS):
+        result.brief.allowed_facts["submission_guidance"] = repos.guideline.default_guidance()
+        result.brief.must_say.append(GENERAL_SUBMISSION)
+    return result
+
+
+def _handle(
     session: Session, ctx: TurnContext, repos: Repos, settings: Settings, today: date
 ) -> HandlerResult:
     v = session.verification
@@ -98,10 +126,10 @@ def handle(
     )
 
     if len(provided) < settings.verify_min_fields:
-        must_say = ([NOTED] if hints_noted else []) + [IDENTITY_ASK]
+        must_say = ([NOTED] if hints_noted else []) + [identity_ask(provided, settings.verify_min_fields)]
         options: list[str] = []
         if ctx.tone == "de_escalate" and session.counters.gate_explanations < 2:
-            must_say.append(GATE_WHY)
+            must_say += [GATE_WHY, MEANWHILE]
             options = ALT_OPTIONS
             session.counters.gate_explanations += 1
         session.pending_ask = PendingAsk.IDENTITY_FIELDS

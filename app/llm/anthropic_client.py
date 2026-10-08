@@ -56,13 +56,10 @@ class AnthropicLLM:
                     "Return the schema again with valid values."
                 )
         except (anthropic.APIConnectionError, anthropic.APIStatusError, ValidationError) as e:
-            log.warning("reader call failed: %s", type(e).__name__)
-            return TurnAnalysis.empty()
-        if getattr(resp, "stop_reason", None) == "refusal" or resp.parsed_output is None:
-            log.warning(
-                "reader returned no parsed output (stop_reason=%s)", getattr(resp, "stop_reason", None)
-            )
-            return TurnAnalysis.empty()
+            raise LLMError(f"reader call failed: {type(e).__name__}") from e
+        stop = getattr(resp, "stop_reason", None)
+        if stop == "refusal" or resp.parsed_output is None:
+            raise LLMError(f"reader returned no parsed output (stop_reason={stop})")
         return resp.parsed_output
 
     def compose(self, *, brief: ReplyBrief, transcript: list[Turn], violation: str | None = None) -> str:

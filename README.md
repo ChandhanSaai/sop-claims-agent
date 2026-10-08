@@ -19,11 +19,8 @@ docker compose up --build
 ```
 
 Open http://localhost:8000. Stop with Ctrl+C, or `docker compose down` from another terminal. The image is
-multi-stage, runs as a non-root user and has a healthcheck on `/healthz`; trace files land in `./traces`.
-
-On Linux, run `mkdir -p traces` before the first `docker compose up` and make sure uid 1000, the container
-user, can write to it. Otherwise Docker creates the directory owned by root, trace files cannot be written, and
-every chat turn fails with a server error.
+multi-stage, runs as a non-root user and has a healthcheck on `/healthz`. Traces live in the `traces` volume;
+`docker compose cp agent:/app/traces ./traces` copies them out.
 
 ### Local
 
@@ -309,10 +306,10 @@ CI (`.github/workflows/ci.yml`) runs `ruff check .`, then `pytest -q --ignore=te
   unknown callers, format-only restatements, the DOB re-ask, the gate explanation cap, memory provenance and
   corrections, the off-topic ladder, a single escalation, meta, mixed and injection turns, the email offer,
   draft, confirm and decline paths and the route back, the summary, brief merging, and the service's
-  regenerate-once and template fallbacks.
+  regenerate-once and template fallbacks, trouble line on a Reader failure and tolerance of a failed trace write.
 - **LLM** (`tests/llm`): prompt content, the Anthropic client's request shape (including both calls through the
-  real SDK over an in-memory transport), the Reader's retry with the validation error, refusal and error
-  fallbacks, and the FakeLLM.
+  real SDK over an in-memory transport), the Reader's retry with the validation error and the `LLMError` it
+  raises on refusal or a failed call, and the FakeLLM.
 - **API** (`tests/api`): the health check, the session, chat, outbox and trace routes, 404 and 422 handling,
   the access-token gate, session expiry, per-session locking under concurrent chats, the UI being served, and
   Margaret's first turn over HTTP end to end.
@@ -358,7 +355,8 @@ stretch item S02 and not in this build.
 - **Claim data never enters a prompt before verification.** The Reader sees only the caller's message, the
   pending ask and the last assistant message, which is guard-checked output. The Writer sees only the
   code-built brief and the recent conversation, and until the verify tool sets the session flag the brief holds
-  no claim facts; after verification only the verified caller's own claims reach it.
+  no claim facts (the guideline's general submission guidance, which names no claim, may answer a general
+  process question, spec section 7); after verification only the verified caller's own claims reach it.
 - **Generic failure wording.** A lookup miss and a field mismatch produce the same message and cost one attempt
   each, nothing is counted until the minimum identifiers are on hand, and the failing field is never named, so
   neither the wording nor the attempt count reveals whether a name, phone or email exists. Knowledge-based
@@ -368,6 +366,9 @@ stretch item S02 and not in this build.
 - **Identifiers are never echoed.** The Writer is told not to repeat them, and the output guard rejects any
   reply containing the caller's date of birth in any format, phone digits, email, ID last 4 or policy number,
   verified or not. A violation is regenerated once, then replaced by a reply rendered from the brief in code.
+- **Grounded after verification.** Every claim id, every date (month-name or ISO, fixture or invented) and
+  every number of three or more digits in a verified reply must come from `allowed_facts`; bare numbers under
+  100, such as "the 2 documents", are not checked.
 - **Redacted logs and traces.** Logs are JSON through a redaction filter for ISO dates, phone numbers, emails
   and policy numbers. Trace records in `traces/<session_id>.jsonl` mask date of birth, phone, email, ID last 4
   and policy number in the Reader output and corrections, and run the same redaction over every free-text

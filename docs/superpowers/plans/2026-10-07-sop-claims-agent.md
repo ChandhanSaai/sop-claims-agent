@@ -17,7 +17,7 @@
 - Models: `READER_MODEL` and `WRITER_MODEL` default `claude-sonnet-5-5`. `thinking={"type": "between_tools"}` is sent only when the model id starts with `claude-sonnet-5-5`; for any other model omit `thinking`. `output_config={"effort": "low"}` on both calls.
 - Never put `temperature`, `top_p`, `top_k`, `budget_tokens` or assistant prefills in any request.
 - The LLM never sets `verification.status`, `consent.status`, `phase` or `pending_ask`. Only code does.
-- Claim records, guideline text and policyholder values never appear in any prompt while `verification.status != "verified"`.
+- Claim records and policyholder values never appear in any prompt while `verification.status != "verified"`; the guideline's default guidance may be used for general process questions (spec section 7).
 - Money fields stay strings (`"1450.00"`); never `float`.
 - Dates render as `fmt_date(d)` = `"March 18, 2026"` (month name, unpadded day, year).
 - Email mask: first character of the local part, one `*` per remaining character, domain unchanged (`m*******@email.com`).
@@ -5525,3 +5525,7 @@ Known deviations, all deliberate: `structlog` and `mypy` dropped (stdlib logging
 
 Type and name consistency checked across tasks: `handle(session, ctx, repos, settings, today)`; `HandlerResult(brief, advanced, needs_input, transition_fact, transition_facts)`; `ReplyBrief` fields incl. `verbatim`; `PendingAsk` values match the YAML `pending_ask` strings (`identity_fields`, `disambiguation`, `anything_else`, `email_offer`, `email_confirm`, `human_offer`, `none`); facts keys listed in Task 6 are the ones Task 8's summary and Task 9's guard read.
 
+
+## Amendments
+
+- 2026-10-08: Global Constraints no longer bar guideline text before verification. Spec section 7 lets the Writer answer general process questions from the guideline's default guidance, and the whole-branch review (finding I2) found VERIFY_ID promising that help without giving it; `verify_id.handle` now puts `default_guidance()` in `allowed_facts["submission_guidance"]` for a submission question while unverified. Claim records and policyholder values still never appear before verification.

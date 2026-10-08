@@ -63,17 +63,18 @@ def test_analyze_uses_parse_with_schema_and_context():
     assert "<<<where is it>>>" in kw["messages"][0]["content"]
 
 
-def test_analyze_falls_back_to_empty_on_api_error():
+def test_analyze_raises_llm_error_on_api_error():
     err = anthropic.APIConnectionError(request=None)  # type: ignore[arg-type]
     stub = StubMessages(parsed=None, raises=[err])
-    out = make(stub).analyze(user_text="x", pending_ask="none", last_assistant=None)
-    assert out == TurnAnalysis.empty()
+    with pytest.raises(LLMError):
+        make(stub).analyze(user_text="x", pending_ask="none", last_assistant=None)
     assert len(stub.parse_kwargs) == 1  # API errors are not retried here; the SDK already retries them
 
 
-def test_analyze_refusal_is_empty():
+def test_analyze_refusal_raises_llm_error():
     stub = StubMessages(parsed=None, stop_reason="refusal")
-    assert make(stub).analyze(user_text="x", pending_ask="none", last_assistant=None) == TurnAnalysis.empty()
+    with pytest.raises(LLMError):
+        make(stub).analyze(user_text="x", pending_ask="none", last_assistant=None)
 
 
 def test_analyze_retries_once_with_the_validation_error():
@@ -92,10 +93,11 @@ def test_analyze_retries_once_with_the_validation_error():
     [validation_error(), anthropic.APIConnectionError(request=None)],  # type: ignore[arg-type]
     ids=["validation_error", "api_error"],
 )
-def test_analyze_is_empty_when_the_retry_fails_too(second_error):
+def test_analyze_raises_llm_error_when_the_retry_fails_too(second_error):
     parsed = TurnAnalysis.model_validate({"intent": "next_steps"})
     stub = StubMessages(parsed=parsed, raises=[validation_error(), second_error])
-    assert make(stub).analyze(user_text="x", pending_ask="none", last_assistant=None) == TurnAnalysis.empty()
+    with pytest.raises(LLMError):
+        make(stub).analyze(user_text="x", pending_ask="none", last_assistant=None)
     assert len(stub.parse_kwargs) == 2
 
 

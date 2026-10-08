@@ -149,6 +149,18 @@ def test_month_year_shared_with_an_allowed_date_is_allowed(store):
         assert "date_not_allowed" in g.check(f"It was opened on {leak}.", s, post).violations, leak
 
 
+def test_invented_dates_are_caught_after_verification(store):
+    g = OutputGuard(store)
+    s = unverified(store)
+    s.verification = Verification(status="verified", party_id="P9", role="policyholder")
+    post = ReplyBrief(phase="PROCESS_CASE", goal="g", allowed_facts={"appeal_deadline": "March 18, 2026"})
+    for leak in ("You can still appeal until April 30, 2026.", "The deadline was 2026-04-30.",
+                 "You can still appeal until April 30th."):  # none of these is a fixture date
+        r = g.check(leak, s, post)
+        assert any(x.startswith("date_not_allowed:") for x in r.violations), leak
+    assert g.check("Please send the 2 documents before March 18; the review takes under a week.", s, post).ok
+
+
 def test_phrases_match_only_as_contiguous_token_runs(store):
     g = OutputGuard(store)
     pre = ReplyBrief(phase="VERIFY_ID", goal="g")

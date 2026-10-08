@@ -5,4 +5,6 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./traces:/app/traces
+      - traces:/app/traces
+volumes:
+  traces: {}
