@@ -18,8 +18,8 @@ Merge order for the reviewer: merge PRs in task order (T01, T02, T03, then the f
 | T06 | RESOLVE_INTENT (disambiguation, decoy) and PROCESS_CASE (grounded facts, deadlines, alternatives, anything-else) | 3 | Fable 5.1 | T02, T03 | ready to merge | #7 | two off-path defects plus a same-turn double switch fixed (b60af46, d03f9d2); re-review approved; adds pythonpath to pyproject |
 | T07 | Cross-cutting policies: scope guard ladder, non-terminal escalation with hand-off packet, meta and mixed turns, injection flag | 3 | Opus 5.5 | T03 | ready to merge | #4 | three fix rounds on the brief's ladder code (a1d94dd, 0d54fcc, 019ebb3); final re-review approved |
 | T08 | POST_PROCESS: email offer once, code-built summary draft, confirm, outbox, route back | 4 | Opus 5.5 | T06 | ready to merge | #8 | three fix rounds (7d307a3, fc5d13c, 4f07713); final re-review approved; base task/T06-intent-and-case |
-| T09 | Output guard (echo-aware), redacted per-turn trace, disclosure events | 4 | Opus 5.5 | T03, T04 | in progress | #9 | implementer found 4 gaps in the brief's guard/trace code (corrections unmasked, ordinal dates, whole-line redaction, substring numbers); fix in progress before review |
-| T10 | End-to-end integration: ConversationService, replay runner, both golden transcripts green, HTTP integration test | 5 | Fable 5.1 | T04, T05, T06, T07, T08, T09 | todo | | |
+| T09 | Output guard (echo-aware), redacted per-turn trace, disclosure events | 4 | Opus 5.5 | T03, T04 | ready to merge | #9 | two fix rounds on the brief's guard/trace code (fb8e2b8, 68c732a); re-review approved; base task/T04-llm-layer |
+| T10 | End-to-end integration: ConversationService, replay runner, both golden transcripts green, HTTP integration test | 5 | Fable 5.1 | T04, T05, T06, T07, T08, T09 | in progress | | branch task/T10-integration = T03 tip + merges of T04..T09; PR against main, merge last |
 | T11 | Replay suite for every brief scenario, zero-tolerance leak check, CI gating | 6 | Opus 5.5 | T10 | todo | | |
 | T12 | Dockerfile, compose, CLI, transcript renderer, README with golden transcripts, demo recording | 6 | Opus 5.5 | T10 | todo | | |
 
@@ -35,6 +35,7 @@ Merge order for the reviewer: merge PRs in task order (T01, T02, T03, then the f
 
 ## Deferred findings (for the final whole-branch review)
 
+- T09 (re-review minors): a partial raw DOB in memory (for example "March") over-fires the echo rule (gate on two digit runs; fixed in T10); a full DOB that `parse_dob` cannot parse is caught only when echoed verbatim (ordinal support in `parse_dob`; fixed in T10); document names in a different word order pass before verification; the VERIFY_ID re-ask example "15 March 1985" is Margaret's real DOB (changed in T10).
 - T08 (re-review minors): a contradictory answer at the offer step builds the draft without sending; a close beats a bare claim switch in POST_PROCESS while PROCESS_CASE gives the switch precedence; a yes that also carries a question drops the question.
 - T06 (re-review minors): a same-turn double switch is still reachable when a disambiguation answer carries a hint that contradicts its own pick (one-line guard in `resolve_intent`); no positive test for the words-plus-document trigger; `hints_match` logic exists in both handlers; the trace will record the mutated `switch_claim=False`.
 - T04 (re-review minors): a 114-char test line exempted by ruff's trailing-comment rule; window tests do not pin the slice-then-trim order; a refusal with partial text costs an extra Reader call; `include_input=False` on the retry note is untested.
@@ -51,6 +52,7 @@ Merge order for the reviewer: merge PRs in task order (T01, T02, T03, then the f
 ## Log
 
 - 2026-10-07: spec v0.5 frozen, plan written, tracker created.
+- 2026-10-08: wave 3 complete: T04, T05, T06, T07, T08, T09 all approved after fix rounds; integration branch assembled (131 tests before T09); T10 started on Fable.
 - 2026-10-07: T03 review found two plan-mandated verify_id defects (fingerprint on raw strings; unmatched identifiers marked verified), fix dispatched; T04, T05, T06, T07 started in parallel off the T03 tip; T08 re-sequenced after T06.
 - 2026-10-07: T02 implemented (PR #2); review found the plan's `find` stopped at the first identifier present (lockout risk), fixed with four minors; re-review approved. T03 implemented on Fable (PR #3), in review.
 - 2026-10-07: T01 implemented (PR #1); review found two plan-mandated logging defects (redaction filter breaks `%d` formatting; exception text unredacted), fix dispatched. Dependency correction: T03 needs T02, T04 and T05 need T03, so the waves were re-cut (above). T02 started on a worktree off the T01 branch.
