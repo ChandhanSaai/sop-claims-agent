@@ -15,8 +15,8 @@ def _token_run(s: str) -> str:
 
 @pytest.mark.parametrize("name", scenario_names())
 def test_zero_claim_vocabulary_before_verification(name, settings):
-    """Independent of the guard: no claim id, fixture amount, fixture date or non-echoed document phrase
-    may appear in any reply of a turn that ends unverified."""
+    """Re-asserted on every reply regardless of the guard's verdict: no claim id, fixture amount, fixture date
+    or non-echoed document phrase may appear in any reply of a turn that ends unverified."""
     store = FixtureStore.load(settings.fixtures_dir)
     vocab = OutputGuard(store)
     spec = load(name)

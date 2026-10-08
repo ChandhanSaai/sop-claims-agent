@@ -7,8 +7,9 @@ from app.data.normalize import normalize_email, normalize_id4, normalize_name, n
 from app.data.repos import IDENTIFIERS, Repos
 from app.engine.briefs import HandlerResult
 from app.engine.context import HUMAN_ASK, TurnContext
+from app.engine.phases.post_process import GOODBYE
 from app.engine.phases.process_case import SUBMISSION_TOPICS
-from app.engine.state import PendingAsk, Phase, Session
+from app.engine.state import IDENTITY_SLOTS, PendingAsk, Phase, Session
 from app.llm.schemas import ReplyBrief
 
 FIELD_LABELS = {
@@ -86,6 +87,11 @@ def _handle(
 ) -> HandlerResult:
     v = session.verification
     a = ctx.analysis
+    if (a.requests.closing and a.intent == "none" and not a.question
+            and not any(n in ctx.changed_slots for n in IDENTITY_SLOTS)):  # spec 7: goodbye, nothing changes
+        brief = ReplyBrief(phase=Phase.VERIFY_ID.value, goal="Short goodbye; verification stays as it is.",
+                           must_say=[GOODBYE], must_not=BASE_MUST_NOT)
+        return HandlerResult(brief=brief)
     if v.status == "exhausted":
         return _human_brief(
             session,

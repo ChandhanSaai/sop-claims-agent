@@ -7,6 +7,7 @@ from app.engine.context import resolve_pending
 from app.engine.guard import contains_token, date_variants
 from app.engine.machine import Engine
 from app.engine.memory import merge_analysis
+from app.engine.phases.post_process import GOODBYE
 from app.engine.phases.verify_id import GENERIC_FAIL, MEANWHILE, handle
 from app.engine.state import PendingAsk, Phase, Session, SlotStatus
 from app.llm.schemas import TurnAnalysis
@@ -158,6 +159,18 @@ def test_gate_explained_at_most_twice_when_frustrated(repos, settings):
         assert explained == (i < 2)
         assert (MEANWHILE in r.brief.must_say) == (i < 2)  # what the assistant can do in the meantime
     assert s.counters.gate_explanations == 2
+
+
+def test_goodbye_before_verification_is_a_short_goodbye(repos, settings):
+    s = Session.new()
+    run(s, repos, settings, identity={"full_name": "Margaret Chen"})
+    assert s.pending_ask == PendingAsk.IDENTITY_FIELDS
+    r = run(s, repos, settings, requests={"closing": True})
+    assert r.brief.must_say == [GOODBYE] and r.brief.ask is None and r.brief.allowed_facts == {}
+    assert s.phase == Phase.VERIFY_ID and s.pending_ask == PendingAsk.IDENTITY_FIELDS
+    assert s.verification.attempts == 0
+    r2 = run(s, repos, settings, requests={"closing": True}, identity={"dob": "1985-03-15"})  # new field
+    assert r2.brief.ask and GOODBYE not in r2.brief.must_say
 
 
 def test_declined_human_offer_is_not_repeated_after_exhaustion(repos, settings):

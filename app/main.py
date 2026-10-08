@@ -19,7 +19,7 @@ def create_app(settings: Settings | None = None, llm=None, service=None) -> Fast
     app.state.settings = settings
     app.state.sessions = SessionStore(settings.session_ttl_minutes)
     if service is None:
-        from app.engine.service import build_service  # Task 10
+        from app.engine.service import build_service
 
         service = build_service(settings, llm=llm)
     app.state.service = service
