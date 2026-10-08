@@ -23,7 +23,7 @@ owns the SOP; the model reads and phrases:** one LLM call reads each message int
 - **Live transcripts:** [docs/live-transcripts.md](docs/live-transcripts.md) replays all 17 scenarios against
   the real Reader and Writer (Sonnet 5.5) and shows each reply with its state, guard verdict, latency and
   checks, and [docs/live-reliability.md](docs/live-reliability.md) repeats every scenario and reports pass^N.
-- **Replay suite:** `pytest -q` runs 236 tests offline with no key or network, including the 17 scenarios turn
+- **Replay suite:** `pytest -q` runs 245 tests offline with no key or network, including the 18 scenarios turn
   by turn and a leak check on every reply that ends unverified.
 - **Where each requirement and attack lives:** the [Grader's map](#graders-map) names the code, the test that
   pins each requirement and the live turn that shows it, and [Attacks we tried](#attacks-we-tried) pairs each
@@ -35,9 +35,7 @@ owns the SOP; the model reads and phrases:** one LLM call reads each message int
 
 ![The chat page beside the SOP inspector after Margaret's first turn](docs/demo/chat-and-inspector.jpg)
 
-The inspector on the right is the harness made visible: the phase stepper, verification state and attempts,
-memory slots with their source turn and status, the brief the Writer received, the guard verdict, the
-outbox and the redacted trace of the last turn.
+The inspector on the right is the harness made visible.
 
 ## Architecture at a glance
 
@@ -106,7 +104,7 @@ numbers in [docs/live-transcripts.md](docs/live-transcripts.md).
 | Abuse: one boundary statement, then the conversation closes | the abuse branch of `pass1`, `BOUNDARY_LINE` and `closing_brief` in `app/engine/policies.py`; `CLOSED_TEXT` in `app/engine/service.py` | `test_policies.py::test_first_abusive_message_sets_one_boundary_and_continues`, `::test_second_abusive_message_ends_the_conversation_with_a_human_route`; `test_service.py::test_closed_session_answers_from_code_without_the_reader`; fixture `abusive_caller` | `abusive_caller` T2 (boundary), T3 (closed with an `ESC-` reference) and T4 (no model call) |
 | Redacted traces and logs | `TraceRecord.build` and `TraceWriter` in `app/observability/trace.py`; `RedactionFilter` in `app/observability/logging.py`; `Session.snapshot` in `app/engine/state.py` for the inspector | `test_trace.py::test_trace_record_masks_identity_and_writes_redacted_jsonl`, `::test_trace_writer_redacts_free_text_but_keeps_ts_and_session_id`; `test_logging.py::test_configure_logging_emits_redacted_json_for_every_record`; `test_state.py::test_snapshot_masks_identifiers_and_omits_fingerprint` | the inspector's Last trace panel; `traces/<session_id>.jsonl` |
 | Docker, API key from the environment | `Dockerfile` (multi-stage, non-root, healthcheck); `docker-compose.yml` (`env_file: .env`); `.env.example`; `app/config.py`; `build_llm` in `app/llm/anthropic_client.py` refuses to start without a key | `test_schemas.py::test_settings_read_env`; `test_anthropic_client.py::test_build_llm_picks_backend`; `test_healthz.py::test_healthz` | `docker compose up --build`, then http://localhost:8000 |
-| Chat UI with the SOP inspector | `ui/index.html` and `ui/app.js` (every message rendered with `textContent`); routes in `app/api/routes.py`; `Session.snapshot` | `test_routes.py::test_ui_is_served`; `test_integration.py::test_margaret_over_http` (masked state over HTTP) | http://localhost:8000 |
+| Chat UI with the SOP inspector | `ui/index.html` and `ui/app.js` (every message rendered with `textContent`); routes in `app/api/routes.py`; `Session.snapshot` | `test_routes.py::test_ui_is_served`, `::test_ui_script_renders_text_only`; `test_integration.py::test_margaret_over_http` (masked state over HTTP) | http://localhost:8000 |
 
 ## Attacks we tried
 
@@ -118,7 +116,7 @@ Each attack is pinned by a test or a replay fixture; test files and fixtures are
 | Existence oracle: probing whether a name, phone or email is on file | The ask depends only on what the caller gave, never on a lookup result, and nothing counts until the minimum is on hand. A lookup miss and a mismatch each cost one attempt with the same sentence. A representative no-match uses one sentence for either wrong name. | `test_verify_id.py::test_unknown_name_gets_identical_wording`, `::test_lookup_miss_with_three_fields_costs_one_attempt`; `test_representative.py::test_no_match_wording_is_identical_for_a_wrong_representative_or_policyholder_name` |
 | Guessing identifiers until a set passes | Three failed verify calls per session (`VERIFY_MAX_ATTEMPTS`) end verification, and a correct set after that is not checked. A format-only restatement is not a new attempt. Counting is per session (see Limitations). | `test_verify_id.py::test_failed_attempts_are_generic_and_exhaust_at_three`, `::test_format_only_restatement_is_not_a_new_attempt` |
 | Getting an identifier echoed back, in any format | The guard rejects the caller's date of birth in ISO, month-name, ordinal and day-first forms, the phone digits, email, ID last 4 and policy number, verified or not. A violation is regenerated once, then replaced by the template. | `test_guard.py::test_identifiers_are_never_echoed`, `::test_raw_dob_echo_is_caught_in_any_format`, `::test_ordinal_and_unpadded_dates_are_caught`; `test_service.py::test_guard_violation_regenerates_once` |
-| Invented dates or numbers after verification | Every claim id, every date (month name, ISO or m/d/yyyy, fixture or invented) and every number of three or more digits or with a decimal part in a verified reply must appear in `allowed_facts`, the caller's own words or the hand-off reference. | `test_guard.py::test_invented_dates_are_caught_after_verification`, `::test_verified_replies_must_stay_inside_allowed_facts`, `::test_amounts_match_by_token_and_ignore_thousands_separators` |
+| Invented dates or numbers after verification | Every claim id, every date (month name or abbreviation, ISO or m/d/yyyy, fixture or invented) and every number of three or more digits or with a decimal part in a verified reply must come from `allowed_facts`, with two exemptions: numbers in the caller's own words and the hand-off reference. | `test_guard.py::test_invented_dates_are_caught_after_verification`, `::test_verified_replies_must_stay_inside_allowed_facts`, `::test_amounts_match_by_token_and_ignore_thousands_separators` |
 | A declared representative giving the policyholder's identifiers: "no, her SSN last four is 4472" | Once a caller says they are calling for someone else, the representative path holds for the session. Identifiers given for the policyholder are stored but never looked up or verified, even if the caller then claims to be the policyholder, and a verification reset keeps the flag. | fixture `representative_declared`; `test_representative.py::test_identifiers_given_by_a_representative_never_verify_them_as_the_policyholder`, `::test_policyholder_claim_after_a_declaration_keeps_the_representative_path`; `test_verify_id.py::test_declared_representative_is_not_verified_as_the_policyholder_next_turn`; `test_memory.py::test_verification_reset_keeps_the_representative_flag` |
 | The right name with a near-miss phone that belongs to another record | `find` returns every record any key matches, so the other record's phone cannot hide the one the name points at. Verification passes only when exactly one candidate matches 3 of 5, and a near miss is a miss. | fixture `near_miss_phone_then_more`; `test_repos.py::test_find_returns_every_key_match_in_record_order`; `test_verify_id.py::test_wrong_phone_of_another_record_does_not_hide_the_right_one` |
 | Claiming a power of attorney | Routed to a person for document review before any name match or consent request: general information only, one `poa_claimed` event and a human offer. | `test_representative.py::test_claimed_power_of_attorney_routes_to_a_human_without_matching_or_consent` (three spellings), `::test_power_of_attorney_without_names_routes_too_and_a_changed_relationship_resumes` |
@@ -126,7 +124,7 @@ Each attack is pinned by a test or a replay fixture; test files and fixtures are
 | Off-topic insistence: four turns about reinforcement learning | Decline, decline with a human offer, one escalation with an `ESC-` reference, then declines in new words that repeat the reference. A declined offer is not repeated. | fixture `off_topic_three_times`; `test_policies.py::test_off_topic_sequence_declines_offers_human_then_escalates_once`, `::test_no_to_human_offer_keeps_declining_instead_of_escalating` |
 | Correcting the date of birth after verification | A correction to a verified identifier resets verification, the selected claim and the phase to VERIFY_ID, and the corrected set is verified from scratch. Restating a value without a correction cannot overwrite a verified slot. | fixture `dob_correction`; `test_memory.py::test_correction_to_verified_identity_resets_verification`, `::test_verified_slot_is_not_overwritten_by_a_restated_value`; `test_policies.py::test_a_correction_that_resets_verification_marks_the_turn_a_new_development` |
 | A decoy claim: "my healthcare claim from January" fits CL-2048 (2026) and CL-2011 (2025) | RESOLVE_INTENT filters the verified caller's claims by every remembered hint and selects only on exactly one match; otherwise it lists the candidates from data and asks. | fixture `decoy_disambiguation`; `test_repos.py::test_claims_filter_and_decoy`; `test_resolve_intent.py::test_decoy_asks_then_ordinal_selects` |
-| Markup in a reply, the pattern behind Lenovo's hand-off XSS | The guard rejects any angle-bracket tag, and the UI renders every message with `textContent`. | `test_guard.py::test_markup_and_internal_tags_are_rejected` |
+| Markup in a reply, the pattern behind Lenovo's hand-off XSS | The guard rejects any angle-bracket tag, and the UI renders every message with `textContent`. | `test_guard.py::test_markup_and_internal_tags_are_rejected`; `test_routes.py::test_ui_script_renders_text_only` |
 
 ## Quick start
 
@@ -169,7 +167,8 @@ The UI is a thin client over four JSON endpoints, so the same conversation can b
 ```bash
 curl -s -X POST localhost:8000/api/session -H 'Content-Type: application/json' -d '{"scenario": "default"}'
 # -> {"session_id": "...", "greeting": "Hello, I'm an automated assistant...", "state": {...}}
-curl -s -X POST localhost:8000/api/chat -H 'Content-Type: application/json' \n  -d '{"session_id": "<id>", "message": "Margaret Chen, POL-9921, born 15 March 1985, last four 4472"}'
+curl -s -X POST localhost:8000/api/chat -H 'Content-Type: application/json' \
+  -d '{"session_id": "<id>", "message": "Margaret Chen, POL-9921, born 15 March 1985, last four 4472"}'
 # -> {"reply": "...", "state": {...}, "trace": {...}}
 ```
 
@@ -185,10 +184,12 @@ per-turn traces; `GET /healthz` is open. When `DEMO_ACCESS_TOKEN` is set, every 
 ```bash
 fly launch --no-deploy --copy-config --name <your-app-name>
 fly secrets set ANTHROPIC_API_KEY=<key> DEMO_ACCESS_TOKEN=<a long random token>
-fly deploy
+fly deploy --ha=false
 ```
 
 Visitors paste the token into the page's "Access token" field; `/healthz` stays open. Traces are ephemeral there.
+`--ha=false` keeps a single machine: sessions live in one process's memory (`app/api/sessions.py`), so a second
+machine would answer 404 for a session it never saw.
 
 ### Offline demo (`LLM_BACKEND=fake`)
 
@@ -409,9 +410,12 @@ What each reply must and must not do (spec Appendix A):
   reason; list pathology report and office note; say the appeal deadline of March 18, 2026 has passed and a
   representative can review options; ask whether there is anything else. Must not ask for any identifier or
   which claim; echo 4472, 1985-03-15, the phone or the email; state any amount not in `allowed_facts`.
-- **Turn 2:** must mention the member portal or claim upload link first; mention fax or mail as the fallback;
-  mention both documents and at least one requirement for each (patient name, visit date, signature or
-  similar). Must not contain any number, date or document not in `allowed_facts`.
+- **Turn 2:** must first say, as plain information, that documents cannot be sent through this chat; name both
+  documents and the channel (the member portal or claim upload link, with fax or mail as the fallback); offer
+  the checklist of what each document must show instead of reciting it; say the appeal deadline has passed,
+  so sending documents does not reopen the appeal by itself. Asking what each document must show gets the
+  detail (fixture `document_checklist`). Must not contain any number, date or document not in
+  `allowed_facts`.
 - **Turn 3:** must say usually less than a week; say the review restarts rather than finishing instantly; ask
   anything else.
 - **Turn 4:** must offer an email summary; show the on-file address masked (`m*******@email.com`). Must not show
@@ -552,7 +556,7 @@ CI (`.github/workflows/ci.yml`) runs `ruff check .`, then `pytest -q --ignore=te
   ID last 4); lookup by each identifier and pass/fail verification over the fixture near-collisions, with the
   policy number never counting and the strong-field flag; claim filtering and the January decoy; guideline
   lookups including the claim without documents; the outbox; JSON logging with redaction; trace masking; the
-  settings and contract schemas.
+  settings and contract schemas; the live-replay reliability table and arguments.
 - **Engine** (`tests/engine`): each phase handler and the engine fed synthetic `TurnAnalysis` input:
   transitions and same-turn chaining (Margaret in one turn), attempts and exhaustion, identical wording for
   unknown callers, format-only restatements, the DOB re-ask, the gate explanation cap, memory provenance and
@@ -567,14 +571,14 @@ CI (`.github/workflows/ci.yml`) runs `ruff check .`, then `pytest -q --ignore=te
   real SDK over an in-memory transport), the Reader's retry with the validation error and the `LLMError` it
   raises on refusal or a failed call, and the FakeLLM.
 - **API** (`tests/api`): the health check, the session, chat, outbox and trace routes, 404 and 422 handling,
-  the access-token gate, session expiry, per-session locking under concurrent chats, the UI being served, and
-  Margaret's first turn over HTTP end to end.
-- **Replay** (`tests/replay/test_replay.py`): seventeen scenarios run turn by turn through the full
+  the access-token gate, session expiry, per-session locking under concurrent chats, the UI being served with
+  a text-only script, and Margaret's first turn over HTTP end to end.
+- **Replay** (`tests/replay/test_replay.py`): eighteen scenarios run turn by turn through the full
   `ConversationService`: `margaret_happy_path`, `angry_caller`, `refusing_caller`, `decoy_disambiguation`,
   `dob_correction`, `human_request_then_continue`, `injection_attempt`, `off_topic_three_times`,
   `question_after_goodbye`, `near_miss_phone_then_more`, `representative_declared`, `representative_approved`,
-  `representative_timeout`, `abusive_caller`, `casual_identity_phrasing`, `spanish_caller` and
-  `first_name_only`. Each turn can assert
+  `representative_timeout`, `abusive_caller`, `casual_identity_phrasing`, `spanish_caller`,
+  `first_name_only` and `document_checklist`. Each turn can assert
   phase, verification, party, attempts, pending ask, escalation, off-topic count, outbox size, text that must
   and must not appear, and the guard's verdict (`guard_ok: true` also requires no fallback).
 - **Leak checks:** the guard tests (`tests/engine/test_guard.py`) prove a pre-verification reply cannot carry a

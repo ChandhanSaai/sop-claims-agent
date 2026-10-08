@@ -1,7 +1,9 @@
 # Hosted demo on Fly.io (optional). Run from the repo root, once, with an account:
 #   fly launch --no-deploy --copy-config --name <your-app-name>
 #   fly secrets set ANTHROPIC_API_KEY=<key> DEMO_ACCESS_TOKEN=<a long random token>
-#   fly deploy
+#   fly deploy --ha=false
+# --ha=false keeps one machine: sessions live in the process's memory (app/api/sessions.py), so a second
+# machine would answer 404 for a session it never saw.
 # The page then needs the token in its "Access token" field; /healthz stays open. Traces are ephemeral here
 # (no volume): the trace panel works per session, nothing is kept across restarts.
 app = "sop-claims-agent"
