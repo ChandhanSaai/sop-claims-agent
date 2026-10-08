@@ -17,6 +17,7 @@ from app.data.normalize import (
 def test_normalize_name():
     assert normalize_name("  Margaret   CHEN ") == "margaret chen"
     assert normalize_name("Ya-Wen Li") == "ya wen li"
+    assert normalize_name("José García") == "jose garcia"
 
 
 def test_normalize_phone_variants():
@@ -32,6 +33,9 @@ def test_normalize_email_and_id4():
     assert normalize_id4("4472") == "4472"
     assert normalize_id4("ending in 4472") == "4472"
     assert normalize_id4("12") is None
+    assert normalize_id4("123-45-4472") == "4472"
+    assert normalize_id4("44729999") is None
+    assert normalize_id4("born 1985, ends 4472") == "4472"
 
 
 def test_parse_dob_formats():

@@ -50,15 +50,18 @@ class PolicyholderRepo:
 
     def find(self, *, policy_number: str | None = None, phone: str | None = None,
              email: str | None = None, name: str | None = None) -> list[Policyholder]:
-        """First unique key present wins: policy number, phone, email, then name (which may collide)."""
+        """First key that matches wins: policy number, phone, email, then name (which may collide)."""
         if policy_number:
             key = policy_number.strip().casefold()
-            return [r for r in self._records if r.policy_number.casefold() == key]
+            if hits := [r for r in self._records if r.policy_number.casefold() == key]:
+                return hits
         if phone and (p := normalize_phone(phone)):
-            return [r for r in self._records if p in self._phones(r)]
+            if hits := [r for r in self._records if p in self._phones(r)]:
+                return hits
         if email:
             e = normalize_email(email)
-            return [r for r in self._records if e in self._emails(r)]
+            if hits := [r for r in self._records if e in self._emails(r)]:
+                return hits
         if name:
             n = normalize_name(name)
             return [r for r in self._records if n in self._names(r)]
@@ -104,9 +107,9 @@ class ClaimsRepo:
         if case_id:
             out = [c for c in out if c.case_id.casefold() == case_id.strip().casefold()]
         if case_type:
-            out = [c for c in out if c.case_type == case_type]
+            out = [c for c in out if c.case_type.casefold() == case_type.casefold()]
         if status:
-            out = [c for c in out if c.status == status]
+            out = [c for c in out if c.status.casefold() == status.casefold()]
         if month:
             out = [c for c in out if c.created_at.month == month]
         if year:
@@ -190,6 +193,8 @@ class ConsentService:
 
     def poll(self, consent_id: str) -> Literal["pending", "approved", "timed_out"]:
         r = self._requests[consent_id]
+        if "approved" in r["seq"][:r["polls"]]:
+            return "approved"  # approval is final
         if r["polls"] >= len(r["seq"]):
             return "timed_out"
         status = r["seq"][r["polls"]]

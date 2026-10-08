@@ -1,4 +1,5 @@
 import re
+import unicodedata
 from datetime import date, datetime
 
 _WS = re.compile(r"\s+")
@@ -12,6 +13,7 @@ _DOB_FORMATS = (
 
 
 def normalize_name(s: str) -> str:
+    s = "".join(c for c in unicodedata.normalize("NFKD", s) if not unicodedata.combining(c))  # é -> e
     return _WS.sub(" ", _NON_ALNUM.sub(" ", s.casefold())).strip()
 
 
@@ -29,8 +31,9 @@ def normalize_email(s: str) -> str:
 
 
 def normalize_id4(s: str) -> str | None:
-    m = re.search(r"\d{4}", s)
-    return m.group(0) if m else None
+    """The last run of digits if it is exactly four long, else None ("44729999" is not a last-4)."""
+    runs = re.findall(r"\d+", s)
+    return runs[-1] if runs and len(runs[-1]) == 4 else None
 
 
 def parse_dob(s: str) -> tuple[date | None, bool]:
