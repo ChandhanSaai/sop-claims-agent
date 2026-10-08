@@ -20,7 +20,7 @@ owns the SOP; the model reads and phrases:** one LLM call reads each message int
 - **Golden transcripts:** both transcripts from the spec (Margaret in one turn, the angry caller) and the
   representative approve and timeout paths are in [Golden transcripts](#golden-transcripts), with the state
   after each turn and what each reply must and must not say.
-- **Live transcripts:** [docs/live-transcripts.md](docs/live-transcripts.md) replays all 17 scenarios against
+- **Live transcripts:** [docs/live-transcripts.md](docs/live-transcripts.md) replays all 18 scenarios against
   the real Reader and Writer (Sonnet 5.5) and shows each reply with its state, guard verdict, latency and
   checks, and [docs/live-reliability.md](docs/live-reliability.md) repeats every scenario and reports pass^N.
 - **Replay suite:** `pytest -q` runs 245 tests offline with no key or network, including the 18 scenarios turn
@@ -613,13 +613,12 @@ turns:
 **Live-model run.** `python scripts/live_replay.py` replays every fixture in `tests/replay/fixtures` against
 the real Reader and Writer (it needs `ANTHROPIC_API_KEY` in `.env` and costs API calls) and writes
 `docs/live-transcripts.md`; `--repeat N` runs each scenario N times and writes `docs/live-reliability.md`
-with hard passes and pass^N per scenario (1 only when all N runs pass). State and leak expectations are
-hard checks, and so are a Reader or Writer failure and, on the turns where it once appeared, any retraction
-of or apology for an earlier reply;
+with hard passes and pass^N per scenario. State and leak expectations are hard checks, and so are a Reader
+or Writer failure and, on the turns where it once appeared, any retraction of or apology for an earlier reply;
 wording expectations are soft, because a live Writer paraphrases. Last run, with Sonnet 5.5 in both roles:
-17 of 17 scenarios passed every hard check over 57 turns, with one soft wording miss (Checks column),
-no guard regeneration and 2.9 to 8.5 seconds per model-call turn (the Secs column);
-across three repetitions, 51 of 51 scenario runs passed every hard check (100%). In an earlier
+18 of 18 scenarios passed every hard check over 60 turns, with one soft wording miss (Checks column),
+1 guard regeneration (shown in the Guard column) and 2.6 to 6.7 seconds per model-call turn (the Secs column);
+across three repetitions, 54 of 54 scenario runs passed every hard check (100%). In an earlier
 run the first Reader call with a new output schema took about 35 seconds (the schema is compiled and cached
 server-side). Earlier live runs exposed one Writer habit the offline suite could not: when the state moved
 on (a goodbye brief without claim facts, a corrected date of birth resetting verification, a consent
@@ -627,8 +626,7 @@ timeout), the Writer "corrected" or apologized for replies that had been right w
 now hold it: the Writer prompt says earlier replies were grounded when written and are never retracted or
 commented on; every later brief without claim facts says the details given earlier stand; and the brief
 for a verification-reset or consent-timeout turn says to open with the news and take nothing back.
-The committed run has no retraction and no apology; one reply still refers back to an earlier reply
-(`question_after_goodbye` turn 4 opens a fact with "one thing I should have said earlier").
+The committed run has no retraction and no apology in any reply.
 
 Live persona evaluations (simulated callers scored as pass^k with an LLM judge) remain stretch item S02.
 
