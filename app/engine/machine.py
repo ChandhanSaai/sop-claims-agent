@@ -26,6 +26,8 @@ class Engine:
 
     def greeting(self, session: Session) -> str:
         session.pending_ask = PendingAsk.IDENTITY_FIELDS
+        session.last_brief = ReplyBrief(phase="VERIFY_ID", goal="Greet and ask for name and policy number.",
+                                        ask="Could you tell me your full name and policy number?")
         session.transcript.append(Turn(role="assistant", text=GREETING))
         session.log("greeting")
         return GREETING
@@ -34,7 +36,8 @@ class Engine:
         session.turn += 1
         session.transcript.append(Turn(role="user", text=user_text))
         ctx = resolve_pending(session, analysis, user_text)
-        ctx.changed_slots = merge_analysis(session, analysis)
+        if not analysis.injection_suspected:  # an injection-flagged turn never changes memory
+            ctx.changed_slots = merge_analysis(session, analysis)
         pass1(session, ctx, self.settings)
         if ctx.policy_brief is not None:
             brief = ctx.policy_brief

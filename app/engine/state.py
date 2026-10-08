@@ -111,6 +111,7 @@ class Counters(BaseModel):
     frustration_streak: int = 0
     gate_explanations: int = 0
     email_offered: bool = False
+    human_declined: bool = False
 
 
 class Event(BaseModel):
