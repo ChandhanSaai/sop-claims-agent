@@ -10,6 +10,7 @@ from app.engine.summary import build_summary
 from app.llm.schemas import ReplyBrief
 
 GOODBYE = "Say goodbye and that the assistant remains available if anything else comes up."
+NOTHING_SENT = "Nothing will be sent."
 
 
 def handle(
@@ -20,6 +21,8 @@ def handle(
     holder = repos.policyholders.get(session.verification.party_id)
     masked = mask_email(holder.email)
     phase = Phase.POST_PROCESS.value
+    new_question = a.intent != "none" or bool(a.question) or any(
+        n in ctx.changed_slots for n in ("case_type", "status_hint", "month", "year", "case_id"))
 
     if not c.email_offered:
         c.email_offered = True
@@ -56,21 +59,18 @@ def handle(
                                      GOODBYE])
         return HandlerResult(brief=brief)
 
-    if ctx.email_no or ctx.email_confirm_no:
+    # anything but a yes to the offer or to the draft is a no: nothing is sent
+    declined = ctx.pending_at_start in (PendingAsk.EMAIL_OFFER, PendingAsk.EMAIL_CONFIRM)
+    if declined:
         session.pending_draft = None
-        session.pending_ask = PendingAsk.NONE
-        brief = ReplyBrief(phase=phase, goal="Close without sending anything.",
-                           must_say=["Nothing will be sent.", GOODBYE])
-        return HandlerResult(brief=brief)
-
-    new_question = a.intent != "none" or bool(a.question) or any(
-        n in ctx.changed_slots for n in ("case_type", "status_hint", "month", "year", "case_id"))
-    if new_question:
+    session.pending_ask = PendingAsk.NONE
+    if new_question and not (ctx.anything_else_no or a.requests.closing):
         session.phase = Phase.RESOLVE_INTENT
-        session.pending_ask = PendingAsk.NONE
         return HandlerResult(brief=ReplyBrief(phase=Phase.RESOLVE_INTENT.value,
                                               goal="New question after goodbye."),
-                             advanced=True, needs_input=False)
-
-    session.pending_ask = PendingAsk.NONE
+                             advanced=True, needs_input=False,
+                             transition_fact=NOTHING_SENT if declined else None)
+    if declined:
+        return HandlerResult(brief=ReplyBrief(phase=phase, goal="Close without sending anything.",
+                                              must_say=[NOTHING_SENT, GOODBYE]))
     return HandlerResult(brief=ReplyBrief(phase=phase, goal="Short goodbye.", must_say=[GOODBYE]))
