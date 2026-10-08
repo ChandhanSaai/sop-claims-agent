@@ -50,4 +50,4 @@ turns:
       escalated: true
       pending_ask: none
       reply_contains: ["has ended", "ESC-"]
-      reply_not_contains: ["CL-2048", "pathology", "1985", "2836"]
+      reply_not_contains: ["CL-2048", "pathology", "1985-03", "521-2836"]

@@ -106,7 +106,8 @@ def test_closed_session_answers_from_code_without_the_reader(settings):
     from app.engine.policies import escalate
     from app.engine.service import CLOSED_TEXT
 
-    llm = FakeLLM()
+    # a queued analysis with identifiers proves nothing is parsed or stored after the close
+    llm = FakeLLM([TurnAnalysis.model_validate({"identity": {"dob": "1985-03-15", "phone": "650-521-2836"}})])
     svc = build_service(settings, llm=llm)
     session = svc.start()
     escalate(session, "abusive caller")
