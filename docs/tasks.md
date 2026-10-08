@@ -14,7 +14,7 @@ Merge order for the reviewer: merge PRs in task order (T01, T02, T03, then the f
 | T02 | Data layer: typed fixtures, normalization, lookup by any identifier, pass/fail verification, claims filter, guideline lookup, consent simulator, outbox | 1 | Opus 5.5 | T01 | ready to merge | #2 | lookup-precedence bug fixed in a725aea; re-review approved; base task/T01-scaffold |
 | T03 | Engine core: session state, memory with provenance, pending-ask mapping, brief merge, affect policies, VERIFY_ID handler | 2 | Fable 5.1 | T02 | ready to merge | #3 | two plan-mandated verify_id bugs fixed in 8eafb0d; re-review approved; base task/T02-data-layer |
 | T04 | LLM layer: Reader (structured output), Writer (cached two-block system, fallbacks), FakeLLM | 3 | Opus 5.5 | T03 | in review | #6 | base task/T03-engine-core; real-API smoke test still pending (no key available to agents) |
-| T05 | HTTP API, session store, access-token gate, chat UI with SOP inspector | 3 | Opus 5.5 | T03 | in review | #5 | base task/T03-engine-core |
+| T05 | HTTP API, session store, access-token gate, chat UI with SOP inspector | 3 | Opus 5.5 | T03 | ready to merge | #5 | per-session lock added in cdfc92c; re-review approved; base task/T03-engine-core |
 | T06 | RESOLVE_INTENT (disambiguation, decoy) and PROCESS_CASE (grounded facts, deadlines, alternatives, anything-else) | 3 | Fable 5.1 | T02, T03 | in review | #7 | base task/T03-engine-core; graded one-turn chain test green; adds pythonpath to pyproject |
 | T07 | Cross-cutting policies: scope guard ladder, non-terminal escalation with hand-off packet, meta and mixed turns, injection flag | 3 | Opus 5.5 | T03 | in review | #4 | 3 spec drifts in the brief's ladder code fixed in a1d94dd before review |
 | T08 | POST_PROCESS: email offer once, code-built summary draft, confirm, outbox, route back | 4 | Opus 5.5 | T06 | in progress | | base task/T06-intent-and-case |
@@ -35,6 +35,7 @@ Merge order for the reviewer: merge PRs in task order (T01, T02, T03, then the f
 
 ## Deferred findings (for the final whole-branch review)
 
+- T05 (re-review minors): outbox fetch is silent on a non-OK status; no guard against a stale reply after New conversation; lock waits are unbounded and tie up worker threads (timeout plus 409 is the upgrade); no test that `put()` sweeps expired sessions.
 - T03 (re-review minors): policy number is not part of the attempt fingerprint; `parse_dob` does not accept ordinal suffixes ("March 15th, 1985"); a bad DOB slot is never cleared, so the caller must restate it before other identifiers can proceed; the raw-value fingerprint fallback has no test; the `verified` event logs the provided count rather than the matched names.
 - T03 (review minors): `pass2` replaces a DOB re-ask with the human offer while the caller stays frustrated (single `ask` slot); `find` first-key-wins can let a wrong phone that collides with another record shadow a correct name lookup; empty-string hints are stored.
 - T02 (re-review minor): no test pins `find` precedence when two supplied keys hit different records.
