@@ -3,7 +3,7 @@ from datetime import date
 
 from pydantic import BaseModel, Field
 
-from app.data.normalize import doc_tokens, fmt_date, normalize_phone, parse_dob
+from app.data.normalize import doc_tokens, fmt_date, normalize_name, normalize_phone, parse_dob
 from app.data.store import FixtureStore
 from app.engine.state import Session
 from app.llm.schemas import ReplyBrief
@@ -11,6 +11,7 @@ from app.llm.schemas import ReplyBrief
 CLAIM_ID = re.compile(r"\bCL-\d+\b", re.IGNORECASE)
 TAG = re.compile(r"<[^>]+>")
 NUMBER = re.compile(r"\d[\d,]*\.\d+|\d{3,}")
+THOUSANDS = re.compile(r"(?<=\d),(?=\d{3}(?!\d))")  # "$1,450.00" -> "$1450.00", not "March 18,2026"
 
 
 def contains_token(haystack: str, needle: str) -> bool:
@@ -31,6 +32,11 @@ def date_variants(d: date) -> list[str]:
             f"{d:%B} {d.year}"]  # month-year stays last: pre-verification checks drop it
 
 
+def _token_run(s: str) -> str:
+    """doc_tokens in reading order, space-padded, so a phrase matches only as a contiguous run of tokens."""
+    return f" {' '.join(t for w in normalize_name(s).split() for t in doc_tokens(w))} "
+
+
 class GuardResult(BaseModel):
     ok: bool
     violations: list[str] = Field(default_factory=list)
@@ -42,7 +48,6 @@ class OutputGuard:
     Post-verification: every claim id, date and number must come from allowed_facts."""
 
     def __init__(self, store: FixtureStore):
-        self.claim_ids = {c.case_id for c in store.claims}
         self.amounts = {a for c in store.claims
                         for a in (c.expected_reimbursement_amount, c.allowed_max_amount, c.net_pay, c.net_fee)
                         if a != "0.00"}
@@ -55,10 +60,10 @@ class OutputGuard:
     def _identifier_leaks(self, text: str, session: Session) -> list[str]:
         low, digits, out = text.lower(), re.sub(r"\D", "", text), []
         m = session.memory
-        if (dob := m.value("dob")) and (d := parse_dob(dob)[0]) and any(
-            contains_token(text, v) for v in date_variants(d)
-        ):
-            out.append("dob")
+        if dob := m.value("dob"):  # the raw value too: memory keeps it as written, parsed or not
+            d = parse_dob(dob)[0]
+            if contains_token(text, dob) or (d and any(contains_token(text, v) for v in date_variants(d))):
+                out.append("dob")
         if (ph := m.value("phone")) and (p := normalize_phone(ph)) and p[2:] in digits:
             out.append("phone")
         if (em := m.value("email")) and em.lower() in low:
@@ -75,10 +80,12 @@ class OutputGuard:
             v.append("markup_tag")
         v += [f"identifier:{x}" for x in self._identifier_leaks(text, session)]
         user_text = " ".join(t.text for t in session.transcript if t.role == "user")
+        allowed = " ".join(brief.allowed_facts.values())
+        # amounts and numbers compare without thousands separators
+        plain, user_plain, allowed_plain = (THOUSANDS.sub("", x) for x in (text, user_text, allowed))
         if session.verification.status != "verified":
             if CLAIM_ID.search(text):
                 v.append("claim_id_before_verification")
-            plain = re.sub(r"(?<=\d),(?=\d{3})", "", text)  # "$3,500.00" -> "$3500.00"
             # whole dollars, so "3500" is caught and still matches "3500.00"
             if any(contains_token(plain, a.removesuffix(".00")) for a in self.amounts):
                 v.append("amount_before_verification")
@@ -87,26 +94,27 @@ class OutputGuard:
                 if any(contains_token(text, x) for x in date_variants(d)[:-1]):
                     v.append("fixture_date_before_verification")
                     break
-            user_tokens = doc_tokens(user_text)
-            reply_tokens = doc_tokens(text)
+            user_run, reply_run = _token_run(user_text), _token_run(text)
             for p in self.phrases:
-                pt = doc_tokens(p)
-                if pt and pt <= reply_tokens and not pt <= user_tokens:
+                pr = _token_run(p)
+                if pr.strip() and pr in reply_run and pr not in user_run:
                     v.append(f"phrase_before_verification:{p[:30]}")
                     break
         else:
-            allowed = " ".join(brief.allowed_facts.values())
             for cid in CLAIM_ID.findall(text):
                 if cid.upper() not in allowed.upper():
                     v.append(f"claim_id_not_allowed:{cid}")
             allowed_dates = {d for d in self.dates
                              if any(contains_token(allowed, x) for x in date_variants(d))}
-            for d in self.dates:
-                if d not in allowed_dates and any(contains_token(text, x) for x in date_variants(d)):
+            allowed_months = {(d.year, d.month) for d in allowed_dates}
+            for d in self.dates - allowed_dates:
+                # its month-year alone ("March 2026") also names an allowed date in that month
+                xs = date_variants(d)[:-1] if (d.year, d.month) in allowed_months else date_variants(d)
+                if any(contains_token(text, x) for x in xs):
                     v.append("date_not_allowed")
                     break
             ref = session.escalation.reference or ""
-            for n in NUMBER.findall(text):
-                if not (contains_token(allowed, n) or contains_token(user_text, n) or n in ref):
+            for n in NUMBER.findall(plain):
+                if not (contains_token(allowed_plain, n) or contains_token(user_plain, n) or n in ref):
                     v.append(f"number_not_allowed:{n}")
         return GuardResult(ok=not v, violations=v)

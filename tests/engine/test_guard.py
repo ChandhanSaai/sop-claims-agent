@@ -73,7 +73,8 @@ def test_escalation_reference_is_allowed_when_it_matches(store):
     g = OutputGuard(store)
     s = unverified(store)
     s.verification = Verification(status="verified", party_id="P9", role="policyholder")
-    s.escalation = Escalation(requested=True, reference="ESC-TEST01", reason="t")
+    # "345" is a three-digit run that only the reference allows
+    s.escalation = Escalation(requested=True, reference="ESC-12A345", reason="t")
     ref = s.escalation.reference
     assert g.check(f"Your reference is {ref}.", s,
                    ReplyBrief(phase="p", goal="g", allowed_facts={"handoff_reference": ref})).ok
@@ -105,4 +106,46 @@ def test_amounts_match_by_token_and_ignore_thousands_separators(store):
     s.verification = Verification(status="verified", party_id="P9", role="policyholder")
     post = ReplyBrief(phase="PROCESS_CASE", goal="g", allowed_facts={"allowed_max_amount": "$1450.00"})
     assert g.check("The allowed amount is $1450.00.", s, post).ok
+    assert g.check("The allowed amount is $1,450.00.", s, post).ok
+    said = unverified(store, user_said="they told me it was $3,500")
+    said.verification = Verification(status="verified", party_id="P9", role="policyholder")
+    assert g.check("You mentioned $3500.", said, post).ok
+    dated = ReplyBrief(phase="PROCESS_CASE", goal="g", allowed_facts={"appeal_deadline": "March 18, 2026"})
+    assert g.check("The deadline was March 18,2026.", s, dated).ok  # not a thousands separator
     assert "number_not_allowed:450.00" in g.check("Your dental claim allowed $450.00.", s, post).violations
+
+
+def test_raw_dob_echo_is_caught_in_any_format(store):
+    g = OutputGuard(store)
+    for raw in ("March 15th, 1985", "15/03/1985"):  # unparseable; parsed, but not among date_variants
+        for verified in (False, True):
+            s = unverified(store)
+            s.memory.set("dob", raw, 1)
+            if verified:
+                s.verification = Verification(status="verified", party_id="P9", role="policyholder")
+            r = g.check(f"Thanks, born {raw}.", s, ReplyBrief(phase="p", goal="g"))
+            assert "identifier:dob" in r.violations, (raw, verified)
+
+
+def test_month_year_shared_with_an_allowed_date_is_allowed(store):
+    g = OutputGuard(store)
+    s = unverified(store)
+    s.verification = Verification(status="verified", party_id="P9", role="policyholder")
+    post = ReplyBrief(phase="PROCESS_CASE", goal="g", allowed_facts={"appeal_deadline": "March 18, 2026"})
+    # 2026-03-01 is another fixture date, but "March 2026" also names the allowed one
+    assert g.check("The appeal deadline in March 2026 was March 18, 2026.", s, post).ok
+    for leak in ("March 1, 2026", "February 2026"):
+        assert "date_not_allowed" in g.check(f"It was opened on {leak}.", s, post).violations, leak
+
+
+def test_phrases_match_only_as_contiguous_token_runs(store):
+    g = OutputGuard(store)
+    pre = ReplyBrief(phase="VERIFY_ID", goal="g")
+    assert g.check("Please note that our office needs to verify you first.", unverified(store), pre).ok
+    r = g.check("The review file did not include the pathology report and office note.",
+                unverified(store), pre)
+    assert any(x.startswith("phrase_before_verification:") for x in r.violations)
+    said = unverified(store, user_said="they said the office note was missing")
+    assert g.check("I've noted the office note issue; first I need to verify you.", said, pre).ok
+    scattered = unverified(store, user_said="my office sent a note")  # not the phrase, so not an echo
+    assert not g.check("I've noted the office note issue.", scattered, pre).ok
