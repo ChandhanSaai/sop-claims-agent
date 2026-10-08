@@ -84,7 +84,8 @@ class Verification(BaseModel):
     party_id: str | None = None
     attempts: int = 0
     role: Literal["policyholder", "representative"] | None = None
-    # the caller said they are calling for someone else; sticks until they say they are the policyholder
+    # the caller said they are calling for someone else; sticks for the session, so a later claim to be
+    # the policyholder cannot reopen the policyholder path
     declared_representative: bool = False
     # identifiers used in the last verify call; a repeat is not a new attempt
     last_fingerprint: str | None = None
@@ -95,6 +96,9 @@ class Consent(BaseModel):
     representative_name: str | None = None
     polls: int = 0
     consent_id: str | None = None
+    party_id: str | None = None  # the policyholder the consent was requested from
+    # normalized representative, relationship and policyholder names of the last match attempt
+    last_match: str | None = None
 
 
 class CaseState(BaseModel):
@@ -179,7 +183,7 @@ class Session(BaseModel):
             "turn": self.turn,
             "pending_ask": self.pending_ask.value,
             "verification": self.verification.model_dump(exclude={"last_fingerprint"}),
-            "consent": self.consent.model_dump(),
+            "consent": self.consent.model_dump(exclude={"last_match"}),
             "case": self.case.model_dump(),
             "escalation": self.escalation.model_dump(),
             "counters": self.counters.model_dump(),

@@ -137,7 +137,8 @@ def test_off_topic_no_to_an_offer_does_not_return_to_the_declined_offer(repos, s
     eng = Engine(repos, settings)
     s = Session.new()
     eng.greeting(s)
-    eng.handle_turn(s, A(caller_role="representative"), "I'm calling for my mother")
+    nobody = {"name": "Nobody Here", "relationship": "son", "policyholder_name": "Margaret Chen"}
+    eng.handle_turn(s, A(caller_role="representative", representative=nobody), "for my mother")
     assert s.pending_ask == PendingAsk.HUMAN_OFFER
     b = eng.handle_turn(s, A(scope="out_of_scope", requests={"confirmation": "no"}),
                         "no. what's the weather?")
