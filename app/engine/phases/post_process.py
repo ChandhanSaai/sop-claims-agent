@@ -5,6 +5,7 @@ from app.data.normalize import mask_email
 from app.data.repos import Repos
 from app.engine.briefs import HandlerResult
 from app.engine.context import TurnContext
+from app.engine.phases.resolve_intent import HINT_SLOT_NAMES, drop_stale_hints
 from app.engine.state import PendingAsk, Phase, Session
 from app.engine.summary import build_summary
 from app.llm.schemas import ReplyBrief
@@ -22,7 +23,7 @@ def handle(
     masked = mask_email(holder.email)
     phase = Phase.POST_PROCESS.value
     new_question = a.intent != "none" or bool(a.question) or any(
-        n in ctx.changed_slots for n in ("case_type", "status_hint", "month", "year", "case_id"))
+        n in ctx.changed_slots for n in HINT_SLOT_NAMES)
 
     if not c.email_offered:
         c.email_offered = True
@@ -64,7 +65,12 @@ def handle(
     if declined:
         session.pending_draft = None
     session.pending_ask = PendingAsk.NONE
-    if new_question and not (ctx.anything_else_no or a.requests.closing):
+    closes = ctx.anything_else_no or (a.requests.closing and a.intent == "none" and not a.question)
+    if new_question and not closes:
+        if a.requests.switch_claim:  # as in PROCESS_CASE; consumed so the chain answers once
+            drop_stale_hints(session, ctx.changed_slots)
+            session.case.selected_case_id = None
+            a.requests.switch_claim = False
         session.phase = Phase.RESOLVE_INTENT
         return HandlerResult(brief=ReplyBrief(phase=Phase.RESOLVE_INTENT.value,
                                               goal="New question after goodbye."),

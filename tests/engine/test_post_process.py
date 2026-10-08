@@ -40,6 +40,14 @@ def test_yes_shows_draft_then_confirm_sends(repos, settings):
     assert "1985" not in repos.outbox.list()[0].body
 
 
+def test_email_summary_yes_at_confirm_sends(repos, settings):
+    s = closed_case(repos, settings)
+    turn(s, repos, settings, post_process.handle)
+    turn(s, repos, settings, post_process.handle, requests={"confirmation": "yes"})
+    turn(s, repos, settings, post_process.handle, requests={"email_summary": "yes"})
+    assert [r.to for r in repos.outbox.list()] == ["margaret@email.com"] and s.pending_ask == PendingAsk.NONE
+
+
 def test_no_at_offer_and_no_at_confirm_send_nothing(repos, settings):
     s = closed_case(repos, settings)
     turn(s, repos, settings, post_process.handle)
@@ -127,4 +135,27 @@ def test_engine_unclear_answer_at_offer_with_a_question_says_nothing_will_be_sen
     say(eng, s, "No, that's all.", requests={"confirmation": "no", "closing": True})
     b = say(eng, s, "What's the status again?", intent="status_inquiry", question="What's the status again?")
     assert b.must_say[0] == "Nothing will be sent." and s.phase == Phase.PROCESS_CASE
+    assert b.must_say.count("Nothing will be sent.") == 1
     assert s.pending_draft is None and repos.outbox.list() == []
+
+
+def test_engine_closing_with_a_question_at_offer_answers_after_nothing_will_be_sent(repos, settings):
+    eng, s = engine_with_claim(repos, settings)
+    say(eng, s, "No, that's all.", requests={"confirmation": "no", "closing": True})
+    b = say(eng, s, "No thanks, that's all. Wait, what's the status?", requests={"closing": True},
+            intent="status_inquiry", question="What's the status?")
+    assert b.must_say[0] == "Nothing will be sent." and s.phase == Phase.PROCESS_CASE
+    assert b.ask and s.pending_ask == PendingAsk.ANYTHING_ELSE and repos.outbox.list() == []
+
+
+def test_engine_no_with_a_switch_at_offer_answers_the_new_claim_once(repos, settings):
+    eng, s = engine_with_claim(repos, settings)
+    say(eng, s, "No, that's all.", requests={"confirmation": "no", "closing": True})
+    b = say(eng, s, "No thanks, what about my auto claim?",
+            requests={"confirmation": "no", "switch_claim": True},
+            case_hints={"case_type": "auto"}, intent="status_inquiry")
+    selected = [e.data["case_id"] for e in s.events if e.turn == s.turn and e.type == "claim_selected"]
+    assert selected == ["CL-2102"] and b.must_say[0] == "Nothing will be sent."
+    fact = "The claim you mentioned is CL-2102, auto claim opened February 28, 2026, status open."
+    assert b.must_say.count(fact) == 1
+    assert b.ask and s.pending_ask == PendingAsk.ANYTHING_ELSE
