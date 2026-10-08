@@ -2,7 +2,7 @@ const PHASES = ["VERIFY_ID", "RESOLVE_INTENT", "PROCESS_CASE", "POST_PROCESS"];
 const $ = (id) => document.getElementById(id);
 let sessionId = null;
 
-// Every piece of model or server text is rendered with textContent, never innerHTML.
+// Every piece of model or server text is rendered with textContent, never parsed as HTML.
 function el(tag, className, text) {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -177,7 +177,7 @@ function renderState(state) {
 async function refreshOutbox() {
   try {
     const r = await fetch(`/api/session/${sessionId}/outbox`, { headers: headers() });
-    if (!r.ok) return;
+    if (!r.ok) { addMessage("system", `Could not load the outbox (${r.status}).`); return; }
     const { emails } = await r.json();
     if (!emails.length) { $("outbox").replaceChildren(el("li", "empty", "Nothing sent.")); return; }
     $("outbox").replaceChildren(...emails.map((e) => el("li", "", `${e.id} to ${e.to_masked}: ${e.subject}`)));

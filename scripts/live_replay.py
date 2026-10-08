@@ -10,6 +10,7 @@ failure). reply_contains wording checks are reported as soft mismatches, because
 must_say lines. Exit code 1 when any hard check fails in any run. The files are written only for a full run
 (no scenario names given): the transcript from the first run, the reliability table over all runs.
 """
+import argparse
 import json
 import os
 import sys
@@ -122,11 +123,12 @@ def write_reliability(runs: list[list[dict]], settings) -> None:
         passes = sum(1 for r in rs if "error" not in r and not any(t["hard"] for t in r["turns"]))
         total_pass += passes
         total_runs += n
-        turns = len(rs[0]["turns"]) if "error" not in rs[0] else 0
+        turns = next((len(r["turns"]) for r in rs if "error" not in r), 0)
         softs = [f"{k + 1}: T{t['i']} {m}" for k, r in enumerate(rs) if "error" not in r
                  for t in r["turns"] for m in t["soft"]]
         hards = [f"{k + 1}: T{t['i']} {m}" for k, r in enumerate(rs) if "error" not in r
                  for t in r["turns"] for m in t["hard"]]
+        hards += [f"{k + 1}: {r['error']}" for k, r in enumerate(rs) if "error" in r]  # a failed run too
         detail = "; ".join(softs) or "none"
         if hards:
             detail += " / HARD " + "; ".join(hards)
@@ -163,20 +165,22 @@ def run_all(names: list[str], settings, label: str) -> tuple[list[dict], int]:
 
 
 def main() -> int:
-    args = sys.argv[1:]
-    repeat = 1
-    if args[:1] == ["--repeat"]:
-        repeat = int(args[1])
-        args = args[2:]
+    parser = argparse.ArgumentParser(description="Replay the fixtures against the real Reader and Writer.")
+    parser.add_argument("--repeat", type=int, default=1, metavar="N", help="runs per scenario (at least 1)")
+    parser.add_argument("scenarios", nargs="*", help="fixture names (default: all, and only then write docs)")
+    args = parser.parse_args()
+    repeat = args.repeat
+    if repeat < 1:
+        parser.error("--repeat must be at least 1")
     settings = get_settings()
     configure_logging(settings.log_level)
-    names = args or scenario_names()
+    names = args.scenarios or scenario_names()
     runs, failed = [], 0
     for k in range(repeat):
         results, f = run_all(names, settings, f"run {k + 1}/{repeat} " if repeat > 1 else "")
         runs.append(results)
         failed += f
-    if not args:  # a subset run never overwrites the full record
+    if not args.scenarios:  # a subset run never overwrites the full record
         write_markdown(runs[0], settings)
         print(f"wrote {OUT}")
         if repeat > 1:
