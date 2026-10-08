@@ -1,0 +1,27 @@
+name: dob_correction
+scenario: default
+turns:
+  - user: "Margaret Chen, DOB 1985-03-15, last four 4472, about my denied healthcare claim from January."
+    analysis:
+      identity: {full_name: "Margaret Chen", dob: "1985-03-15", id_last4: "4472"}
+      case_hints: {case_type: healthcare, status: denied, month: 1}
+      intent: denial_question
+    expect: {phase: PROCESS_CASE, verified: true, guard_ok: true}
+  - user: "Actually my date of birth is 1985-03-16."
+    analysis:
+      corrections: [{slot: dob, new_value: "1985-03-16"}]
+    expect:
+      phase: VERIFY_ID
+      verified: false
+      attempts: 1
+      pending_ask: identity_fields
+      reply_not_contains: ["CL-2048", "pathology", "1985-03-16"]
+      guard_ok: true
+  - user: "Sorry, I meant 1985-03-15."
+    analysis:
+      corrections: [{slot: dob, new_value: "1985-03-15"}]
+    expect:
+      phase: PROCESS_CASE
+      verified: true
+      reply_contains: ["CL-2048"]
+      guard_ok: true

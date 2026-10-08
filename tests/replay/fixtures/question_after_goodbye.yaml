@@ -1,0 +1,18 @@
+name: question_after_goodbye
+scenario: default
+turns:
+  - user: "Margaret Chen, POL-9921, DOB 1985-03-15, last four 4472, my denied healthcare claim from January."
+    analysis:
+      identity: {full_name: "Margaret Chen", policy_number: "POL-9921", dob: "1985-03-15", id_last4: "4472"}
+      case_hints: {case_type: healthcare, status: denied, month: 1}
+      intent: denial_question
+    expect: {phase: PROCESS_CASE, verified: true}
+  - user: "No, that's all."
+    analysis: {requests: {confirmation: "no", closing: true}}
+    expect: {phase: POST_PROCESS, pending_ask: email_offer}
+  - user: "No thanks."
+    analysis: {requests: {confirmation: "no", email_summary: "no"}}
+    expect: {phase: POST_PROCESS, pending_ask: none, outbox_len: 0}
+  - user: "Wait, what documents did you say I need?"
+    analysis: {intent: document_submission, followup_topic: submission_method, question: "what documents do I need"}
+    expect: {phase: PROCESS_CASE, pending_ask: anything_else, reply_contains: ["pathology report", "office note"], guard_ok: true}

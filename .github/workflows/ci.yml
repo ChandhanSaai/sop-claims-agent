@@ -13,4 +13,5 @@ jobs:
           python-version: "3.12"
       - run: pip install -e ".[dev]"
       - run: ruff check .
-      - run: pytest -q
+      - run: pytest -q --ignore=tests/replay
+      - run: pytest -q tests/replay
