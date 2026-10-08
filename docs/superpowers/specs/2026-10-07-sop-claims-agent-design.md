@@ -1,6 +1,6 @@
 # SOP-Guided Insurance Claims Support Agent - Design
 
-Status: DRAFT v0.5 for review (2026-10-07). Internal planning document; the README carries the distilled version.
+Status: v0.5, frozen 2026-10-07 after four external review rounds. Internal planning document; the README carries the distilled version.
 Research basis: `docs/research/report.md` (156 sources) and `docs/research/notes/`.
 
 Changes from v0.4: intent is a memory slot carried across phases; an attempt is defined as one verify call made
