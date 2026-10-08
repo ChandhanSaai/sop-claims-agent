@@ -176,3 +176,15 @@ def test_phrases_match_only_as_contiguous_token_runs(store):
     assert g.check("I've noted the office note issue; first I need to verify you.", said, pre).ok
     scattered = unverified(store, user_said="my office sent a note")  # not the phrase, so not an echo
     assert not g.check("I've noted the office note issue.", scattered, pre).ok
+
+
+def test_a_date_in_allowed_facts_is_allowed_after_verification(store):
+    g = OutputGuard(store)
+    s = unverified(store)
+    s.verification = Verification(status="verified", party_id="P9", role="policyholder")
+    post = ReplyBrief(phase="PROCESS_CASE", goal="g",
+                      allowed_facts={"today": "October 7, 2026", "appeal_deadline": "March 18, 2026"})
+    assert g.check("As of today, October 7, 2026, the March 18, 2026 deadline has passed.", s, post).ok
+    assert g.check("As of October 7 the deadline has passed.", s, post).ok  # same date, month-day form
+    r = g.check("As of October 8, 2026 the deadline has passed.", s, post)
+    assert any(x.startswith("date_not_allowed:") for x in r.violations)

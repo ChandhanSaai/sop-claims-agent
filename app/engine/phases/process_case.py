@@ -17,6 +17,9 @@ SUBMISSION_SHORT = ("Name documents_needed and the channel from submission_guida
                     "sentences, then offer the checklist of what each document must show instead of "
                     "reciting it.")
 SUBMISSION_DETAIL = "Explain what each document must show, using the guidance facts and the topic fact."
+DEADLINE_CAVEAT = ("Say in one sentence that the appeal deadline (appeal_deadline) has already passed as of "
+                   "today, so sending documents now does not reopen the appeal by itself and a "
+                   "representative would need to review the options.")
 APPEAL_WORDS = ("appeal", "dispute", "reconsider", "contest")
 CANNOT_WORDS = ("can't get", "cannot get", "can't obtain", "cannot obtain", "unable to get", "don't have",
                 "do not have", "lost", "closed", "no longer")
@@ -32,6 +35,7 @@ MUST_NOT = [
 
 def base_facts(claim: Claim, today: date) -> dict[str, str]:
     facts = {
+        "today": fmt_date(today),
         "claim_id": claim.case_id, "claim_type": claim.case_type, "claim_status": claim.status,
         "claim_opened": fmt_date(claim.created_at), "claim_summary": claim.summary,
     }
@@ -111,11 +115,15 @@ def handle(
             facts["case_type_guidance"] = ctg
         must_say.append(NO_CHAT_UPLOAD)
         must_say.append(SUBMISSION_DETAIL if t == "file_format_requirements" else SUBMISSION_SHORT)
+        if deadline_passed:
+            must_say.append(DEADLINE_CAVEAT)
 
     if topic == "processing_time_after_submission":
         if txt := g.topic_text(topic, claim):
             facts["topic_processing_time_after_submission"] = txt
             must_say.append("Explain the processing time using topic_processing_time_after_submission.")
+            if deadline_passed:
+                must_say.append(DEADLINE_CAVEAT)
         else:
             facts["fallback_guidance"] = g.fallback()
             must_say.append("Use fallback_guidance to set expectations.")

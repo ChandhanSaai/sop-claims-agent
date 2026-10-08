@@ -26,7 +26,7 @@ turns:
     expect:
       phase: PROCESS_CASE
       pending_ask: anything_else
-      reply_contains: ["member portal", "pathology report", "office note", "fax or mail"]
+      reply_contains: ["member portal", "pathology report", "office note", "fax or mail", "deadline"]
       guard_ok: true
   - user: "How long after I send them will it take?"
     analysis:

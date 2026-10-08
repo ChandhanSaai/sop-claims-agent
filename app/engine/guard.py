@@ -22,6 +22,15 @@ GENERIC_DATE = re.compile(rf"\b({_MONTH_WORDS})\.?\s+(\d{{1,2}})(?:st|nd|rd|th)?
                           r"|\b(\d{4})-(\d{2})-(\d{2})\b|\b(\d{1,2})/(\d{1,2})/(\d{4})\b", re.IGNORECASE)
 
 
+def date_mention(m: re.Match) -> tuple[int, int, int | None]:
+    """(month, day, year or None) for a GENERIC_DATE match."""
+    if m[1]:
+        return _MONTHS[m[1].casefold()], int(m[2]), int(m[3]) if m[3] else None
+    if m[4]:
+        return int(m[5]), int(m[6]), int(m[4])
+    return int(m[7]), int(m[8]), int(m[9])
+
+
 def contains_token(haystack: str, needle: str) -> bool:
     """Case-insensitive match on word boundaries,
     so 'March 1' does not match inside 'March 18' or 'March 1985'."""
@@ -124,15 +133,15 @@ class OutputGuard:
                 if any(contains_token(text, x) for x in xs):
                     v.append("date_not_allowed")
                     break
+            # a date written into allowed_facts (today's date, a deadline) is allowed at the same granularity
+            allowed_mentions = {date_mention(a) for a in GENERIC_DATE.finditer(allowed)}
             for m in GENERIC_DATE.finditer(text):  # an invented date is a violation too, same granularity
-                if m[1]:
-                    month, day, year = _MONTHS[m[1].casefold()], int(m[2]), int(m[3]) if m[3] else None
-                elif m[4]:
-                    month, day, year = int(m[5]), int(m[6]), int(m[4])
-                else:
-                    month, day, year = int(m[7]), int(m[8]), int(m[9])
-                if not any(d.month == month and d.day == day and year in (None, d.year)
-                           for d in allowed_dates):
+                month, day, year = date_mention(m)
+                known = any(d.month == month and d.day == day and year in (None, d.year)
+                            for d in allowed_dates)
+                mentioned = any(am == month and ad == day and year in (None, ay)
+                                for am, ad, ay in allowed_mentions)
+                if not (known or mentioned):
                     v.append(f"date_not_allowed:{m[0]}")
                     break
             ref = session.escalation.reference or ""
