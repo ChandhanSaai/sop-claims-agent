@@ -3,33 +3,14 @@
 TurnAnalysis is what the Reader returns for every caller message, in every phase.
 ReplyBrief is what code builds and the Writer phrases. Nothing else crosses the boundary.
 """
-from typing import Literal
+from typing import Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field
-
-INTENTS = (
-    "status_inquiry",
-    "denial_question",
-    "document_submission",
-    "next_steps",
-    "general_claim_question",
-    "none",
-)
-# Topic names come from fixtures/required_document_guideline.json -> claim_followup_guidance[].topic
-FOLLOWUP_TOPICS = (
-    "missing_required_material_alternatives",
-    "submission_timing",
-    "processing_time_after_submission",
-    "submission_method",
-    "file_format_requirements",
-    "receipt_confirmation",
-    "none",
-)
-SCOPES = ("in_scope", "out_of_scope", "meta", "mixed")
 
 Intent = Literal[
     "status_inquiry", "denial_question", "document_submission", "next_steps", "general_claim_question", "none"
 ]
+# Topic names come from fixtures/required_document_guideline.json -> claim_followup_guidance[].topic
 FollowupTopic = Literal[
     "missing_required_material_alternatives",
     "submission_timing",
@@ -41,6 +22,10 @@ FollowupTopic = Literal[
 ]
 Scope = Literal["in_scope", "out_of_scope", "meta", "mixed"]
 YesNo = Literal["yes", "no", "unspecified"]
+
+INTENTS = get_args(Intent)
+FOLLOWUP_TOPICS = get_args(FollowupTopic)
+SCOPES = get_args(Scope)
 
 
 class _Strict(BaseModel):

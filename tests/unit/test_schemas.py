@@ -7,6 +7,11 @@ from app.llm.schemas import FOLLOWUP_TOPICS, INTENTS, ReplyBrief, TurnAnalysis
 
 def test_settings_defaults(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    for name in (
+        "READER_MODEL", "WRITER_MODEL", "VERIFY_MIN_FIELDS", "VERIFY_REQUIRE_STRONG_FIELD",
+        "VERIFY_MAX_ATTEMPTS", "LLM_BACKEND", "FIXTURES_DIR",
+    ):
+        monkeypatch.delenv(name, raising=False)
     s = Settings(_env_file=None)
     assert s.reader_model == "claude-sonnet-5-5"
     assert s.writer_model == "claude-sonnet-5-5"

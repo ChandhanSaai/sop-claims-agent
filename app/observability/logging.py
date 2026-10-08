@@ -19,9 +19,13 @@ def redact(text: str) -> str:
 
 class RedactionFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
-        record.msg = redact(str(record.msg))
-        if record.args:
-            record.args = tuple(redact(str(a)) for a in record.args)
+        try:
+            record.msg = redact(record.getMessage())
+            record.args = None
+        except Exception:  # malformed format call: redact the parts; the handler still reports the error
+            record.msg = redact(str(record.msg))
+            if record.args:
+                record.args = tuple(redact(str(a)) for a in record.args)
         return True
 
 
@@ -37,15 +41,21 @@ class JsonFormatter(logging.Formatter):
             if hasattr(record, key):
                 payload[key] = getattr(record, key)
         if record.exc_info:
-            payload["exc"] = self.formatException(record.exc_info)
+            payload["exc"] = redact(self.formatException(record.exc_info))
         return json.dumps(payload)
 
 
+_handler: logging.Handler | None = None  # the root handler configure_logging installed last
+
+
 def configure_logging(level: str = "INFO") -> None:
+    global _handler
     root = logging.getLogger()
-    root.handlers.clear()
+    if _handler is not None:
+        root.removeHandler(_handler)  # only ours: pytest's caplog and other handlers stay
     handler = logging.StreamHandler()
     handler.setFormatter(JsonFormatter())
     handler.addFilter(RedactionFilter())
     root.addHandler(handler)
+    _handler = handler
     root.setLevel(level.upper())

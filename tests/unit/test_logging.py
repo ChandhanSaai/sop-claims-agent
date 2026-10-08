@@ -1,7 +1,7 @@
 import json
 import logging
 
-from app.observability.logging import JsonFormatter, RedactionFilter, redact
+from app.observability.logging import JsonFormatter, RedactionFilter, configure_logging, redact
 
 
 def test_redact_masks_identifiers():
@@ -22,14 +22,33 @@ def test_redact_keeps_claim_ids_and_dates_in_prose():
 
 
 def test_json_formatter_applies_filter():
-    logger = logging.getLogger("t")
-    logger.handlers.clear()
-    handler = logging.StreamHandler()
-    handler.setFormatter(JsonFormatter())
-    handler.addFilter(RedactionFilter())
     record = logging.LogRecord("t", logging.INFO, __file__, 1, "email %s", ("margaret@email.com",), None)
     assert RedactionFilter().filter(record) is True
     line = JsonFormatter().format(record)
     data = json.loads(line)
     assert data["level"] == "INFO"
     assert "margaret@email.com" not in data["message"]
+
+
+def test_configure_logging_emits_redacted_json_for_every_record(capsys, caplog):
+    root = logging.getLogger()
+    level = root.level
+    configure_logging("INFO")
+    handler = root.handlers[-1]  # configure_logging appends its handler; it writes to capsys' stderr
+    log = logging.getLogger("probe")
+    log.info("turn %d of %s", 3, "margaret@email.com")
+    log.info("caller %(name)s", {"name": "margaret@email.com"})
+    try:
+        raise ValueError("lookup failed for margaret@email.com")
+    except ValueError:
+        log.exception("reader failed")
+    root.removeHandler(handler)  # its stream closes with capsys when this test ends
+    root.setLevel(level)
+    err = capsys.readouterr().err
+    assert "Logging error" not in err
+    lines = [json.loads(line) for line in err.splitlines()]
+    assert len(lines) == 3
+    assert lines[0]["message"] == "turn 3 of [REDACTED]"
+    assert lines[1]["message"] == "caller [REDACTED]"
+    assert "[REDACTED]" in lines[2]["exc"] and "margaret@email.com" not in lines[2]["exc"]
+    assert len(caplog.records) == 3  # pytest's capture handler survived configure_logging
