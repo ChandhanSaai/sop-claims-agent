@@ -48,3 +48,12 @@ def test_writer_error_gives_the_trouble_line(settings):
     res, session = chat(settings, ScriptedWriter([LLMError("boom")]))
     assert res.reply == TROUBLE and session.last_guard["fallback"] == "llm_error"
     assert session.events[-1].type == "llm_error" and session.traces[-1]["guard"]["fallback"] == "llm_error"
+
+
+def test_writer_error_on_regeneration_falls_back_to_the_template(settings):
+    res, session = chat(settings, ScriptedWriter(["Your claim CL-2048 was denied.", LLMError("boom")]))
+    assert res.reply == render_brief(session.last_brief)
+    assert session.last_guard == {"ok": False, "violations": ["claim_id_before_verification"],
+                                  "fallback": "llm_error"}
+    assert [e.data["attempt"] for e in session.events if e.type == "guard_violation"] == [1]
+    assert [e.data["stage"] for e in session.events if e.type == "llm_error"] == ["writer_regenerate"]

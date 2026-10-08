@@ -80,8 +80,10 @@ class ConversationService:
         try:
             text = self.llm.compose(brief=brief, transcript=session.transcript,
                                     violation="; ".join(result.violations))
-        except LLMError:
-            text = render_brief(brief)
+        except LLMError as e:
+            log.warning("writer regenerate failed: %s", e)
+            session.log("llm_error", stage="writer_regenerate")
+            return render_brief(brief), {**result.model_dump(), "fallback": "llm_error"}
         result2 = self.guard.check(text, session, brief)
         if result2.ok:
             return text, {**result2.model_dump(), "regenerated": True}

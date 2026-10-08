@@ -14,6 +14,8 @@ from app.llm.schemas import TurnAnalysis
 from app.observability.trace import TraceWriter
 
 FIXTURES = Path(__file__).parent / "fixtures"
+EXPECT_KEYS = {"phase", "verified", "party_id", "attempts", "pending_ask", "escalated", "off_topic",
+               "outbox_len", "reply_contains", "reply_not_contains", "guard_ok"}
 
 
 def scenario_names() -> list[str]:
@@ -50,6 +52,7 @@ def assert_turn(i: int, turn_spec: dict, result: dict) -> None:
     s, reply = result["session"], result["reply"]
     low = reply.lower()
     ctx = f"turn {i + 1} ({turn_spec['user'][:40]!r})"
+    assert set(e) <= EXPECT_KEYS, f"{ctx}: unknown expect keys {sorted(set(e) - EXPECT_KEYS)}"
     if "phase" in e:
         assert s.phase.value == e["phase"], f"{ctx}: phase {s.phase.value} != {e['phase']}"
     if "verified" in e:
