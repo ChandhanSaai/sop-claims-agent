@@ -1,4 +1,5 @@
 from app.engine.machine import Engine
+from app.engine.phases.verify_id import NOT_PENDING
 from app.engine.policies import BOUNDARY_LINE, CLOSE_LINE, EARLIER_DETAILS_STAND, NEW_DEVELOPMENT, SCOPE_LINE
 from app.engine.state import PendingAsk, Phase, Session, Verification
 from app.llm.schemas import TurnAnalysis
@@ -285,6 +286,7 @@ def test_consent_timeout_turn_is_a_new_development(repos, settings):
         "David Chen, calling for my mother Margaret Chen")
     briefs = [eng.handle_turn(s, A(), "still waiting?") for _ in range(6)]
     assert s.consent.status == "timed_out" and NEW_DEVELOPMENT in briefs[-1].must_not
+    assert NOT_PENDING in briefs[-1].must_not  # the Writer may not soften the timeout into "still pending"
     assert all(NEW_DEVELOPMENT not in b.must_not for b in briefs[:-1])
 
 
