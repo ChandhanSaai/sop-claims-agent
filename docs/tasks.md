@@ -55,6 +55,7 @@ Merge order for the reviewer: #1, #2, #3, then the wave-3 PRs #4 to #8, then #9,
 
 ## Log
 
+- 2026-10-08 (night 2): PR #18 review found 8 important items (README curl line, Fly HA, pass^N semantics, a missing fixture check, the Appendix A contract, brief ordering, the checklist route, an attacks-row claim) and 8 minors; all fixed (15b9666..3a548f8); final live run 18 scenarios x 3 = 54/54; re-review dispatched.
 - 2026-10-08 (late): PR #18 complete and in review: README tour, diagrams, grader's map, attacks table, backend explainer, API section, hosted-demo config; UI redesign; Writer talking points; time-aware follow-ups and the no-upload line from manual testing; final live run 17 scenarios x 3 = 51/51 hard passes.
 - 2026-10-08 (evening): submission polish PR #18 opened (stacked on #17): README tour, diagrams, grader's map, attacks table, backend explainer, screenshot, hosted-demo commands; pass^3 reliability run 51/51; Writer talking points; self-correction made a hard replay check; final live run and review pending.
 - 2026-10-08: PR #17 approved after three fix rounds on Opus 5.5 (root-cause fixes for the Writer's self-correction habit; first-name rule; Reader scope rule; README generated from the committed transcript). PR #16 approved earlier. Submission polish branch task/C7-submission-polish in progress: Writer talking points, pass^3 reliability run, README tour/diagrams/grader map/attack table, demo recording.
