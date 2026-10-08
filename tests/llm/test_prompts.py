@@ -11,6 +11,13 @@ def test_reader_prompt_names_scope_and_topics():
     assert "what each document must show" in file_format  # the offered checklist routes to the detail answer
 
 
+def test_reader_prompt_puts_verification_and_consent_status_in_scope():
+    in_scope = READER_SYSTEM.split("in_scope =", 1)[1].split("meta =", 1)[0]
+    meta = READER_SYSTEM.split("meta =", 1)[1].split("out_of_scope =", 1)[0]
+    assert "verification or consent status" in in_scope  # "has she approved it yet?" is not about the bot
+    assert "status" not in meta and "assistant itself" in meta and "privacy" in meta
+
+
 def test_reader_user_message_carries_context_as_data():
     msg = format_reader_user(
         user_text="4472", pending_ask="identity_fields", last_assistant="Which can you share?"

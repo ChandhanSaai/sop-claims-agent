@@ -45,8 +45,9 @@ not the situation
 abusive=true for insults/threats.
 scope: in_scope = this caller's claims or policy, claim-process questions (documents, submission, deadlines, \
 timelines, appeals),
-or answering the pending question; meta = questions about the assistant itself, verification or privacy; \
-out_of_scope = anything
+the caller's own verification or consent status ("am I verified?", "has she approved it yet?"), or answering
+the pending question; meta = questions about the assistant itself, why verification is needed, its use of
+their data, or privacy; out_of_scope = anything
 else (general knowledge, other products, chit-chat); mixed = both in-scope and out-of-scope parts.
 A short follow-up that repeats or insists on the previous out-of-scope request ("RL!") is
 still out_of_scope, not meta.

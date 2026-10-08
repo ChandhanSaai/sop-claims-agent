@@ -66,7 +66,8 @@ CONSENT_TIMED_OUT = (
     "are submitted."
 )
 CONSENT_FACT = (
-    "Consent was received from the policyholder; you are verified as their authorized representative."
+    "Consent was received from the policyholder; you are verified as their authorized representative. "
+    "Give the consent_reference."
 )
 MEANWHILE_ASK = "Is there a general question I can help with in the meantime?"
 
