@@ -16,6 +16,8 @@
 - 2026-10-07, dependency correction: Task 3 imports `app.data`, Tasks 4 and 5 import `app.engine`, so the real order is T02 -> T03 -> {T04, T05, T06, T07, T08} -> T09 -> T10 -> {T11, T12}. `docs/tasks.md` carries the re-cut waves.
 - 2026-10-07, Task 10: the HTTP integration test derives `ROOT` from `__file__` because `tests.conftest` is not importable under pytest (already applied in the Task 10 text).
 
+- 2026-10-08: Global Constraints no longer bar guideline text before verification. Spec section 7 lets the Writer answer general process questions from the guideline's default guidance, and the whole-branch review (finding I2) found VERIFY_ID promising that help without giving it; `verify_id.handle` now puts `default_guidance()` in `allowed_facts["submission_guidance"]` for a submission question while unverified. Claim records and policyholder values still never appear before verification.
+
 ## Global Constraints
 
 - `requires-python = ">=3.12"`; Docker base image `python:3.12-slim`; local dev machine has 3.13.
@@ -5532,8 +5534,3 @@ Coverage map (spec section -> task): 1 success criteria -> T10 and T11 (criterio
 Known deviations, all deliberate: `structlog` and `mypy` dropped (stdlib logging, ruff only); the email outbox is per process and filtered per session by event ids; `thinking: between_tools` is sent only for Sonnet 5.5 model ids so an Opus override works without edits; the Reader sees the assistant's last message, which is guard-checked output and therefore carries no claim facts before verification.
 
 Type and name consistency checked across tasks: `handle(session, ctx, repos, settings, today)`; `HandlerResult(brief, advanced, needs_input, transition_fact, transition_facts)`; `ReplyBrief` fields incl. `verbatim`; `PendingAsk` values match the YAML `pending_ask` strings (`identity_fields`, `disambiguation`, `anything_else`, `email_offer`, `email_confirm`, `human_offer`, `none`); facts keys listed in Task 6 are the ones Task 8's summary and Task 9's guard read.
-
-
-## Amendments
-
-- 2026-10-08: Global Constraints no longer bar guideline text before verification. Spec section 7 lets the Writer answer general process questions from the guideline's default guidance, and the whole-branch review (finding I2) found VERIFY_ID promising that help without giving it; `verify_id.handle` now puts `default_guidance()` in `allowed_facts["submission_guidance"]` for a submission question while unverified. Claim records and policyholder values still never appear before verification.
