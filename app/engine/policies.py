@@ -53,7 +53,7 @@ def _can_help_with(session: Session) -> str:
 
 def _decline_brief(session: Session, n: int, settings: Settings) -> ReplyBrief:
     must_say = [SCOPE_LINE, f"Offer what you can help with: {_can_help_with(session)}."]
-    if session.last_brief and session.last_brief.ask and n == 1:
+    if session.last_brief and session.last_brief.ask and n == 1 and session.pending_ask != PendingAsk.NONE:
         must_say.append(f"Then return to the open question: {session.last_brief.ask}")
     goal = ("Decline the off-topic request briefly" + (" in different words than before" if n > 1 else "")
             + " and restate scope.")
@@ -79,7 +79,7 @@ def pass1(session: Session, ctx: TurnContext, settings: Settings) -> None:
             ctx.acknowledge = _acknowledgment_seed(session)
     else:
         session.counters.frustration_streak = 0
-    if session.counters.frustration_streak >= 2:
+    if session.counters.frustration_streak >= 2 and not session.counters.human_declined:
         ctx.offer_human = True
 
     if a.injection_suspected:
@@ -95,7 +95,7 @@ def pass1(session: Session, ctx: TurnContext, settings: Settings) -> None:
         session.pending_ask = PendingAsk.NONE
         session.counters.human_declined = True
 
-    off_topic = a.scope == "out_of_scope" or (a.injection_suspected and a.scope != "meta")
+    off_topic = a.scope == "out_of_scope" or a.injection_suspected
     if off_topic:
         session.counters.off_topic += 1
         n = session.counters.off_topic
@@ -103,9 +103,13 @@ def pass1(session: Session, ctx: TurnContext, settings: Settings) -> None:
                                             and not session.counters.human_declined):
             first = not session.escalation.requested
             escalate(session, "repeated off-topic requests")
-            session.pending_ask = PendingAsk.NONE
+            if session.pending_ask == PendingAsk.HUMAN_OFFER:  # any other open question stays open
+                session.pending_ask = PendingAsk.NONE
             ctx.offer_human = False
-            ctx.policy_brief = escalation_brief(session, first, lead=[SCOPE_LINE])
+            brief = escalation_brief(session, first,
+                                     lead=[SCOPE_LINE, "Decline in different words than before."])
+            brief.must_not.append("Do not answer the off-topic question.")
+            ctx.policy_brief = brief
         else:
             ctx.policy_brief = _decline_brief(session, n, settings)
         return
@@ -123,7 +127,8 @@ def pass2(session: Session, ctx: TurnContext, brief: ReplyBrief) -> ReplyBrief:
         update["tone"] = ctx.tone
     if ctx.acknowledge and not brief.acknowledge:
         update["acknowledge"] = ctx.acknowledge
-    if ctx.offer_human and not brief.offer_human and not session.escalation.requested:
+    if (ctx.offer_human and not brief.offer_human and not session.escalation.requested
+            and not session.counters.human_declined):
         update["offer_human"] = True
         update["ask"] = HUMAN_ASK
         session.pending_ask = PendingAsk.HUMAN_OFFER
