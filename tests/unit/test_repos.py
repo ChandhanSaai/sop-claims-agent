@@ -132,3 +132,10 @@ def test_outbox_masks_and_records(tmp_path):
 def test_unknown_party_raises(repos):
     with pytest.raises(KeyError):
         repos.policyholders.get("P404")
+
+
+def test_outbox_keeps_the_record_when_the_file_cannot_be_written(tmp_path):
+    (tmp_path / "blocked").write_text("not a directory")
+    box = EmailOutbox(tmp_path / "blocked" / "outbox.jsonl")  # mkdir raises an OSError
+    rec = box.send("margaret@email.com", "Summary", "body")
+    assert rec.id == "EML-0001" and box.list() == [rec]

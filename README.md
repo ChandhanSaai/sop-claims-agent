@@ -366,9 +366,10 @@ stretch item S02 and not in this build.
 - **Identifiers are never echoed.** The Writer is told not to repeat them, and the output guard rejects any
   reply containing the caller's date of birth in any format, phone digits, email, ID last 4 or policy number,
   verified or not. A violation is regenerated once, then replaced by a reply rendered from the brief in code.
-- **Grounded after verification.** Every claim id, every date (month-name or ISO, fixture or invented) and
-  every number of three or more digits in a verified reply must come from `allowed_facts`; bare numbers under
-  100, such as "the 2 documents", are not checked.
+- **Grounded after verification.** Every claim id, every date (month name or abbreviation, ISO or
+  m/d/yyyy, fixture or invented) and every number of three or more digits or with a decimal part in a verified
+  reply must come from `allowed_facts`, with two exemptions: numbers in the caller's own words and the hand-off
+  reference. Bare whole numbers under 100, such as "the 2 documents", are not checked.
 - **Redacted logs and traces.** Logs are JSON through a redaction filter for ISO dates, phone numbers, emails
   and policy numbers. Trace records in `traces/<session_id>.jsonl` mask date of birth, phone, email, ID last 4
   and policy number in the Reader output and corrections, and run the same redaction over every free-text

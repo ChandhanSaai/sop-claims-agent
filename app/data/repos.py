@@ -1,4 +1,5 @@
 import json
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -18,6 +19,8 @@ from app.data.normalize import (
     parse_dob,
 )
 from app.data.store import FixtureStore
+
+log = logging.getLogger(__name__)
 
 IDENTIFIERS = ("full_name", "dob", "phone", "email", "id_last4")
 STRONG_FIELDS = ("dob", "id_last4")
@@ -208,9 +211,12 @@ class EmailOutbox:
         )
         self._records.append(rec)
         if self._path:
-            self._path.parent.mkdir(parents=True, exist_ok=True)
-            with open(self._path, "a", encoding="utf-8") as f:
-                f.write(json.dumps(rec.model_dump(exclude={"to"})) + "\n")
+            try:
+                self._path.parent.mkdir(parents=True, exist_ok=True)
+                with open(self._path, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(rec.model_dump(exclude={"to"})) + "\n")
+            except OSError:  # the file is an audit copy; the record is already in memory
+                log.exception("outbox write failed")
         return rec
 
     def list(self) -> list[EmailRecord]:

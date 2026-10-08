@@ -13,10 +13,13 @@ CLAIM_ID = re.compile(r"\bCL-\d+\b", re.IGNORECASE)
 TAG = re.compile(r"<[^>]+>")
 NUMBER = re.compile(r"\d[\d,]*\.\d+|\d{3,}")  # bare numbers under 100 ("the 2 documents") stay unguarded
 THOUSANDS = re.compile(r"(?<=\d),(?=\d{3}(?!\d))")  # "$1,450.00" -> "$1450.00", not "March 18,2026"
-_MONTHS = {name: i for i, name in enumerate(calendar.month_name) if name}  # "January" -> 1
-# any month-name or ISO date mention, fixture or invented: "April 30, 2026", "April 30th", "2026-04-30"
-GENERIC_DATE = re.compile(rf"\b({'|'.join(_MONTHS)})\s+(\d{{1,2}})(?:st|nd|rd|th)?(?:,?\s+(\d{{4}}))?\b"
-                          r"|\b(\d{4})-(\d{2})-(\d{2})\b")
+_MONTHS = {name.casefold(): i for names in (calendar.month_name, calendar.month_abbr)
+           for i, name in enumerate(names) if name}  # "january" -> 1, "jan" -> 1
+_MONTH_WORDS = "|".join(sorted(_MONTHS, key=len, reverse=True))
+# any month-name, ISO or m/d/yyyy date mention, fixture or invented:
+# "April 30, 2026", "apr 30th", "2026-04-30", "4/30/2026"
+GENERIC_DATE = re.compile(rf"\b({_MONTH_WORDS})\.?\s+(\d{{1,2}})(?:st|nd|rd|th)?(?:,?\s+(\d{{4}}))?\b"
+                          r"|\b(\d{4})-(\d{2})-(\d{2})\b|\b(\d{1,2})/(\d{1,2})/(\d{4})\b", re.IGNORECASE)
 
 
 def contains_token(haystack: str, needle: str) -> bool:
@@ -121,8 +124,12 @@ class OutputGuard:
                     v.append("date_not_allowed")
                     break
             for m in GENERIC_DATE.finditer(text):  # an invented date is a violation too, same granularity
-                month, day, year = ((_MONTHS[m[1]], int(m[2]), int(m[3]) if m[3] else None) if m[1]
-                                    else (int(m[5]), int(m[6]), int(m[4])))
+                if m[1]:
+                    month, day, year = _MONTHS[m[1].casefold()], int(m[2]), int(m[3]) if m[3] else None
+                elif m[4]:
+                    month, day, year = int(m[5]), int(m[6]), int(m[4])
+                else:
+                    month, day, year = int(m[7]), int(m[8]), int(m[9])
                 if not any(d.month == month and d.day == day and year in (None, d.year)
                            for d in allowed_dates):
                     v.append(f"date_not_allowed:{m[0]}")
