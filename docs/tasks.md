@@ -15,7 +15,7 @@ Merge order for the reviewer: merge PRs in task order (T01, T02, T03, then the f
 | T03 | Engine core: session state, memory with provenance, pending-ask mapping, brief merge, affect policies, VERIFY_ID handler | 2 | Fable 5.1 | T02 | ready to merge | #3 | two plan-mandated verify_id bugs fixed in 8eafb0d; re-review approved; base task/T02-data-layer |
 | T04 | LLM layer: Reader (structured output), Writer (cached two-block system, fallbacks), FakeLLM | 3 | Opus 5.5 | T03 | ready to merge | #6 | Writer window, stop-reason and Reader-retry defects fixed in 1d23937; re-review approved; real-API smoke test deferred to T10 |
 | T05 | HTTP API, session store, access-token gate, chat UI with SOP inspector | 3 | Opus 5.5 | T03 | ready to merge | #5 | per-session lock added in cdfc92c; re-review approved; base task/T03-engine-core |
-| T06 | RESOLVE_INTENT (disambiguation, decoy) and PROCESS_CASE (grounded facts, deadlines, alternatives, anything-else) | 3 | Fable 5.1 | T02, T03 | in review | #7 | base task/T03-engine-core; graded one-turn chain test green; adds pythonpath to pyproject |
+| T06 | RESOLVE_INTENT (disambiguation, decoy) and PROCESS_CASE (grounded facts, deadlines, alternatives, anything-else) | 3 | Fable 5.1 | T02, T03 | ready to merge | #7 | two off-path defects plus a same-turn double switch fixed (b60af46, d03f9d2); re-review approved; adds pythonpath to pyproject |
 | T07 | Cross-cutting policies: scope guard ladder, non-terminal escalation with hand-off packet, meta and mixed turns, injection flag | 3 | Opus 5.5 | T03 | in review | #4 | 3 spec drifts in the brief's ladder code fixed in a1d94dd before review |
 | T08 | POST_PROCESS: email offer once, code-built summary draft, confirm, outbox, route back | 4 | Opus 5.5 | T06 | in progress | | base task/T06-intent-and-case |
 | T09 | Output guard (echo-aware), redacted per-turn trace, disclosure events | 4 | Opus 5.5 | T03, T04 | in progress | | base task/T04-llm-layer |
@@ -35,6 +35,7 @@ Merge order for the reviewer: merge PRs in task order (T01, T02, T03, then the f
 
 ## Deferred findings (for the final whole-branch review)
 
+- T06 (re-review minors): a same-turn double switch is still reachable when a disambiguation answer carries a hint that contradicts its own pick (one-line guard in `resolve_intent`); no positive test for the words-plus-document trigger; `hints_match` logic exists in both handlers; the trace will record the mutated `switch_claim=False`.
 - T04 (re-review minors): a 114-char test line exempted by ruff's trailing-comment rule; window tests do not pin the slice-then-trim order; a refusal with partial text costs an extra Reader call; `include_input=False` on the retry note is untested.
 - T05 (re-review minors): outbox fetch is silent on a non-OK status; no guard against a stale reply after New conversation; lock waits are unbounded and tie up worker threads (timeout plus 409 is the upgrade); no test that `put()` sweeps expired sessions.
 - T03 (re-review minors): policy number is not part of the attempt fingerprint; `parse_dob` does not accept ordinal suffixes ("March 15th, 1985"); a bad DOB slot is never cleared, so the caller must restate it before other identifiers can proceed; the raw-value fingerprint fallback has no test; the `verified` event logs the provided count rather than the matched names.
