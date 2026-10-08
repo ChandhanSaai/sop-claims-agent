@@ -55,6 +55,7 @@ Merge order for the reviewer: #1, #2, #3, then the wave-3 PRs #4 to #8, then #9,
 
 ## Log
 
+- 2026-10-08: PR #16 approved on re-review (README now describes its run's one residual retraction). PR #17 in review; follow-ups queued on it: exact-digit policy match, a brief-level rule that a verification reset or consent timeout is a new development, not a correction of earlier replies.
 - 2026-10-08 (manual testing): the user's first live test exposed two identity-gate rough edges (a date form the parser rejected; bare policy digits read as the ID last four) and a wording complaint. PR #16 (identity UX, stacked on #15) fixes both with human wording and a fixture of the exact phrasing; PR #17 (stacked on #16) moves date understanding to the Reader for any language or format and has the Writer answer in the caller's language; both verified live.
 - 2026-10-08 (morning, end): PR #15 reviewed on Opus 5.5 (one Important: failed model calls could count as clean turns; fixed) and approved on re-review; transcripts regenerated (third full run, 14/14). Final stack: #1-#9, #10, #13, #14, #15.
 - 2026-10-08 (morning): user provided the API key; live run of all 14 fixtures against Sonnet 5.5 passed every state, leak and wording check (51 turns, no regeneration). One Writer habit found and fixed (self-correction of earlier grounded facts at the goodbye step). PR #15 (stacked on #14) carries the script, transcripts, prompt rule and README; in review.
