@@ -430,17 +430,18 @@ turns:
 the real Reader and Writer (it needs `ANTHROPIC_API_KEY` in `.env` and costs API calls) and writes
 `docs/live-transcripts.md`. State and leak expectations are hard checks, and so is a Reader or Writer
 failure; wording expectations are soft, because a live Writer paraphrases. Last run, with Sonnet 5.5 in both
-roles: 17 of 17 scenarios passed every hard check over 57 turns, with one soft wording miss (the Checks column in the transcript names each),
-no guard regeneration and 3 to 15.1 seconds per turn (the Secs column). In an earlier run the
-first Reader call with a new output schema took about 35 seconds (the schema is compiled and cached
-server-side). Earlier live runs exposed one Writer habit the offline suite could not: when the state moved
-on (a goodbye brief without claim facts, a corrected date of birth resetting verification, a consent
-timeout), the Writer "corrected" or apologized for replies that had been right when given. Three things
-now hold it: the Writer prompt says earlier replies were grounded when written and are never retracted or
-commented on; every later brief without claim facts says the details given earlier stand; and the brief
-for a verification-reset or consent-timeout turn says to state the new development plainly. The committed
-run has no retraction and no apology in any reply, and the timeout turn says the consent could not be
-obtained.
+roles: 17 of 17 scenarios passed every hard check over 57 turns, with one soft wording miss (an escalation
+reply paraphrased "I remain available") and one guard regeneration (`casual_identity_phrasing` turn 2: the
+first draft was rejected and the second passed, which is why that turn took 15.1 seconds; every
+other turn took 2.9 to 7.6 seconds, the Secs column). In an earlier run the first Reader call
+with a new output schema took about 35 seconds (the schema is compiled and cached server-side). Earlier
+live runs exposed one Writer habit the offline suite could not: when the state moved on (a goodbye brief
+without claim facts, a corrected date of birth resetting verification, a consent timeout), the Writer
+"corrected" or apologized for replies that had been right when given. Three things now hold it: the Writer
+prompt says earlier replies were grounded when written and are never retracted or commented on; every
+later brief without claim facts says the details given earlier stand; and the brief for a
+verification-reset or consent-timeout turn says to state the new development plainly. The committed run
+has no retraction and no apology in any reply, and the timeout turn says the consent could not be obtained.
 
 Live persona evaluations (simulated callers scored as pass^k with an LLM judge) remain stretch item S02.
 
@@ -506,8 +507,8 @@ Live persona evaluations (simulated callers scored as pass^k with an LLM judge) 
   ids, dates, amounts, references and the email address are quoted in their English form inside a translated
   reply, and a date of birth echoed in non-English words would not be caught by the guard.
 - A one-word name is treated as a first name: the assistant asks for the full name as it appears on the
-  policy instead of spending a verification attempt. A policyholder with a mononym would need the record to
-  carry it that way.
+  policy instead of spending a verification attempt. A policyholder with a mononym would have to verify
+  with three other identifiers.
 - Emotion detection is text-only and coarse (0..3 scales plus booleans).
 
 Not in this build: live persona evaluations, the hosted demo and the OpenAI adapter are stretch items (below).

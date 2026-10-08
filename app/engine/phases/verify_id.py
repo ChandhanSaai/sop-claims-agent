@@ -17,7 +17,7 @@ FIELD_LABELS = {
     "email": "the email on file", "id_last4": "the last four digits of your SSN or national ID",
 }
 _WORDS = {1: "one", 2: "two", 3: "three", 4: "four", 5: "five"}
-FULL_NAME_NEEDED = "I have your first name, and I'll need your full name as it appears on the policy."
+FULL_NAME_NEEDED = "I'll need your full name as it appears on the policy."
 FULL_NAME_ASK = "Could I have your full name, please?"
 GATE_WHY = (
     "Claim details are protected information, so I confirm identity before discussing them; "

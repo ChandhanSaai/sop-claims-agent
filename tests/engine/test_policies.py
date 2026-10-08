@@ -301,3 +301,17 @@ def test_earlier_claim_details_stand_on_turns_without_claim_facts(repos, setting
     assert "claim_id" in b1.allowed_facts and EARLIER_DETAILS_STAND not in b1.must_not
     b2 = eng.handle_turn(s, A(requests={"confirmation": "no", "closing": True}), "No, that's all.")
     assert s.phase == Phase.POST_PROCESS and EARLIER_DETAILS_STAND in b2.must_not
+
+
+def test_a_claim_list_after_an_answer_is_not_told_that_earlier_details_stand(repos, settings):
+    eng = Engine(repos, settings)
+    s = Session.new()
+    eng.greeting(s)
+    ident = {"full_name": "Margaret Chen", "dob": "1985-03-15", "id_last4": "4472"}
+    eng.handle_turn(s, A(identity=ident, intent="denial_question",
+                         case_hints={"status": "denied", "case_type": "healthcare", "month": 1}),
+                    "Margaret Chen, 1985-03-15, 4472, my denied claim")
+    b = eng.handle_turn(s, A(case_hints={"case_type": "healthcare"}, requests={"switch_claim": True}),
+                        "what about my other healthcare claims?")
+    assert s.phase == Phase.RESOLVE_INTENT and any(k.startswith("option_") for k in b.allowed_facts)
+    assert EARLIER_DETAILS_STAND not in b.must_not
