@@ -32,18 +32,29 @@ class AnthropicLLM:
             params["thinking"] = thinking
         return params
 
+    def _parse(self, content: str) -> "anthropic.types.ParsedMessage[TurnAnalysis]":
+        return self.client.messages.parse(
+            **self._common(self.settings.reader_model),
+            max_tokens=1500,
+            system=[{"type": "text", "text": READER_SYSTEM, "cache_control": {"type": "ephemeral"}}],
+            messages=[{"role": "user", "content": content}],
+            output_format=TurnAnalysis,
+        )
+
     def analyze(self, *, user_text: str, pending_ask: str, last_assistant: str | None) -> TurnAnalysis:
         content = format_reader_user(
             user_text=user_text, pending_ask=pending_ask, last_assistant=last_assistant
         )
         try:
-            resp = self.client.messages.parse(
-                **self._common(self.settings.reader_model),
-                max_tokens=1500,
-                system=[{"type": "text", "text": READER_SYSTEM, "cache_control": {"type": "ephemeral"}}],
-                messages=[{"role": "user", "content": content}],
-                output_format=TurnAnalysis,
-            )
+            try:
+                resp = self._parse(content)
+            except ValidationError as e:  # retry once, showing the model what failed
+                log.warning("reader output failed validation; retrying once")
+                errors = e.json(include_input=False, include_url=False)
+                resp = self._parse(
+                    f"{content}\n\nYour previous output failed validation: {errors}. "
+                    "Return the schema again with valid values."
+                )
         except (anthropic.APIConnectionError, anthropic.APIStatusError, ValidationError) as e:
             log.warning("reader call failed: %s", type(e).__name__)
             return TurnAnalysis.empty()
@@ -56,6 +67,8 @@ class AnthropicLLM:
 
     def compose(self, *, brief: ReplyBrief, transcript: list[Turn], violation: str | None = None) -> str:
         window = transcript[-TRANSCRIPT_WINDOW:]
+        while window and window[0].role != "user":  # the Messages API wants a user turn first
+            window = window[1:]
         messages = [{"role": t.role, "content": t.text} for t in window]
         if not messages or messages[-1]["role"] != "user":
             messages.append({"role": "user", "content": "(continue)"})
@@ -75,6 +88,8 @@ class AnthropicLLM:
             raise LLMError(f"writer call failed: {type(e).__name__}") from e
         if resp.stop_reason == "refusal":
             raise LLMError("writer refused")
+        if resp.stop_reason != "end_turn":  # e.g. max_tokens: never send a truncated reply
+            raise LLMError(f"writer stopped: {resp.stop_reason}")
         text = next((b.text for b in resp.content if getattr(b, "type", None) == "text"), "").strip()
         if not text:
             raise LLMError("writer returned no text")
