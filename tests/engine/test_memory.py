@@ -49,3 +49,14 @@ def test_correction_to_verified_identity_resets_verification():
     assert s.verification.status == "unverified" and s.verification.party_id is None
     assert s.phase == Phase.VERIFY_ID and s.case == CaseState()  # whoever verifies next re-resolves
     assert s.events[-1].type == "verification_reset"
+
+
+def test_verification_reset_keeps_the_representative_flag():
+    s = Session.new()
+    s.memory.set("dob", "1985-03-15", 1)
+    s.memory.slots["dob"].status = SlotStatus.VERIFIED
+    s.verification = Verification(status="verified", party_id="P9", role="policyholder",
+                                  declared_representative=True)
+    merge_analysis(s, TurnAnalysis.model_validate(
+        {"corrections": [{"slot": "dob", "old_value": "1985-03-15", "new_value": "1986-03-15"}]}))
+    assert s.verification.status == "unverified" and s.verification.declared_representative

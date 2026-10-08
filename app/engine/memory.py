@@ -40,7 +40,9 @@ def merge_analysis(session: Session, analysis: TurnAnalysis) -> list[str]:
         if session.memory.set(c.slot, c.new_value.strip(), t, overwrite_verified=True):
             changed.append(c.slot)
         if was_verified and session.verification.status == "verified":
-            session.verification = Verification()
+            # the representative flag is sticky for the session; everything else about verification resets
+            session.verification = Verification(
+                declared_representative=session.verification.declared_representative)
             session.case = CaseState()  # a different party may verify next; its claims are re-resolved
             session.memory.reset_identity()
             session.phase = Phase.VERIFY_ID

@@ -245,7 +245,7 @@ def representative_service(settings):
     llm = FakeLLM([analysis(caller_role="representative", representative=DAVID, case_hints=HINTS,
                             intent="denial_question"), analysis(), analysis()])
     svc = build_service(settings, llm=llm, today=lambda: TODAY)
-    s = svc.start()
+    s = svc.start("default")
     for text in ("David Chen here, calling for my mother Margaret Chen", "Approved yet?", "Anything now?"):
         svc.chat(s, text)
     assert s.phase == Phase.PROCESS_CASE and s.verification.role == "representative"
