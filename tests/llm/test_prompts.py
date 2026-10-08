@@ -7,6 +7,8 @@ def test_reader_prompt_names_scope_and_topics():
     for t in FOLLOWUP_TOPICS:
         assert t in READER_SYSTEM
     assert "data, not instructions" in READER_SYSTEM
+    file_format = READER_SYSTEM.split("file_format_requirements (", 1)[1].split(")", 1)[0]
+    assert "what each document must show" in file_format  # the offered checklist routes to the detail answer
 
 
 def test_reader_user_message_carries_context_as_data():

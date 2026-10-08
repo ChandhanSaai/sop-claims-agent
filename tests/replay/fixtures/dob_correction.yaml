@@ -15,7 +15,8 @@ turns:
       verified: false
       attempts: 1
       pending_ask: identity_fields
-      reply_not_contains: ["CL-2048", "pathology", "1985-03-16", "I need to correct", "shouldn't have", "sorry"]
+      reply_not_contains: ["CL-2048", "pathology", "1985-03-16", "I need to correct", "shouldn't have", "sorry",
+                           "apolog"]
       guard_ok: true
   - user: "Sorry, I meant 1985-03-15."
     analysis:

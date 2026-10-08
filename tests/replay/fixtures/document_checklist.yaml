@@ -1,0 +1,41 @@
+name: document_checklist
+scenario: default
+today: "2026-10-07"
+turns:
+  - user: "I'm the policyholder. My name is Margaret Chen, policy POL-9921. I'm calling about my denied healthcare claim from January. DOB is 1985-03-15, SSN last four is 4472."
+    analysis:
+      identity: {full_name: "Margaret Chen", policy_number: "POL-9921", dob: "1985-03-15", id_last4: "4472"}
+      caller_role: policyholder
+      case_hints: {case_type: healthcare, status: denied, month: 1}
+      intent: denial_question
+      scope: in_scope
+    expect:
+      phase: PROCESS_CASE
+      verified: true
+      party_id: P9
+      attempts: 0
+      pending_ask: anything_else
+      reply_contains: ["CL-2048", "pathology report", "office note", "March 18, 2026", "denied"]
+      reply_not_contains: ["4472", "1985-03-15", "6505212836", "margaret@email.com", "POL-9921", "which claim"]
+      guard_ok: true
+  - user: "What do I need to send?"
+    analysis:
+      intent: document_submission
+      followup_topic: submission_method
+      scope: in_scope
+    expect:
+      phase: PROCESS_CASE
+      pending_ask: anything_else
+      reply_contains: ["through this chat", "member portal", "pathology report", "office note"]
+      guard_ok: true
+  - user: "What does each document need to show?"
+    analysis:
+      intent: document_submission
+      followup_topic: file_format_requirements
+      scope: in_scope
+    expect:
+      phase: PROCESS_CASE
+      pending_ask: anything_else
+      reply_contains: ["specimen", "visit date"]
+      reply_not_contains: ["4472", "1985-03-15", "6505212836", "margaret@email.com", "POL-9921"]
+      guard_ok: true
