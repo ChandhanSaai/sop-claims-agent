@@ -11,8 +11,8 @@ Merge order for the reviewer: merge PRs in task order (T01, T02, T03, then the f
 | ID | Task | Wave | Model | Depends on | Status | PR | Notes |
 |---|---|---|---|---|---|---|---|
 | T01 | Repo scaffold, contracts (Settings, TurnAnalysis, ReplyBrief), JSON logging with redaction, /healthz, fixtures, golden-transcript replay fixtures | 0 | Opus 5.5 | - | ready to merge | #1 | two plan-mandated logging bugs fixed in 75e5e4c; re-review approved |
-| T02 | Data layer: typed fixtures, normalization, lookup by any identifier, pass/fail verification, claims filter, guideline lookup, consent simulator, outbox | 1 | Opus 5.5 | T01 | in progress | | base branch task/T01-scaffold |
-| T03 | Engine core: session state, memory with provenance, pending-ask mapping, brief merge, affect policies, VERIFY_ID handler | 2 | Fable 5.1 | T02 | todo | | imports app.data |
+| T02 | Data layer: typed fixtures, normalization, lookup by any identifier, pass/fail verification, claims filter, guideline lookup, consent simulator, outbox | 1 | Opus 5.5 | T01 | ready to merge | #2 | lookup-precedence bug fixed in a725aea; re-review approved; base task/T01-scaffold |
+| T03 | Engine core: session state, memory with provenance, pending-ask mapping, brief merge, affect policies, VERIFY_ID handler | 2 | Fable 5.1 | T02 | in review | #3 | base task/T02-data-layer |
 | T04 | LLM layer: Reader (structured output), Writer (cached two-block system, fallbacks), FakeLLM | 3 | Opus 5.5 | T03 | todo | | imports app.engine.briefs, app.engine.state |
 | T05 | HTTP API, session store, access-token gate, chat UI with SOP inspector | 3 | Opus 5.5 | T03 | todo | | imports app.engine.state |
 | T06 | RESOLVE_INTENT (disambiguation, decoy) and PROCESS_CASE (grounded facts, deadlines, alternatives, anything-else) | 3 | Fable 5.1 | T02, T03 | todo | | |
@@ -35,6 +35,7 @@ Merge order for the reviewer: merge PRs in task order (T01, T02, T03, then the f
 
 ## Deferred findings (for the final whole-branch review)
 
+- T02 (re-review minor): no test pins `find` precedence when two supplied keys hit different records.
 - T01 (re-review minors): the redaction fallback can still raise on an object whose `__str__` fails and has no committed test; the new logging test's cleanup is not in a `finally`; the caplog survival check counts records and is sensitive to `--log-level`; importing `anthropic` with `ANTHROPIC_LOG` set installs a plain-text root handler via `basicConfig` that bypasses redaction (do not set `ANTHROPIC_LOG` in production; T04 documents this).
 
 - T01: `anthropic_api_key` and `demo_access_token` as plain `str` appear in `repr(Settings)`; consider `SecretStr`.
@@ -44,4 +45,5 @@ Merge order for the reviewer: merge PRs in task order (T01, T02, T03, then the f
 ## Log
 
 - 2026-10-07: spec v0.5 frozen, plan written, tracker created.
+- 2026-10-07: T02 implemented (PR #2); review found the plan's `find` stopped at the first identifier present (lockout risk), fixed with four minors; re-review approved. T03 implemented on Fable (PR #3), in review.
 - 2026-10-07: T01 implemented (PR #1); review found two plan-mandated logging defects (redaction filter breaks `%d` formatting; exception text unredacted), fix dispatched. Dependency correction: T03 needs T02, T04 and T05 need T03, so the waves were re-cut (above). T02 started on a worktree off the T01 branch.
