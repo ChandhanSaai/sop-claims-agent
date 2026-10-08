@@ -77,3 +77,32 @@ def test_escalation_reference_is_allowed_when_it_matches(store):
     ref = s.escalation.reference
     assert g.check(f"Your reference is {ref}.", s,
                    ReplyBrief(phase="p", goal="g", allowed_facts={"handoff_reference": ref})).ok
+
+
+def test_ordinal_and_unpadded_dates_are_caught(store):
+    g = OutputGuard(store)
+    pre = ReplyBrief(phase="VERIFY_ID", goal="g")
+    for leak in ("born March 15th, 1985", "born 3/15/1985"):
+        assert "identifier:dob" in g.check(f"Thanks, {leak}.", unverified(store), pre).violations, leak
+    for leak in ("January 12th, 2026", "1/12/2026"):
+        r = g.check(f"That claim was opened on {leak}.", unverified(store), pre)
+        assert "fixture_date_before_verification" in r.violations, leak
+    s = unverified(store)
+    s.verification = Verification(status="verified", party_id="P9", role="policyholder")
+    post = ReplyBrief(phase="PROCESS_CASE", goal="g", allowed_facts={"claim_opened": "January 12, 2026"})
+    assert g.check("It was opened on January 12th, 2026.", s, post).ok
+    for leak in ("February 28th, 2026", "2/28/2026"):
+        assert "date_not_allowed" in g.check(f"It was opened on {leak}.", s, post).violations, leak
+
+
+def test_amounts_match_by_token_and_ignore_thousands_separators(store):
+    g = OutputGuard(store)
+    pre = ReplyBrief(phase="VERIFY_ID", goal="g")
+    for leak in ("$1,450.00", "$3,500.00", "3,500"):
+        r = g.check(f"The allowed amount is {leak}.", unverified(store), pre)
+        assert "amount_before_verification" in r.violations, leak
+    s = unverified(store)
+    s.verification = Verification(status="verified", party_id="P9", role="policyholder")
+    post = ReplyBrief(phase="PROCESS_CASE", goal="g", allowed_facts={"allowed_max_amount": "$1450.00"})
+    assert g.check("The allowed amount is $1450.00.", s, post).ok
+    assert "number_not_allowed:450.00" in g.check("Your dental claim allowed $450.00.", s, post).violations

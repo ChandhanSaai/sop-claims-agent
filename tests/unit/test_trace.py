@@ -32,3 +32,27 @@ def test_disclosure_event_only_when_verified_with_facts():
                                    allowed_facts={"claim_id": "CL-2048", "net_pay": "$0.00"}))
     assert s.events[-1].type == "disclosed" and s.events[-1].data["facts"] == ["claim_id", "net_pay"]
     assert s.events[-1].data["role"] == "policyholder"
+
+
+def _build(session_id="abc", analysis=None, brief=None):
+    return TraceRecord.build(
+        session_id=session_id, turn=1, phase_before="VERIFY_ID", phase_after="VERIFY_ID", pending_ask="dob",
+        analysis=analysis or TurnAnalysis(), changed_slots=[], brief=brief or ReplyBrief(phase="p", goal="g"),
+        guard={"ok": True, "violations": []}, reader_model="r", writer_model="w", latency_ms=1, reply_text="")
+
+
+def test_trace_record_masks_correction_values():
+    rec = _build(analysis=TurnAnalysis.model_validate(
+        {"corrections": [{"slot": "dob", "new_value": "1985-03-16"}]}))
+    assert rec.analysis["corrections"] == [{"slot": "dob", "new_value": "******"}]
+    assert "1985-03-16" not in rec.model_dump_json()
+
+
+def test_trace_writer_redacts_free_text_but_keeps_ts_and_session_id(tmp_path):
+    sid = "0123456789abcdef0123456789abcdef"
+    brief = ReplyBrief(phase="p", goal="g", allowed_facts={"email_on_file": "margaret@email.com"})
+    rec = _build(session_id=sid, brief=brief)
+    TraceWriter(tmp_path).write(rec)
+    data = json.loads((tmp_path / f"{sid}.jsonl").read_text())
+    assert data["ts"] == rec.ts and data["session_id"] == sid
+    assert data["brief"]["allowed_facts"]["email_on_file"] == "[REDACTED]"

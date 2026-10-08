@@ -19,9 +19,16 @@ def contains_token(haystack: str, needle: str) -> bool:
     return re.search(rf"(?<![\w]){re.escape(needle)}(?![\w])", haystack, re.IGNORECASE) is not None
 
 
+def _suffix(day: int) -> str:
+    return "th" if 11 <= day <= 13 else {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
+
+
 def date_variants(d: date) -> list[str]:
+    o = f"{d.day}{_suffix(d.day)}"  # "15th"
     return [d.isoformat(), fmt_date(d), f"{d:%B} {d.day}", f"{d:%b} {d.day}", f"{d.day} {d:%B} {d.year}",
-            f"{d:%m}/{d:%d}/{d.year}", f"{d:%B} {d.year}"]
+            f"{d:%m}/{d:%d}/{d.year}", f"{d.month}/{d.day}/{d.year}", f"{d:%B} {o}, {d.year}", f"{d:%B} {o}",
+            f"{d:%b} {o}", f"{o} {d:%B} {d.year}",
+            f"{d:%B} {d.year}"]  # month-year stays last: pre-verification checks drop it
 
 
 class GuardResult(BaseModel):
@@ -71,7 +78,9 @@ class OutputGuard:
         if session.verification.status != "verified":
             if CLAIM_ID.search(text):
                 v.append("claim_id_before_verification")
-            if any(a in text for a in self.amounts):
+            plain = re.sub(r"(?<=\d),(?=\d{3})", "", text)  # "$3,500.00" -> "$3500.00"
+            # whole dollars, so "3500" is caught and still matches "3500.00"
+            if any(contains_token(plain, a.removesuffix(".00")) for a in self.amounts):
                 v.append("amount_before_verification")
             for d in self.dates:
                 # month-year alone is the caller's own words
@@ -98,6 +107,6 @@ class OutputGuard:
                     break
             ref = session.escalation.reference or ""
             for n in NUMBER.findall(text):
-                if n not in allowed and n not in user_text and n not in ref:
+                if not (contains_token(allowed, n) or contains_token(user_text, n) or n in ref):
                     v.append(f"number_not_allowed:{n}")
         return GuardResult(ok=not v, violations=v)

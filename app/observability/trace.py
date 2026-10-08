@@ -10,6 +10,7 @@ from app.llm.schemas import ReplyBrief, TurnAnalysis
 from app.observability.logging import redact
 
 MASKED_IDENTITY = ("dob", "phone", "email", "id_last4", "policy_number")
+REDACTED_FIELDS = ("analysis", "brief", "guard", "changed_slots")  # free text; ts and ids stay exact
 
 
 class TraceRecord(BaseModel):
@@ -38,11 +39,23 @@ class TraceRecord(BaseModel):
         for k in MASKED_IDENTITY:
             if a["identity"].get(k):
                 a["identity"][k] = "******"
+        for c in a["corrections"]:
+            c["new_value"] = "******"
         return cls(
             ts=datetime.now(UTC).isoformat(), session_id=session_id, turn=turn, phase_before=phase_before,
             phase_after=phase_after, pending_ask=pending_ask, analysis=a, changed_slots=changed_slots,
             brief=brief.model_dump(exclude={"verbatim"}), guard=guard, reader_model=reader_model,
             writer_model=writer_model, latency_ms=latency_ms, reply_chars=len(reply_text))
+
+
+def _redact_strings(x: Any) -> Any:
+    if isinstance(x, str):
+        return redact(x)
+    if isinstance(x, dict):
+        return {k: _redact_strings(v) for k, v in x.items()}
+    if isinstance(x, list):
+        return [_redact_strings(v) for v in x]
+    return x
 
 
 class TraceWriter:
@@ -51,8 +64,10 @@ class TraceWriter:
 
     def write(self, record: TraceRecord) -> None:
         self.directory.mkdir(parents=True, exist_ok=True)
+        data = record.model_dump()
+        data.update({k: _redact_strings(data[k]) for k in REDACTED_FIELDS})
         with open(self.directory / f"{record.session_id}.jsonl", "a", encoding="utf-8") as f:
-            f.write(redact(json.dumps(record.model_dump())) + "\n")
+            f.write(json.dumps(data) + "\n")
 
 
 def disclosure_event(session: Session, brief: ReplyBrief) -> None:
