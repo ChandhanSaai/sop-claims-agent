@@ -431,13 +431,14 @@ the real Reader and Writer (it needs `ANTHROPIC_API_KEY` in `.env` and costs API
 failure; wording expectations are soft, because a live Writer paraphrases. Last run, with Sonnet 5.5 in both
 roles: 16 of 16 scenarios passed every hard check over 55 turns, with one soft wording miss (an escalation
 reply paraphrased "I remain available"), no guard regeneration and 3 to 8 seconds per turn (the Secs
-column in the transcript). In an earlier
-run the first Reader call with a new output schema took about 35 seconds (the schema is compiled and cached
-server-side). The first live run exposed one Writer habit the offline suite could not: at the goodbye step
-it second-guessed facts it had stated correctly earlier, so the Writer prompt now says that earlier replies
-were grounded when written and are never retracted or commented on. The committed run shows no retraction,
-but one reply still opens with an apology for its earlier answers: the rule reduces the habit rather than
-removing it.
+column in the transcript). In an earlier run the first Reader call with a new output schema took about 35
+seconds (the schema is compiled and cached server-side). Earlier live runs exposed one Writer habit the
+offline suite could not: when the state moved on (a goodbye brief without claim facts, a corrected date of
+birth resetting verification, a consent timeout), the Writer "corrected" or apologized for replies that had
+been right when given. Two things now hold it: the Writer prompt says earlier replies were grounded when
+written and are never retracted or commented on, and the brief for a verification-reset or consent-timeout
+turn says the turn reports a new development. The committed run has no retraction and no apology in any
+reply.
 
 Live persona evaluations (simulated callers scored as pass^k with an LLM judge) remain stretch item S02.
 
