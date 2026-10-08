@@ -28,8 +28,8 @@ Merge order for the reviewer: #1, #2, #3, then the wave-3 PRs #4 to #8, then #9,
 | ID | Task | Model | Depends on | Status | PR | Notes |
 |---|---|---|---|---|---|---|
 | S01 | Representative and consent sub-flow (approve and timeout scenarios) | Fable 5.1 | T10 | ready to merge | #13 | plan `docs/superpowers/plans/2026-10-08-s01-representative-consent.md`; also routes a claimed power of attorney to a human and makes CONSENT_SCENARIO the default scenario; base task/T10-integration, merge after #10 |
-| S02 | Live persona evaluations with pass^k and an LLM judge (opt-in) | Opus 5.5 | T11 | partly done, #15 ready to merge | #15 | live replay of all 14 fixtures against the real models (`scripts/live_replay.py`, `docs/live-transcripts.md`): 14/14 hard and wording checks; Writer no-retraction rule; pass^k judge still todo; PR stacked on #14 |
-| S03 | Hosted demo behind DEMO_ACCESS_TOKEN | Opus 5.5 | T12 | todo | | |
+| S02 | Live persona evaluations with pass^k and an LLM judge (opt-in) | Opus 5.5 | T11 | partly done: live replay + pass^3 reliability table (#15, #18); LLM judge still todo | #15, #18 | live replay of all 14 fixtures against the real models (`scripts/live_replay.py`, `docs/live-transcripts.md`): 14/14 hard and wording checks; Writer no-retraction rule; pass^k judge still todo; PR stacked on #14 |
+| S03 | Hosted demo behind DEMO_ACCESS_TOKEN | Opus 5.5 | T12 | config ready (fly.toml in #18), not deployed: needs the user's Fly.io account | #18 | |
 | S04 | Abuse handling policy | Opus 5.5 | T07 | ready to merge | #14 | plan `docs/superpowers/plans/2026-10-08-s04-abuse-policy.md`; branch task/S04-abuse-policy stacked on task/S01-representative, merge after #13 |
 | S05 | OpenAI provider adapter | Opus 5.5 | T04 | todo | | |
 
@@ -55,6 +55,7 @@ Merge order for the reviewer: #1, #2, #3, then the wave-3 PRs #4 to #8, then #9,
 
 ## Log
 
+- 2026-10-08 (evening): submission polish PR #18 opened (stacked on #17): README tour, diagrams, grader's map, attacks table, backend explainer, screenshot, hosted-demo commands; pass^3 reliability run 51/51; Writer talking points; self-correction made a hard replay check; final live run and review pending.
 - 2026-10-08: PR #17 approved after three fix rounds on Opus 5.5 (root-cause fixes for the Writer's self-correction habit; first-name rule; Reader scope rule; README generated from the committed transcript). PR #16 approved earlier. Submission polish branch task/C7-submission-polish in progress: Writer talking points, pass^3 reliability run, README tour/diagrams/grader map/attack table, demo recording.
 - 2026-10-08: PR #16 approved on re-review (README now describes its run's one residual retraction). PR #17 in review; follow-ups queued on it: exact-digit policy match, a brief-level rule that a verification reset or consent timeout is a new development, not a correction of earlier replies.
 - 2026-10-08 (manual testing): the user's first live test exposed two identity-gate rough edges (a date form the parser rejected; bare policy digits read as the ID last four) and a wording complaint. PR #16 (identity UX, stacked on #15) fixes both with human wording and a fixture of the exact phrasing; PR #17 (stacked on #16) moves date understanding to the Reader for any language or format and has the Writer answer in the caller's language; both verified live.
