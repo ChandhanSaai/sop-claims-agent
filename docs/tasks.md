@@ -28,7 +28,7 @@ Merge order for the reviewer: #1, #2, #3, then the wave-3 PRs #4 to #8, then #9,
 | ID | Task | Model | Depends on | Status | PR | Notes |
 |---|---|---|---|---|---|---|
 | S01 | Representative and consent sub-flow (approve and timeout scenarios) | Fable 5.1 | T10 | ready to merge | #13 | plan `docs/superpowers/plans/2026-10-08-s01-representative-consent.md`; also routes a claimed power of attorney to a human and makes CONSENT_SCENARIO the default scenario; base task/T10-integration, merge after #10 |
-| S02 | Live persona evaluations with pass^k and an LLM judge (opt-in) | Opus 5.5 | T11 | partly done | #15 | live replay of all 14 fixtures against the real models (`scripts/live_replay.py`, `docs/live-transcripts.md`): 14/14 hard and wording checks; Writer no-retraction rule; pass^k judge still todo; PR stacked on #14 |
+| S02 | Live persona evaluations with pass^k and an LLM judge (opt-in) | Opus 5.5 | T11 | partly done, #15 ready to merge | #15 | live replay of all 14 fixtures against the real models (`scripts/live_replay.py`, `docs/live-transcripts.md`): 14/14 hard and wording checks; Writer no-retraction rule; pass^k judge still todo; PR stacked on #14 |
 | S03 | Hosted demo behind DEMO_ACCESS_TOKEN | Opus 5.5 | T12 | todo | | |
 | S04 | Abuse handling policy | Opus 5.5 | T07 | ready to merge | #14 | plan `docs/superpowers/plans/2026-10-08-s04-abuse-policy.md`; branch task/S04-abuse-policy stacked on task/S01-representative, merge after #13 |
 | S05 | OpenAI provider adapter | Opus 5.5 | T04 | todo | | |
@@ -36,6 +36,7 @@ Merge order for the reviewer: #1, #2, #3, then the wave-3 PRs #4 to #8, then #9,
 ## Deferred findings (for the final whole-branch review)
 
 - T12 (fixed in the final pass 9f554ff..7ca8e67): README overstates what the replay asserts and omits two Appendix B bullets the engine does not meet (exact missing-identifier count; the "what I can do meanwhile" line); the sentence about every turn listing forbidden facts is false; compose bind mount is root-owned on Linux (named volume); Testing section predates T11; `.env.example` placeholder key defeats the startup check; `chat_cli.py` does not configure logging; `.dockerignore` patterns and the Dockerfile README copy.
+- T11/C4 (minor): the offline replay runner reads `session.last_guard` for a turn while the live replay reads the turn's own trace guard; a `guard_ok` expectation on a closed-session turn would pass offline and fail live (no fixture has one). Align the runner when it is next touched.
 - T11 (minors): the leak test matches amounts as exact text and claim ids case-sensitively (looser than the guard); three scenarios have no unverified turn and pass vacuously (skip instead); turns ending in VERIFY_ID could be checked regardless of the verified flag; the docstring overstates guard independence.
 - T10 (minors): `guard_ok: false` can never pass in the replay runner because every `ok: False` result also carries a `fallback`; the live-model transcript has not been run (no API key available).
 - T09 (re-review minors): a partial raw DOB in memory (for example "March") over-fires the echo rule (gate on two digit runs; fixed in T10); a full DOB that `parse_dob` cannot parse is caught only when echoed verbatim (ordinal support in `parse_dob`; fixed in T10); document names in a different word order pass before verification; the VERIFY_ID re-ask example "15 March 1985" is Margaret's real DOB (changed in T10).
@@ -54,6 +55,7 @@ Merge order for the reviewer: #1, #2, #3, then the wave-3 PRs #4 to #8, then #9,
 
 ## Log
 
+- 2026-10-08 (morning, end): PR #15 reviewed on Opus 5.5 (one Important: failed model calls could count as clean turns; fixed) and approved on re-review; transcripts regenerated (third full run, 14/14). Final stack: #1-#9, #10, #13, #14, #15.
 - 2026-10-08 (morning): user provided the API key; live run of all 14 fixtures against Sonnet 5.5 passed every state, leak and wording check (51 turns, no regeneration). One Writer habit found and fixed (self-correction of earlier grounded facts at the goodbye step). PR #15 (stacked on #14) carries the script, transcripts, prompt rule and README; in review.
 - 2026-10-08 (night, end): S04 implemented (PR #14, stacked on #13) and approved on Opus 5.5 with minors only, fixed; 220 tests. Stack to merge: #1, #2, #3, #4-#8, #9, #10, then #13, then #14 (delete each head branch on merge so the next PR retargets). Remaining: the live-model run and demo recording (need ANTHROPIC_API_KEY); S02, S03, S05 not started.
 - 2026-10-08: S01 implemented (PR #13, six commits plus review minors) and approved on Fable with no critical or important findings; 210 tests. S04 in progress on task/S04-abuse-policy (stacked on S01).
