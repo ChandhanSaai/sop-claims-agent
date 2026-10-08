@@ -429,8 +429,8 @@ turns:
 the real Reader and Writer (it needs `ANTHROPIC_API_KEY` in `.env` and costs API calls) and writes
 `docs/live-transcripts.md`. State and leak expectations are hard checks, and so is a Reader or Writer
 failure; wording expectations are soft, because a live Writer paraphrases. Last run, with Sonnet 5.5 in both
-roles: 15 of 15 scenarios passed every hard check over 53 turns, with one soft wording miss (an escalation
-reply paraphrased "I remain available"), no guard regeneration and 3 to 6 seconds per turn (the Secs
+roles: 16 of 16 scenarios passed every hard check over 55 turns, with one soft wording miss (an escalation
+reply paraphrased "I remain available"), no guard regeneration and 3 to 8 seconds per turn (the Secs
 column in the transcript). In an earlier
 run the first Reader call with a new output schema took about 35 seconds (the schema is compiled and cached
 server-side). The first live run exposed one Writer habit the offline suite could not: at the goodbye step
