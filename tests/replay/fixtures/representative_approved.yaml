@@ -1,0 +1,43 @@
+name: representative_approved
+scenario: default
+today: "2026-10-07"
+turns:
+  - user: "Hi, I'm David Chen, calling for my mother Margaret Chen, policy POL-9921. Her healthcare claim from January was denied."
+    analysis:
+      caller_role: representative
+      representative: {name: "David Chen", relationship: "son", policyholder_name: "Margaret Chen"}
+      identity: {policy_number: "POL-9921"}
+      case_hints: {case_type: healthcare, status: denied, month: 1}
+      intent: denial_question
+    expect:
+      phase: VERIFY_ID
+      verified: false
+      pending_ask: consent_wait
+      reply_contains: ["consent"]
+      reply_not_contains: ["CL-2048", "pathology", "margaret@email.com"]
+      guard_ok: true
+  - user: "Has she approved it yet?"
+    analysis:
+      scope: in_scope
+    expect:
+      phase: VERIFY_ID
+      verified: false
+      pending_ask: consent_wait
+      reply_not_contains: ["CL-2048"]
+      guard_ok: true
+  - user: "Anything now?"
+    expect:
+      phase: PROCESS_CASE
+      verified: true
+      party_id: P9
+      pending_ask: anything_else
+      reply_contains: ["CL-2048", "pathology report"]
+      guard_ok: true
+  - user: "No, that's all."
+    analysis:
+      requests: {confirmation: "no", closing: true}
+    expect:
+      phase: POST_PROCESS
+      pending_ask: email_offer
+      reply_contains: ["policyholder", "m*******@email.com"]
+      guard_ok: true

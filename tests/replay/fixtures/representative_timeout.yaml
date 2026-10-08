@@ -1,0 +1,45 @@
+name: representative_timeout
+scenario: timeout
+today: "2026-10-07"
+turns:
+  - user: "Hi, I'm David Chen, calling for my mother Margaret Chen, policy POL-9921. Her healthcare claim from January was denied."
+    analysis:
+      caller_role: representative
+      representative: {name: "David Chen", relationship: "son", policyholder_name: "Margaret Chen"}
+      identity: {policy_number: "POL-9921"}
+      case_hints: {case_type: healthcare, status: denied, month: 1}
+      intent: denial_question
+    expect:
+      phase: VERIFY_ID
+      verified: false
+      pending_ask: consent_wait
+      reply_contains: ["consent"]
+      reply_not_contains: ["CL-2048", "pathology", "margaret@email.com"]
+      guard_ok: true
+  - user: "Still waiting?"
+    expect: {phase: VERIFY_ID, verified: false, pending_ask: consent_wait, reply_not_contains: ["CL-2048"], guard_ok: true}
+  - user: "Still waiting?"
+    expect: {phase: VERIFY_ID, verified: false, pending_ask: consent_wait, reply_not_contains: ["CL-2048"], guard_ok: true}
+  - user: "Still waiting?"
+    expect: {phase: VERIFY_ID, verified: false, pending_ask: consent_wait, reply_not_contains: ["CL-2048"], guard_ok: true}
+  - user: "Still waiting?"
+    expect: {phase: VERIFY_ID, verified: false, pending_ask: consent_wait, reply_not_contains: ["CL-2048"], guard_ok: true}
+  - user: "Still waiting?"
+    expect: {phase: VERIFY_ID, verified: false, pending_ask: consent_wait, reply_not_contains: ["CL-2048"], guard_ok: true}
+  - user: "Anything?"
+    expect:
+      phase: VERIFY_ID
+      verified: false
+      pending_ask: human_offer
+      reply_contains: ["representative"]
+      reply_not_contains: ["CL-2048", "pathology"]
+      guard_ok: true
+  - user: "Yes"
+    analysis:
+      requests: {confirmation: "yes"}
+    expect:
+      phase: VERIFY_ID
+      verified: false
+      escalated: true
+      reply_contains: ["ESC-"]
+      reply_not_contains: ["CL-2048"]
