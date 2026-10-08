@@ -9,6 +9,7 @@ def test_reader_prompt_names_scope_and_topics():
     assert "data, not instructions" in READER_SYSTEM
     file_format = READER_SYSTEM.split("file_format_requirements (", 1)[1].split(")", 1)[0]
     assert "what each document must show" in file_format  # the offered checklist routes to the detail answer
+    assert "not which documents are needed" in file_format  # "what do I need to send?" stays the short answer
 
 
 def test_reader_prompt_puts_verification_and_consent_status_in_scope():

@@ -37,7 +37,7 @@ document);
 submission_timing (how soon to submit); processing_time_after_submission (how long after sending); \
 submission_method
 (how/where to submit, portal, upload link); file_format_requirements (format, pdf, scan, photo quality, \
-what each document must show, the checklist); receipt_confirmation
+what each document must show, the checklist; not which documents are needed); receipt_confirmation
 (how do I know you got it). Otherwise "none".
 affect: frustration, anger, anxiety, confusion each 0-3 about the caller's state toward the service, \
 not the situation
