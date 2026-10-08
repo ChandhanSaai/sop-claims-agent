@@ -23,7 +23,7 @@ owns the SOP; the model reads and phrases:** one LLM call reads each message int
 - **Live transcripts:** [docs/live-transcripts.md](docs/live-transcripts.md) replays all 17 scenarios against
   the real Reader and Writer (Sonnet 5.5) and shows each reply with its state, guard verdict, latency and
   checks, and [docs/live-reliability.md](docs/live-reliability.md) repeats every scenario and reports pass^N.
-- **Replay suite:** `pytest -q` runs 234 tests offline with no key or network, including the 17 scenarios turn
+- **Replay suite:** `pytest -q` runs 236 tests offline with no key or network, including the 17 scenarios turn
   by turn and a leak check on every reply that ends unverified.
 - **Where each requirement and attack lives:** the [Grader's map](#graders-map) names the code, the test that
   pins each requirement and the live turn that shows it, and [Attacks we tried](#attacks-we-tried) pairs each
@@ -33,7 +33,7 @@ owns the SOP; the model reads and phrases:** one LLM call reads each message int
   [How the backend works](#how-the-backend-works-and-how-enterprises-do-it) compares the build with larger
   deployments.
 
-![The chat page beside the SOP inspector at the start of a conversation](docs/demo/chat-and-inspector.jpg)
+![The chat page beside the SOP inspector after Margaret's first turn](docs/demo/chat-and-inspector.jpg)
 
 The inspector on the right is the harness made visible: the phase stepper, verification state and attempts,
 memory slots with their source turn and status, the brief the Writer received, the guard verdict, the
