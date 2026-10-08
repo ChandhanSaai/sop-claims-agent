@@ -1,11 +1,9 @@
 import pytest
 
-from tests.replay.runner import assert_turn, load, run_scenario
-
-SCENARIOS = ["margaret_happy_path", "angry_caller"]
+from tests.replay.runner import assert_turn, load, run_scenario, scenario_names
 
 
-@pytest.mark.parametrize("name", SCENARIOS)
+@pytest.mark.parametrize("name", scenario_names())
 def test_golden_transcript(name, settings):
     spec = load(name)
     results = run_scenario(spec, settings)
