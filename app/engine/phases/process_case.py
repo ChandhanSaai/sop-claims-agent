@@ -11,6 +11,12 @@ from app.engine.state import PendingAsk, Phase, Session
 from app.llm.schemas import ReplyBrief
 
 ANYTHING_ELSE_ASK = "Is there anything else about this claim I can help with?"
+NO_CHAT_UPLOAD = ("Say first that documents cannot be sent through this chat; they go through the "
+                  "channels in submission_guidance.")
+SUBMISSION_SHORT = ("Name documents_needed and the channel from submission_guidance in at most four "
+                    "sentences, then offer the checklist of what each document must show instead of "
+                    "reciting it.")
+SUBMISSION_DETAIL = "Explain what each document must show, using the guidance facts and the topic fact."
 APPEAL_WORDS = ("appeal", "dispute", "reconsider", "contest")
 CANNOT_WORDS = ("can't get", "cannot get", "can't obtain", "cannot obtain", "unable to get", "don't have",
                 "do not have", "lost", "closed", "no longer")
@@ -103,8 +109,8 @@ def handle(
         facts["submission_guidance"] = g.default_guidance()
         if ctg := g.case_type_guidance(claim.case_type):
             facts["case_type_guidance"] = ctg
-        must_say.append("Explain what to send and how, using documents_needed, the guidance facts "
-                        "and submission_guidance.")
+        must_say.append(NO_CHAT_UPLOAD)
+        must_say.append(SUBMISSION_DETAIL if t == "file_format_requirements" else SUBMISSION_SHORT)
 
     if topic == "processing_time_after_submission":
         if txt := g.topic_text(topic, claim):

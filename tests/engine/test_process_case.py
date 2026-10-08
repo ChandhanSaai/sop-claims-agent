@@ -158,3 +158,17 @@ def test_explicit_switch_answers_new_claim_in_same_turn(repos, settings):
     assert brief.ask
     fact = "The claim you mentioned is CL-2102, auto claim opened February 28, 2026, status open."
     assert brief.must_say.count(fact) == 1
+
+
+def test_submission_answer_says_no_chat_upload_and_offers_the_checklist(repos, settings):
+    s = in_case(repos, settings)
+    r = turn(s, repos, settings, process_case.handle, intent="document_submission",
+             followup_topic="submission_method")
+    assert process_case.NO_CHAT_UPLOAD in r.brief.must_say
+    assert process_case.SUBMISSION_SHORT in r.brief.must_say
+    assert "submission_guidance" in r.brief.allowed_facts
+    assert any(k.startswith("guidance_") for k in r.brief.allowed_facts)  # the checklist stays available
+    r2 = turn(s, repos, settings, process_case.handle, intent="document_submission",
+              followup_topic="file_format_requirements")
+    assert process_case.SUBMISSION_DETAIL in r2.brief.must_say
+    assert process_case.NO_CHAT_UPLOAD in r2.brief.must_say
