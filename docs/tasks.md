@@ -27,7 +27,7 @@ Merge order for the reviewer: #1, #2, #3, then the wave-3 PRs #4 to #8, then #9,
 
 | ID | Task | Model | Depends on | Status | PR | Notes |
 |---|---|---|---|---|---|---|
-| S01 | Representative and consent sub-flow (approve and timeout scenarios) | Fable 5.1 | T10 | in review | #13 | plan `docs/superpowers/plans/2026-10-08-s01-representative-consent.md`; also routes a claimed power of attorney to a human and makes CONSENT_SCENARIO the default scenario; base task/T10-integration, merge after #10 |
+| S01 | Representative and consent sub-flow (approve and timeout scenarios) | Fable 5.1 | T10 | ready to merge | #13 | plan `docs/superpowers/plans/2026-10-08-s01-representative-consent.md`; also routes a claimed power of attorney to a human and makes CONSENT_SCENARIO the default scenario; base task/T10-integration, merge after #10 |
 | S02 | Live persona evaluations with pass^k and an LLM judge (opt-in) | Opus 5.5 | T11 | todo | | |
 | S03 | Hosted demo behind DEMO_ACCESS_TOKEN | Opus 5.5 | T12 | todo | | |
 | S04 | Abuse handling policy | Opus 5.5 | T07 | in progress | | plan `docs/superpowers/plans/2026-10-08-s04-abuse-policy.md`; branch task/S04-abuse-policy stacked on task/S01-representative |
@@ -54,6 +54,7 @@ Merge order for the reviewer: #1, #2, #3, then the wave-3 PRs #4 to #8, then #9,
 
 ## Log
 
+- 2026-10-08: S01 implemented (PR #13, six commits plus review minors) and approved on Fable with no critical or important findings; 210 tests. S04 in progress on task/S04-abuse-policy (stacked on S01).
 - 2026-10-08: whole-branch review on Fable returned 4 critical, 6 important and 9 minor findings (lookup shadowing by a near-miss phone, declared representative verifiable as the policyholder, README testing claims, invented dates after verification, Reader failures silent, and more); one consolidated fix pass landed on task/T10-integration (9f554ff, e50f7b2, 7ca8e67; 186 tests); re-review (Fable) approved the fix pass with no critical or important findings and nine minors: four fixed directly on the integration branch (736a918: wider invented-date check, outbox write guard, README and plan notes; 187 tests), four folded into S01, one left as spec-conformant. The live-model run (C4) stays blocked until an ANTHROPIC_API_KEY is provided. S01 started on task/S01-representative.
 - 2026-10-07: spec v0.5 frozen, plan written, tracker created.
 - 2026-10-08: T10, T11 approved; T12 reviewed with fixes pending; all merged into task/T10-integration (171 tests); whole-branch review on Fable started; one consolidated fix pass follows.
