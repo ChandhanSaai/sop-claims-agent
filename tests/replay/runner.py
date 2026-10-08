@@ -1,0 +1,76 @@
+from datetime import date
+from pathlib import Path
+
+import yaml
+
+from app.config import Settings
+from app.data.repos import build_repos
+from app.data.store import FixtureStore
+from app.engine.guard import OutputGuard
+from app.engine.machine import Engine
+from app.engine.service import ConversationService
+from app.llm.fake import FakeLLM
+from app.llm.schemas import TurnAnalysis
+from app.observability.trace import TraceWriter
+
+FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def scenario_names() -> list[str]:
+    return sorted(p.stem for p in FIXTURES.glob("*.yaml"))
+
+
+def load(name: str) -> dict:
+    with open(FIXTURES / f"{name}.yaml", encoding="utf-8") as f:
+        return yaml.safe_load(f)
+
+
+def run_scenario(spec: dict, settings: Settings) -> list[dict]:
+    store = FixtureStore.load(settings.fixtures_dir)
+    repos = build_repos(store, settings)
+    today = date.fromisoformat(spec.get("today", "2026-10-07"))
+    llm = FakeLLM([TurnAnalysis.model_validate(t.get("analysis", {})) for t in spec["turns"]])
+    svc = ConversationService(Engine(repos, settings, lambda: today), llm, OutputGuard(store), repos,
+                              settings, TraceWriter(settings.traces_dir))
+    session = svc.start(spec.get("scenario", "default"))
+    results = []
+    for t in spec["turns"]:
+        verified_before = session.verification.status == "verified"
+        res = svc.chat(session, t["user"])
+        results.append({
+            "reply": res.reply, "session": session.model_copy(deep=True), "guard": session.last_guard,
+            "outbox_len": len(svc.outbox(session)), "verified_before": verified_before,
+            "verified_after": session.verification.status == "verified",
+        })
+    return results
+
+
+def assert_turn(i: int, turn_spec: dict, result: dict) -> None:
+    e = turn_spec.get("expect", {})
+    s, reply = result["session"], result["reply"]
+    low = reply.lower()
+    ctx = f"turn {i + 1} ({turn_spec['user'][:40]!r})"
+    if "phase" in e:
+        assert s.phase.value == e["phase"], f"{ctx}: phase {s.phase.value} != {e['phase']}"
+    if "verified" in e:
+        assert (s.verification.status == "verified") == e["verified"], (
+            f"{ctx}: verified {s.verification.status}")
+    if "party_id" in e:
+        assert s.verification.party_id == e["party_id"], ctx
+    if "attempts" in e:
+        assert s.verification.attempts == e["attempts"], f"{ctx}: attempts {s.verification.attempts}"
+    if "pending_ask" in e:
+        assert s.pending_ask.value == e["pending_ask"], f"{ctx}: pending {s.pending_ask.value}"
+    if "escalated" in e:
+        assert s.escalation.requested == e["escalated"], ctx
+    if "off_topic" in e:
+        assert s.counters.off_topic == e["off_topic"], f"{ctx}: off_topic {s.counters.off_topic}"
+    if "outbox_len" in e:
+        assert result["outbox_len"] == e["outbox_len"], ctx
+    for sub in e.get("reply_contains", []):
+        assert sub.lower() in low, f"{ctx}: missing {sub!r} in {reply!r}"
+    for sub in e.get("reply_not_contains", []):
+        assert sub.lower() not in low, f"{ctx}: leaked {sub!r} in {reply!r}"
+    if "guard_ok" in e:
+        assert (result["guard"]["ok"] == e["guard_ok"]
+                and not result["guard"].get("fallback")), f"{ctx}: guard {result['guard']}"
