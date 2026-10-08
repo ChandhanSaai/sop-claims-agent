@@ -277,3 +277,36 @@ def test_summary_offer_and_draft_for_a_representative_go_to_the_policyholder(set
     sent = svc.repos.outbox.list()
     assert len(sent) == 1 and sent[0].to == "margaret@email.com" and sent[0].id in final.reply
     assert "CON-0001" in sent[0].body
+
+
+# A claimed power of attorney goes to a human for document review
+
+
+@pytest.mark.parametrize("relationship", ["power of attorney", "Attorney-in-Fact", "POA"])
+def test_claimed_power_of_attorney_routes_to_a_human_without_matching_or_consent(
+        repos, settings, monkeypatch, no_policyholder_lookup, relationship):
+    calls, requests = [], []
+    monkeypatch.setattr(repos.representatives, "match", lambda *a: calls.append(a))
+    monkeypatch.setattr(repos.consent, "request", lambda *a: requests.append(a))
+    s = Session.new()
+    r = declare(s, repos, settings, caller_role="representative", identity=MARGARET,
+                representative={**DAVID, "relationship": relationship})
+    assert s.verification.declared_representative and s.verification.status == "unverified"
+    assert calls == [] and requests == [] and s.consent.status == "none" and s.consent.consent_id is None
+    assert r.brief.offer_human and s.pending_ask == PendingAsk.HUMAN_OFFER and r.brief.allowed_facts == {}
+    assert "power of attorney" in " ".join(r.brief.must_say).lower()
+    assert any("Do not confirm or deny" in m for m in r.brief.must_not)
+    assert [e.type for e in s.events] == ["poa_claimed"]
+    s.counters.human_declined = True  # a no to the offer
+    r2 = declare(s, repos, settings, representative={"relationship": relationship})
+    assert r2.brief.must_say == r.brief.must_say and not r2.brief.offer_human and r2.brief.ask is None
+    assert s.pending_ask == PendingAsk.NONE and [e.type for e in s.events] == ["poa_claimed"]
+    assert calls == [] and requests == []
+
+
+def test_power_of_attorney_without_names_routes_too_and_a_changed_relationship_resumes(repos, settings):
+    s = Session.new()
+    r = declare(s, repos, settings, representative={"relationship": "power of attorney"})
+    assert r.brief.offer_human and s.pending_ask == PendingAsk.HUMAN_OFFER and s.consent.status == "none"
+    declare(s, repos, settings, representative=DAVID)
+    assert s.consent.status == "pending" and s.consent.consent_id == "CON-0001"

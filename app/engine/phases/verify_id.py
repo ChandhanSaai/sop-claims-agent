@@ -52,6 +52,11 @@ CONSENT_REQUESTED = (
     "A consent request has been sent to the policyholder's contact on file; once they approve it, I can "
     "discuss claim details with you as their authorized representative."
 )
+POA_REVIEW = (
+    "A power of attorney has to be reviewed by a person who can check the documents, so I can't discuss "
+    "claim details on that basis here; I can still answer general questions about how claim documents are "
+    "submitted."
+)
 CONSENT_PENDING = "The policyholder's consent is still pending."
 CONSENT_TIMED_OUT = (
     "The policyholder's consent could not be obtained in this conversation, so I can't discuss claim details "
@@ -129,6 +134,13 @@ def _representative(session: Session, ctx: TurnContext, repos: Repos, hints_note
     if c.status == "timed_out":  # never re-requested
         return _human_brief(session, "Consent was not obtained; general information only; offer a human.",
                             lead + [CONSENT_TIMED_OUT])
+    # spec 7: a claimed power of attorney goes to a person for document review, before any match or consent
+    relationship = normalize_name(session.memory.value("rep_relationship") or "")
+    if relationship == "poa" or "power of attorney" in relationship or "attorney in fact" in relationship:
+        if not any(e.type == "poa_claimed" for e in session.events):
+            session.log("poa_claimed")
+        return _human_brief(session, "A claimed power of attorney needs document review by a person; "
+                                     "general information only.", lead + [POA_REVIEW])
     rep = {n: session.memory.value(n) for n in REP_SLOTS}
     missing = [REP_LABELS[n] for n in REP_SLOTS if not rep[n]]
     if missing:

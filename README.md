@@ -130,19 +130,21 @@ the facts in it, after which the output guard checks the text against the sessio
 | PROCESS_CASE (flexible, grounded) | Free wording around `allowed_facts` that code builds from the selected claim and the guideline: status, denial reason, documents, appeal deadline with a computed passed flag, amounts, guidance text. | A selected claim. Deadlines and money are computed in code; an appeal question after the deadline has passed, or a document the caller cannot get, leads to a human offer. | A switched claim: RESOLVE_INTENT. Closing, or "no" to "anything else?": POST_PROCESS in the same turn. Otherwise it answers and asks "anything else?". |
 | POST_PROCESS (strict offer, flexible wording) | Offer and goodbye wording are free; the summary draft is built by code from the event log and claim data and shown verbatim. | Email offered once, default no; sent only after a yes to the shown draft, and only to the address on file. | A new in-scope question: RESOLVE_INTENT (the same claim reselects at once; verification is kept). Anything else: a short goodbye; the session stays open. |
 
-**Representative callers.** A caller who says they are calling for someone else (role `representative`,
-or an unknown role with a representative detail) is handled on the representative branch for
-the rest of the session, even if they later claim to be the policyholder; a policyholder who merely mentions a
-helper stays on the policyholder path. The branch collects the representative's name, relationship and the
-policyholder's name, matches the names against `fixtures/representatives.json` (David Chen for Margaret Chen),
-and asks `ConsentService` once for the policyholder's consent out of band. The session's consent scenario
-(`default`: pending, then approved; `timeout`: five pendings, then timed out) drives one poll per turn while
-the caller is told that consent is pending and that general questions are still answered. Approval verifies
-the caller with role `representative` and the policyholder's `party_id`, cites the consent id as
-`consent_reference` in the transition facts and on every later disclosure event, and chains into the claim in
-the same turn. A timeout gives general information only, offers a human once and never re-requests. The
-summary email always goes to the policyholder's address on file, the offer says so, and the draft closes with
-the representative's name and the consent reference.
+**Representative callers.** A caller who says they are calling for someone else (role `representative`, or an
+unknown role with a representative detail) is handled on the representative branch for the rest of the
+session, even if they later claim to be the policyholder; a policyholder who merely mentions a helper stays on
+the policyholder path. The branch collects the representative's name, relationship and the policyholder's
+name, matches the names against `fixtures/representatives.json` (David Chen for Margaret Chen), and asks
+`ConsentService` once for the policyholder's consent out of band. The session's consent scenario (`default`:
+pending, then approved; `timeout`: five pendings, then timed out) drives one poll per turn while the caller is
+told that consent is pending and that general questions are still answered. Approval verifies the caller with
+role `representative` and the policyholder's `party_id`, cites the consent id as `consent_reference` in the
+transition facts and on every later disclosure event, and chains into the claim in the same turn. A timeout
+gives general information only, offers a human once and never re-requests. A caller who claims a power of
+attorney (relationship "power of attorney", "attorney-in-fact" or "POA") is routed to a human for document
+review before any match or consent request: general information only, one `poa_claimed` event, and the human
+offer under the usual rule. The summary email always goes to the policyholder's address on file, the offer
+says so, and the draft closes with the representative's name and the consent reference.
 
 Cross-cutting policies, applied before the handler chain (state and counters) and after it (tone overlay):
 
@@ -473,8 +475,8 @@ stretch item S02 and not in this build.
   the HIPAA 164.502(g) personal-representative path are documented, not built.
 - The representative's own identity is not verified against any identifier: the representatives file carries
   only names and the relationship, so the match is by name, and the policyholder's consent is simulated by the
-  scenario file rather than obtained from the policyholder. A claimed power of attorney is not routed
-  specially.
+  scenario file rather than obtained from the policyholder. A claimed power of attorney is routed to a human
+  for document review, not checked here.
 - Emotion detection is text-only and coarse (0..3 scales plus booleans).
 
 Not in this build: live persona evaluations, the hosted demo, the abuse policy and the OpenAI adapter are
@@ -484,8 +486,8 @@ stretch items (below).
 
 - **S01 Representative and consent:** built (see Representative callers under How it works): the
   representative is matched against the representatives file, the policyholder's consent is requested out of
-  band (approve and timeout scenarios) and the consent id is cited on every disclosure. Routing a claimed
-  power of attorney to a human for document review is not built.
+  band (approve and timeout scenarios), the consent id is cited on every disclosure, and a claimed power of
+  attorney is routed to a human for document review.
 - **S02 Live persona evaluations:** five simulated personas run four times each against the real pipeline, with
   code checks for gates and leaks, an LLM judge for tone and groundedness, and a pass^k report; opt-in, never in
   CI by default.
