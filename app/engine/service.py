@@ -34,7 +34,9 @@ class ConversationService:
         self.engine, self.llm, self.guard, self.repos, self.settings, self.trace_writer = (
             engine, llm, guard, repos, settings, trace_writer)
 
-    def start(self, scenario: str = "default") -> Session:
+    def start(self, scenario: str | None = None) -> Session:
+        if scenario is None:  # CONSENT_SCENARIO is the default; an explicit scenario wins
+            scenario = self.settings.consent_scenario
         if scenario not in self.repos.store.consent_scenarios:
             scenario = "default"
         session = Session.new(scenario)

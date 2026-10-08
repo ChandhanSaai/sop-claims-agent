@@ -74,7 +74,7 @@ Every variable in `.env.example`, read by `app/config.py` from the environment o
 | `VERIFY_REQUIRE_STRONG_FIELD` | `false` | When `true`, date of birth or ID last 4 must be among the matches. Off because the brief says any 3 of 5; recommended on in production. |
 | `VERIFY_MAX_ATTEMPTS` | `3` | Failed verify calls allowed per session; then verification is exhausted, the agent stops asking for identifiers and offers a representative. Counted per session, not per record. |
 | `OFFTOPIC_HUMAN_OFFER_AT` | `2` | Off-topic turn on which a human is offered; the next off-topic turn escalates. |
-| `CONSENT_SCENARIO` | `default` | Consent simulation for the representative path (`default`: pending, then approved; `timeout`: five pendings, then timed out). Not read by the app: the per-session scenario comes from the UI selector or `POST /api/session`. |
+| `CONSENT_SCENARIO` | `default` | Consent scenario for new sessions when `POST /api/session` sends none or `scripts/chat_cli.py` gets no argument (`default`: pending, then approved; `timeout`: five pendings, then timed out). A scenario in the request body wins (the UI selector always sends its value); an unknown name falls back to `default`. |
 | `SESSION_TTL_MINUTES` | `60` | Idle minutes before an in-memory session expires; later calls on it get 404. |
 | `DEMO_ACCESS_TOKEN` | empty (off) | When set, every `/api/*` request needs header `X-Access-Token` with this value. |
 | `LOG_LEVEL` | `INFO` | Root level for the JSON logs. |

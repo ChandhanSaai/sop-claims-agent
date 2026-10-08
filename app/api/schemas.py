@@ -4,7 +4,8 @@ from pydantic import BaseModel, Field
 
 
 class SessionCreateRequest(BaseModel):
-    scenario: str = "default"  # consent scenario name from fixtures/consent_scenarios.json
+    # consent scenario name from fixtures/consent_scenarios.json; None: the configured CONSENT_SCENARIO
+    scenario: str | None = None
 
 
 class SessionCreateResponse(BaseModel):

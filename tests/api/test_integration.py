@@ -33,3 +33,12 @@ def test_margaret_over_http(tmp_path):
     assert r["trace"]["phase_before"] == "VERIFY_ID" and r["trace"]["analysis"]["identity"]["dob"] == "******"
     assert c.get(f"/api/session/{sid}/trace").json()["turns"][0]["turn"] == 1
     assert (tmp_path / "t" / f"{sid}.jsonl").exists()
+
+
+def test_session_scenario_defaults_to_the_configured_one_and_the_body_wins(tmp_path):
+    settings = Settings(_env_file=None, fixtures_dir=ROOT / "fixtures", traces_dir=tmp_path / "t",
+                        llm_backend="fake", consent_scenario="timeout")
+    c = TestClient(create_app(settings=settings, service=build_service(settings, llm=FakeLLM())))
+    assert c.post("/api/session", json={}).json()["state"]["scenario"] == "timeout"
+    assert c.post("/api/session", json={"scenario": "default"}).json()["state"]["scenario"] == "default"
+    assert c.post("/api/session", json={"scenario": "bogus"}).json()["state"]["scenario"] == "default"
