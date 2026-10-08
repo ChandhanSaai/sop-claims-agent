@@ -117,7 +117,7 @@ def test_amounts_match_by_token_and_ignore_thousands_separators(store):
 
 def test_raw_dob_echo_is_caught_in_any_format(store):
     g = OutputGuard(store)
-    for raw in ("March 15th, 1985", "15/03/1985"):  # unparseable; parsed, but not among date_variants
+    for raw in ("March 15th, 1985", "15/03/1985"):  # the DD/MM form parses but is not a date_variant
         for verified in (False, True):
             s = unverified(store)
             s.memory.set("dob", raw, 1)
@@ -125,6 +125,17 @@ def test_raw_dob_echo_is_caught_in_any_format(store):
                 s.verification = Verification(status="verified", party_id="P9", role="policyholder")
             r = g.check(f"Thanks, born {raw}.", s, ReplyBrief(phase="p", goal="g"))
             assert "identifier:dob" in r.violations, (raw, verified)
+
+
+def test_partial_raw_dob_does_not_flag_every_month_mention(store):
+    g = OutputGuard(store)
+    s = unverified(store)
+    s.verification = Verification(status="verified", party_id="P9", role="policyholder")
+    post = ReplyBrief(phase="PROCESS_CASE", goal="g", allowed_facts={"appeal_deadline": "March 18, 2026"})
+    s.memory.set("dob", "March", 1)  # a partial value is not an echo to hunt for
+    assert g.check("The appeal deadline was March 18, 2026.", s, post).ok
+    s.memory.set("dob", "March 15th, 1985", 1)
+    assert "identifier:dob" in g.check("Thanks, born March 15th, 1985.", s, post).violations
 
 
 def test_month_year_shared_with_an_allowed_date_is_allowed(store):

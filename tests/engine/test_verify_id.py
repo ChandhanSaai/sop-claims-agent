@@ -3,6 +3,7 @@ from datetime import date
 import pytest
 
 from app.engine.context import resolve_pending
+from app.engine.guard import contains_token, date_variants
 from app.engine.memory import merge_analysis
 from app.engine.phases.verify_id import GENERIC_FAIL, handle
 from app.engine.state import PendingAsk, Phase, Session, SlotStatus
@@ -112,13 +113,21 @@ def test_lookup_miss_with_three_fields_costs_one_attempt(repos, settings):
     assert s.verification.attempts == 1 and s.verification.status == "unverified"
 
 
-@pytest.mark.parametrize("dob", ["03/05/1985", "March 15th, 1985"])  # ambiguous, unparseable
+@pytest.mark.parametrize("dob", ["03/05/1985", "sometime in spring 85"])  # ambiguous, unparseable
 def test_ambiguous_or_unparseable_dob_is_reasked_not_counted(repos, settings, dob):
     s = Session.new()
     r = run(s, repos, settings,
             identity={"full_name": "Margaret Chen", "dob": dob, "id_last4": "4472"})
     assert s.pending_ask == PendingAsk.DOB_FORMAT and s.verification.attempts == 0
     assert "month" in r.brief.ask.lower()
+
+
+def test_dob_reask_example_is_not_a_fixture_dob(repos, settings):
+    s = Session.new()
+    r = run(s, repos, settings, identity={"full_name": "Margaret Chen", "dob": "03/05/1985"})
+    assert s.pending_ask == PendingAsk.DOB_FORMAT
+    for holder in repos.store.policyholders:
+        assert not any(contains_token(r.brief.ask, v) for v in date_variants(holder.dob)), holder.party_id
 
 
 def test_gate_explained_at_most_twice_when_frustrated(repos, settings):

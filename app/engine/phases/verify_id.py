@@ -86,7 +86,7 @@ def handle(
                 must_say=["I want to make sure I read your date of birth correctly."],
                 must_not=BASE_MUST_NOT,
                 ask="Could you give your date of birth with the month spelled out, "
-                    "for example 15 March 1985?",
+                    "for example 4 July 1990?",
             )
             return HandlerResult(brief=brief)
 

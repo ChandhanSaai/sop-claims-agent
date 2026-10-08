@@ -62,7 +62,9 @@ class OutputGuard:
         m = session.memory
         if dob := m.value("dob"):  # the raw value too: memory keeps it as written, parsed or not
             d = parse_dob(dob)[0]
-            if contains_token(text, dob) or (d and any(contains_token(text, v) for v in date_variants(d))):
+            # a partial value ("March") is not an echo to hunt for: the raw check needs two digit runs
+            raw = len(re.findall(r"\d+", dob)) >= 2 and contains_token(text, dob)
+            if raw or (d and any(contains_token(text, v) for v in date_variants(d))):
                 out.append("dob")
         if (ph := m.value("phone")) and (p := normalize_phone(ph)) and p[2:] in digits:
             out.append("phone")
