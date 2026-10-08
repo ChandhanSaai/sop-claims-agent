@@ -389,11 +389,11 @@ CI (`.github/workflows/ci.yml`) runs `ruff check .`, then `pytest -q --ignore=te
 - **API** (`tests/api`): the health check, the session, chat, outbox and trace routes, 404 and 422 handling,
   the access-token gate, session expiry, per-session locking under concurrent chats, the UI being served, and
   Margaret's first turn over HTTP end to end.
-- **Replay** (`tests/replay/test_replay.py`): fourteen scenarios run turn by turn through the full
+- **Replay** (`tests/replay/test_replay.py`): fifteen scenarios run turn by turn through the full
   `ConversationService`: `margaret_happy_path`, `angry_caller`, `refusing_caller`, `decoy_disambiguation`,
   `dob_correction`, `human_request_then_continue`, `injection_attempt`, `off_topic_three_times`,
   `question_after_goodbye`, `near_miss_phone_then_more`, `representative_declared`, `representative_approved`,
-  `representative_timeout` and `abusive_caller`. Each turn can assert
+  `representative_timeout`, `abusive_caller` and `casual_identity_phrasing`. Each turn can assert
   phase, verification, party, attempts, pending ask, escalation, off-topic count, outbox size, text that must
   and must not appear, and the guard's verdict (`guard_ok: true` also requires no fallback).
 - **Leak checks:** the guard tests (`tests/engine/test_guard.py`) prove a pre-verification reply cannot carry a

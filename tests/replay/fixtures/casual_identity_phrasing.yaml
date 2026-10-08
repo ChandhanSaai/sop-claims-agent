@@ -1,0 +1,30 @@
+name: casual_identity_phrasing
+scenario: default
+today: "2026-10-07"
+turns:
+  - user: "margaret chen and 9921 and 1985 march 15th"
+    analysis:
+      identity: {full_name: "margaret chen", policy_number: "9921", dob: "1985 march 15th"}
+      caller_role: policyholder
+      scope: in_scope
+    expect:
+      phase: VERIFY_ID
+      verified: false
+      attempts: 0
+      pending_ask: identity_fields
+      reply_contains: ["one more"]
+      reply_not_contains: ["CL-2048", "pathology", "1985", "9921", "month"]
+      guard_ok: true
+  - user: "ssn last four is 4472"
+    analysis:
+      identity: {id_last4: "4472"}
+      scope: in_scope
+    expect:
+      phase: RESOLVE_INTENT
+      verified: true
+      party_id: P9
+      attempts: 0
+      pending_ask: disambiguation
+      reply_contains: ["CL-2048", "CL-2011"]
+      reply_not_contains: ["4472", "1985", "9921"]
+      guard_ok: true
