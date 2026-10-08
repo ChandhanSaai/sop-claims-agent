@@ -3,10 +3,12 @@
 Usage: python scripts/live_replay.py [scenario ...]   (needs ANTHROPIC_API_KEY in .env; costs API calls)
 
 State expectations (phase, verification, pending ask, escalation, counters, outbox) and the leak checks
-(reply_not_contains, guard verdict) are hard checks. reply_contains wording checks are reported as soft
-mismatches, because a live Writer paraphrases must_say lines. Exit code 1 when any hard check fails.
+(reply_not_contains, guard verdict) are hard checks; so is a turn the model never answered (a Reader or Writer
+failure). reply_contains wording checks are reported as soft mismatches, because a live Writer paraphrases
+must_say lines. Exit code 1 when any hard check fails. The transcript file is written only for a full run.
 """
 import json
+import os
 import sys
 import time
 import traceback
@@ -14,15 +16,15 @@ from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+os.chdir(ROOT)  # .env, fixtures/ and traces/ resolve against the current directory
 sys.path.insert(0, str(ROOT))
 
 from app.config import get_settings  # noqa: E402
-from app.engine.service import build_service  # noqa: E402
+from app.engine.service import TROUBLE, build_service  # noqa: E402
 from app.observability.logging import configure_logging  # noqa: E402
-from tests.replay.runner import load, scenario_names  # noqa: E402
+from tests.replay.runner import EXPECT_KEYS, load, scenario_names  # noqa: E402
 
-HARD_KEYS = ("phase", "verified", "party_id", "attempts", "pending_ask", "escalated", "off_topic",
-             "outbox_len")
+HARD_KEYS = sorted(EXPECT_KEYS - {"reply_contains", "reply_not_contains", "guard_ok"})
 OUT = ROOT / "docs" / "live-transcripts.md"
 
 
@@ -49,9 +51,12 @@ def run_scenario(name: str, settings) -> dict:
         low = res.reply.lower()
         hard += [f"leaked {sub!r}" for sub in e.get("reply_not_contains", []) if sub.lower() in low]
         soft = [f"missing {sub!r}" for sub in e.get("reply_contains", []) if sub.lower() not in low]
-        g = s.last_guard or {}
+        # this turn's verdict; None when no model ran (closed session, Reader failure)
+        g = res.trace.get("guard")
+        if res.reply == TROUBLE or (g or {}).get("fallback") == "llm_error":
+            hard.append("model call failed")
         if "guard_ok" in e:
-            ok = (g.get("ok") and not g.get("fallback")) if e["guard_ok"] else not g.get("ok")
+            ok = g is not None and ((g["ok"] and not g.get("fallback")) if e["guard_ok"] else not g["ok"])
             if not ok:
                 hard.append(f"guard: expected ok={e['guard_ok']}, got {g}")
         turns.append({"i": i + 1, "user": t["user"], "reply": res.reply, "actual": actual, "guard": g,
@@ -59,7 +64,9 @@ def run_scenario(name: str, settings) -> dict:
     return {"name": name, "turns": turns}
 
 
-def guard_text(g: dict) -> str:
+def guard_text(g: dict | None) -> str:
+    if g is None:
+        return "no model call"
     if g.get("ok") and not g.get("fallback"):
         return "ok (regenerated)" if g.get("regenerated") else "ok"
     return json.dumps(g)
@@ -77,16 +84,17 @@ def write_markdown(results: list[dict], settings) -> None:
     for r in results:
         lines += [f"## {r['name']}", ""]
         if "error" in r:
-            lines += ["```", r["error"].rstrip(), "```", ""]
+            lines += ["```", r["error"], "```", ""]
             continue
-        lines.append("| # | Caller says | Reply | Phase after | Verified | Pending ask | Guard | Checks |")
-        lines.append("|---|---|---|---|---|---|---|---|")
+        lines.append("| # | Caller says | Reply | Phase after | Verified | Pending ask | Guard | Secs "
+                     "| Checks |")
+        lines.append("|---|---|---|---|---|---|---|---|---|")
         for t in r["turns"]:
             a = t["actual"]
             checks = "; ".join(["HARD " + h for h in t["hard"]] + ["soft " + s for s in t["soft"]]) or "pass"
             lines.append(f"| {t['i']} | {cell(t['user'])} | {cell(t['reply'])} | {a['phase']} | "
                          f"{'yes' if a['verified'] else 'no'} | {a['pending_ask']} | "
-                         f"{guard_text(t['guard'])} | {checks} |")
+                         f"{cell(guard_text(t['guard']))} | {t['secs']} | {cell(checks)} |")
         lines.append("")
     OUT.write_text("\n".join(lines), encoding="utf-8")
 
@@ -100,8 +108,8 @@ def main() -> int:
         print(f"== {name}", flush=True)
         try:
             r = run_scenario(name, settings)
-        except Exception:  # keep going; the transcript records the failure
-            results.append({"name": name, "error": traceback.format_exc()})
+        except Exception as exc:  # keep going; the transcript records the failure without local paths
+            results.append({"name": name, "error": f"{type(exc).__name__}: {exc}"})
             failed += 1
             print(traceback.format_exc(), flush=True)
             continue
@@ -116,8 +124,10 @@ def main() -> int:
             for line in t["soft"]:
                 print(f"       soft {line}", flush=True)
         failed += any(t["hard"] for t in r["turns"])
-    write_markdown(results, settings)
-    print(f"\n{len(results) - failed}/{len(results)} scenarios without hard failures; wrote {OUT}")
+    if not sys.argv[1:]:  # a subset run never overwrites the full record
+        write_markdown(results, settings)
+        print(f"wrote {OUT}")
+    print(f"{len(results) - failed}/{len(results)} scenarios without hard failures")
     return 1 if failed else 0
 
 
