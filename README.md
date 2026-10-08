@@ -335,7 +335,7 @@ turns:
     analysis:                # scripted Reader output: TurnAnalysis fields, unknown keys rejected
       identity: {full_name: "Margaret Chen"}
       intent: denial_question
-    expect:                  # every key optional; also party_id, escalated, off_topic, outbox_len
+    expect:                  # all optional, unknown keys fail; also party_id, escalated, off_topic, outbox_len
       phase: VERIFY_ID
       verified: false
       attempts: 0
