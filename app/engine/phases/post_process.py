@@ -28,11 +28,13 @@ def handle(
     if not c.email_offered:
         c.email_offered = True
         session.pending_ask = PendingAsk.EMAIL_OFFER
+        must_say = ["Offer to send a summary of this conversation (what was discussed, the claim status and "
+                    "next steps) to the email on file, shown as email_on_file_masked."]
+        if session.verification.role == "representative":  # the address is always the policyholder's
+            must_say.append("Say the summary goes to the policyholder at that address, "
+                            "not to the representative.")
         brief = ReplyBrief(phase=phase, goal="Offer an email summary once, default no.",
-                           allowed_facts={"email_on_file_masked": masked},
-                           must_say=["Offer to send a summary of this conversation (what was discussed, "
-                                     "the claim status and next steps) to the email on file, shown as "
-                                     "email_on_file_masked."],
+                           allowed_facts={"email_on_file_masked": masked}, must_say=must_say,
                            must_not=["Do not ask for an email address.", "Do not show the full address."],
                            ask="Would you like me to send that summary?")
         return HandlerResult(brief=brief)

@@ -5,7 +5,9 @@ from app.engine.machine import Engine
 from app.engine.memory import merge_analysis
 from app.engine.phases import verify_id
 from app.engine.phases.verify_id import CONSENT_FACT, NO_AUTHORIZATION, REP_CALL
+from app.engine.service import build_service
 from app.engine.state import REP_SLOTS, Consent, PendingAsk, Phase, Session, SlotStatus
+from app.llm.fake import FakeLLM
 from app.llm.schemas import TurnAnalysis
 from tests.engine.helpers import TODAY, turn
 
@@ -233,3 +235,45 @@ def test_identifiers_given_by_a_representative_never_verify_them_as_the_policyho
     assert s.phase == Phase.VERIFY_ID and s.verification.last_fingerprint is None
     assert all(s.memory.get(n).status == SlotStatus.PROVISIONAL for n in (*MARGARET, "phone", "email"))
     assert b.allowed_facts == {} and "CL-" not in render_brief(b)
+
+
+# S01-3: the disclosure consent id and the summary offer for a representative
+
+
+def representative_service(settings):
+    """The full service through the approval turn: the FakeLLM scripts the Reader, everything else is real."""
+    llm = FakeLLM([analysis(caller_role="representative", representative=DAVID, case_hints=HINTS,
+                            intent="denial_question"), analysis(), analysis()])
+    svc = build_service(settings, llm=llm, today=lambda: TODAY)
+    s = svc.start()
+    for text in ("David Chen here, calling for my mother Margaret Chen", "Approved yet?", "Anything now?"):
+        svc.chat(s, text)
+    assert s.phase == Phase.PROCESS_CASE and s.verification.role == "representative"
+    assert s.last_guard == {"ok": True, "violations": []}  # the consent reference is an allowed fact
+    return svc, s, llm
+
+
+def test_disclosure_after_representative_verification_carries_the_consent_id(settings):
+    _, s, _ = representative_service(settings)
+    disclosed = [e for e in s.events if e.type == "disclosed"]
+    assert len(disclosed) == 1 and disclosed[0].turn == 3
+    assert disclosed[0].data["role"] == "representative" and disclosed[0].data["consent_id"] == "CON-0001"
+    assert disclosed[0].data["case_id"] == "CL-2048" and "consent_reference" in disclosed[0].data["facts"]
+
+
+def test_summary_offer_and_draft_for_a_representative_go_to_the_policyholder(settings):
+    svc, s, llm = representative_service(settings)
+    llm.queue(analysis(requests={"confirmation": "no", "closing": True}))
+    offer = svc.chat(s, "No, that's all.")
+    assert s.pending_ask == PendingAsk.EMAIL_OFFER and "m*******@email.com" in offer.reply
+    assert "policyholder" in offer.reply and "margaret@email.com" not in offer.reply
+    llm.queue(analysis(requests={"confirmation": "yes"}))
+    svc.chat(s, "Yes please.")
+    assert s.pending_ask == PendingAsk.EMAIL_CONFIRM and s.last_guard["ok"]
+    assert "David Chen" in s.pending_draft and "CON-0001" in s.pending_draft and "CL-2048" in s.pending_draft
+    assert "1985" not in s.pending_draft and "4472" not in s.pending_draft
+    llm.queue(analysis(requests={"confirmation": "yes"}))
+    final = svc.chat(s, "Yes, send it.")
+    sent = svc.repos.outbox.list()
+    assert len(sent) == 1 and sent[0].to == "margaret@email.com" and sent[0].id in final.reply
+    assert "CON-0001" in sent[0].body
