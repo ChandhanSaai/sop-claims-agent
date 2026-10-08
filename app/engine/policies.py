@@ -8,7 +8,10 @@ META_LINE = ("The caller asked about the assistant itself: say plainly that this
              "conversation are used only to handle their request.")
 MIXED_LINE = ("The caller also asked about something outside claims support; say in one short sentence "
               "that you can't help with that part here.")
-NEW_DEVELOPMENT = ("Do not apologize for, correct or comment on earlier replies: they were right when "
+EARLIER_DETAILS_STAND = ("Do not revisit, correct or disclaim the claim details given earlier in this "
+                         "conversation; they stand. This reply covers only what this brief asks for.")
+NEW_DEVELOPMENT = ("State the new development plainly. Do not apologize for, correct or comment on "
+                   "earlier replies: they were right when "
                    "given; this turn reports a new development.")
 STATE_CHANGE_EVENTS = ("verification_reset", "consent_timed_out")
 SCOPE_LINE = ("This assistant handles questions about your claims with us: status, denials, documents, "
@@ -158,9 +161,13 @@ def pass1(session: Session, ctx: TurnContext, settings: Settings) -> None:
 def pass2(session: Session, ctx: TurnContext, brief: ReplyBrief) -> ReplyBrief:
     """After the chain: overlay tone, acknowledgment and the human offer onto the merged brief."""
     update: dict = {"must_say": list(brief.must_say) + ctx.extra_must_say}
-    if ctx.analysis.corrections or any(e.turn == session.turn and e.type in STATE_CHANGE_EVENTS
-                                       for e in session.events):
-        update["must_not"] = [*brief.must_not, NEW_DEVELOPMENT]
+    must_not = list(brief.must_not)
+    if "claim_id" not in brief.allowed_facts and any(e.type == "answered" for e in session.events):
+        must_not.append(EARLIER_DETAILS_STAND)  # a goodbye, offer or decline after claim details were given
+    if any(e.turn == session.turn and e.type in STATE_CHANGE_EVENTS for e in session.events):
+        must_not.append(NEW_DEVELOPMENT)
+    if len(must_not) != len(brief.must_not):
+        update["must_not"] = must_not
     if ctx.tone != "neutral":
         update["tone"] = ctx.tone
     if ctx.acknowledge and not brief.acknowledge:

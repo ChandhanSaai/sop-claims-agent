@@ -399,7 +399,8 @@ CI (`.github/workflows/ci.yml`) runs `ruff check .`, then `pytest -q --ignore=te
   and must not appear, and the guard's verdict (`guard_ok: true` also requires no fallback).
 - **Leak checks:** the guard tests (`tests/engine/test_guard.py`) prove a pre-verification reply cannot carry a
   claim id, a fixture amount, a fixture date in any format or a fixture phrase the caller did not say, and that
-  identifiers are rejected in any format. `tests/replay/test_leaks.py` then checks every reply of every turn
+  identifiers are rejected in their numeric and English forms. `tests/replay/test_leaks.py` then checks every
+  reply of every turn
   that ends unverified, in every scenario, for claim ids, fixture amounts, fixture dates and non-echoed fixture
   phrases, regardless of the guard's verdict. The summary tests check the email body carries no identifiers.
 

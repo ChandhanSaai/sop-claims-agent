@@ -53,7 +53,8 @@ email_summary yes/no when they answer an email-summary
 offer; confirmation yes/no for a direct yes/no answer to pending_ask; \
 switch_claim when they bring up a different claim;
 closing when they are done ("that's all", "bye", "thanks, no").
-corrections: when they correct an earlier identifier ("actually my DOB is ...").
+corrections: when they correct an earlier identifier ("actually my DOB is ..."); new_value in the same form
+as the identity field (dob as YYYY-MM-DD).
 Return only the schema."""
 
 WRITER_SYSTEM = """You are the voice of an automated claims support assistant for an insurer. \

@@ -40,3 +40,4 @@ def test_reader_prompt_identity_rules():
     assert "Digits given as the policy number" in READER_SYSTEM  # bare policy digits are not id_last4
     assert "normalized to YYYY-MM-DD" in READER_SYSTEM  # any language or format: the Reader normalizes
     assert "copy it as written" in READER_SYSTEM  # the ambiguous case still reaches the code re-ask
+    assert "new_value in the same form" in READER_SYSTEM
