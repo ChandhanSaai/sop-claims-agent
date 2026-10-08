@@ -58,3 +58,15 @@ def test_returning_with_same_claim_reselects_immediately(repos, settings):
     s.phase = Phase.RESOLVE_INTENT
     r = turn(s, repos, settings, resolve_intent.handle, intent="status_inquiry")
     assert r.advanced and s.case.selected_case_id == "CL-2048"
+
+
+def test_returning_with_consistent_new_hint_keeps_claim(repos, settings):
+    s = verified_session(repos)
+    turn(s, repos, settings, resolve_intent.handle,
+         case_hints={"case_type": "healthcare", "status": "denied", "month": 1})
+    s.phase = Phase.RESOLVE_INTENT
+    r = turn(s, repos, settings, resolve_intent.handle, case_hints={"year": 2026})
+    assert r.advanced and s.case.selected_case_id == "CL-2048"
+    s.phase = Phase.RESOLVE_INTENT
+    turn(s, repos, settings, resolve_intent.handle, case_hints={"case_type": "auto"})
+    assert s.case.selected_case_id == "CL-2102"

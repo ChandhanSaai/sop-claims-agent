@@ -109,3 +109,38 @@ def test_full_chain_margaret_one_turn(repos, settings):
     assert brief.must_say[1].startswith("The claim you mentioned is CL-2048")
     assert brief.allowed_facts["claim_id"] == "CL-2048" and "denial_reason" in brief.allowed_facts
     assert not any("Do not confirm or deny" in m for m in brief.must_not)
+
+
+def test_closed_status_question_is_not_a_missing_document(repos, settings):
+    s = in_case(repos, settings)
+    r = turn(s, repos, settings, process_case.handle, intent="status_inquiry",
+             question="Is this claim closed now?")
+    assert not any(k.startswith("alternative_") for k in r.brief.allowed_facts)
+    assert not r.brief.offer_human and s.pending_ask == PendingAsk.ANYTHING_ELSE
+
+
+def test_next_steps_on_claim_without_documents_skips_submission(repos, settings):
+    s = in_case(repos, settings, "CL-2102")
+    r = turn(s, repos, settings, process_case.handle, intent="next_steps")
+    assert "submission_guidance" not in r.brief.allowed_facts
+    assert not any(m.startswith("Explain what to send") for m in r.brief.must_say)
+    assert r.brief.ask == process_case.ANYTHING_ELSE_ASK and s.pending_ask == PendingAsk.ANYTHING_ELSE
+
+
+def test_switch_drops_previous_claims_intent(repos, settings):
+    s = in_case(repos, settings)
+    turn(s, repos, settings, process_case.handle, case_hints={"case_type": "auto"},
+         requests={"switch_claim": True})
+    turn(s, repos, settings, resolve_intent.handle)
+    assert s.case.selected_case_id == "CL-2102" and s.case.intent == "general_claim_question"
+
+
+def test_no_to_anything_else_while_switching_answers_new_claim(repos, settings):
+    s = in_case(repos, settings)
+    turn(s, repos, settings, process_case.handle, intent="denial_question")
+    eng = Engine(repos, settings, today=lambda: date(2026, 10, 7))
+    analysis = TurnAnalysis.model_validate({"requests": {"confirmation": "no"},
+                                            "case_hints": {"case_type": "auto"}})
+    brief = eng.handle_turn(s, analysis, "No, but what about my auto claim?")
+    assert s.phase == Phase.PROCESS_CASE and brief.allowed_facts["claim_id"] == "CL-2102"
+    assert brief.ask == process_case.ANYTHING_ELSE_ASK and s.pending_ask == PendingAsk.ANYTHING_ELSE

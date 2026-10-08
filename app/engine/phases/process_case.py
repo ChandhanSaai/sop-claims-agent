@@ -6,7 +6,7 @@ from app.data.normalize import docs_match, fmt_date
 from app.data.repos import Repos
 from app.engine.briefs import HandlerResult
 from app.engine.context import HUMAN_ASK, TurnContext
-from app.engine.phases.resolve_intent import HINT_SLOT_NAMES, drop_stale_hints
+from app.engine.phases.resolve_intent import HINT_SLOT_NAMES, drop_stale_hints, hints_from_memory
 from app.engine.state import PendingAsk, Phase, Session
 from app.llm.schemas import ReplyBrief
 
@@ -42,19 +42,8 @@ def base_facts(claim: Claim, today: date) -> dict[str, str]:
     return facts
 
 
-def hints_match(claim: Claim, session: Session) -> bool:
-    m = session.memory
-    if (cid := m.value("case_id")) and cid.upper() != claim.case_id:
-        return False
-    if (ct := m.value("case_type")) and ct != claim.case_type:
-        return False
-    if (st := m.value("status_hint")) and st != claim.status:
-        return False
-    if (mo := m.value("month")) and int(mo) != claim.created_at.month:
-        return False
-    if (yr := m.value("year")) and int(yr) != claim.created_at.year:
-        return False
-    return True
+def hints_match(claim: Claim, session: Session, repos: Repos) -> bool:
+    return bool(repos.claims.filter([claim], **hints_from_memory(session)))
 
 
 def _key(name: str) -> str:
@@ -69,11 +58,12 @@ def handle(
     g = repos.guideline
     hint_changed = any(n in ctx.changed_slots for n in HINT_SLOT_NAMES)
 
-    if a.requests.switch_claim or (hint_changed and not hints_match(claim, session)):
+    if a.requests.switch_claim or (hint_changed and not hints_match(claim, session, repos)):
         drop_stale_hints(session, ctx.changed_slots)
         session.case.selected_case_id = None
         session.phase = Phase.RESOLVE_INTENT
         session.pending_ask = PendingAsk.NONE
+        ctx.anything_else_no = False  # a "no" here answered the old claim's ask, not the new claim's
         return HandlerResult(brief=ReplyBrief(phase=Phase.RESOLVE_INTENT.value, goal="Switch claim."),
                              advanced=True, needs_input=False)
     if ctx.anything_else_no or (a.requests.closing and a.intent == "none" and not a.question):
@@ -102,7 +92,7 @@ def handle(
 
     wants_submission = (intent in ("document_submission", "next_steps")
                         and topic in (None, *SUBMISSION_TOPICS)) or topic in SUBMISSION_TOPICS
-    if wants_submission:
+    if wants_submission and docs:
         for d in docs:
             if hit := g.document_guidance(d):
                 facts[f"guidance_{_key(hit[0])}"] = hit[1]
@@ -123,7 +113,8 @@ def handle(
             facts["fallback_guidance"] = g.fallback()
             must_say.append("Use fallback_guidance to set expectations.")
 
-    cannot_get = topic == "missing_required_material_alternatives" or any(w in q for w in CANNOT_WORDS)
+    cannot_get = topic == "missing_required_material_alternatives" or (
+        any(w in q for w in CANNOT_WORDS) and any(docs_match(d, q) for d in docs))
     if cannot_get and docs:
         targets = [d for d in docs if docs_match(d, q)] or docs
         for d in targets:

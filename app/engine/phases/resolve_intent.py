@@ -24,8 +24,8 @@ def hints_from_memory(session: Session) -> dict:
 
 
 def drop_stale_hints(session: Session, changed: list[str]) -> None:
-    """When the caller moves to another claim, hints from the old claim must not filter the new search."""
-    for n in HINT_SLOT_NAMES:
+    """When the caller moves to another claim, the old claim's hints and intent must not carry over."""
+    for n in (*HINT_SLOT_NAMES, "intent"):
         if n not in changed:
             session.memory.slots.pop(n, None)
 
@@ -69,8 +69,10 @@ def handle(
         if pick:
             return _select(session, by_id[pick])
 
-    if session.case.selected_case_id in by_id and not hint_changed:
-        return _select(session, by_id[session.case.selected_case_id])
+    selected = by_id.get(session.case.selected_case_id)
+    # a new hint that still fits the selected claim (its year, say) keeps it instead of re-searching
+    if selected and (not hint_changed or repos.claims.filter([selected], **hints_from_memory(session))):
+        return _select(session, selected)
     if session.case.selected_case_id and hint_changed:
         drop_stale_hints(session, ctx.changed_slots)
 
