@@ -151,6 +151,10 @@ class Session(BaseModel):
     events: list[Event] = Field(default_factory=list)
     transcript: list[Turn] = Field(default_factory=list)
     pending_draft: str | None = None
+    # a verification reset fences off the earlier party: events before fence_turn and transcript entries
+    # before transcript_fence are not reused for whoever verifies next
+    fence_turn: int = 0
+    transcript_fence: int = 0
     last_brief: ReplyBrief | None = None
     last_guard: dict[str, Any] | None = None
     traces: list[dict[str, Any]] = Field(default_factory=list)
@@ -161,6 +165,11 @@ class Session(BaseModel):
 
     def log(self, type: str, **data: Any) -> None:
         self.events.append(Event(turn=self.turn, type=type, data=data))
+
+    def fenced_events(self) -> list[Event]:
+        """Events since the last verification reset, that turn included: the new party may verify and get an
+        answer in the reset turn itself."""
+        return [e for e in self.events if e.turn >= self.fence_turn]
 
     def last_assistant_text(self) -> str | None:
         for t in reversed(self.transcript):

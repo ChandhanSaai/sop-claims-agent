@@ -1,4 +1,6 @@
 from app.engine.machine import Engine
+from app.engine.phases.post_process import GOODBYE
+from app.engine.phases.resolve_intent import NO_CLAIMS
 from app.engine.phases.verify_id import NOT_PENDING
 from app.engine.policies import BOUNDARY_LINE, CLOSE_LINE, EARLIER_DETAILS_STAND, NEW_DEVELOPMENT, SCOPE_LINE
 from app.engine.state import PendingAsk, Phase, Session, Verification
@@ -315,3 +317,21 @@ def test_a_claim_list_after_an_answer_is_not_told_that_earlier_details_stand(rep
                         "what about my other healthcare claims?")
     assert s.phase == Phase.RESOLVE_INTENT and any(k.startswith("option_") for k in b.allowed_facts)
     assert EARLIER_DETAILS_STAND not in b.must_not
+
+
+def test_earlier_details_and_the_email_offer_look_only_past_the_verification_fence(repos, settings):
+    eng = Engine(repos, settings)
+    s = Session.new()
+    eng.greeting(s)
+    eng.handle_turn(s, A(identity={"full_name": "Margaret Chen", "dob": "1985-03-15", "id_last4": "4472"},
+                         case_hints={"status": "denied", "case_type": "healthcare", "month": 1},
+                         intent="denial_question"), "Margaret Chen, 1985-03-15, 4472, my denied claim")
+    assert any(e.type == "answered" for e in s.events)
+    b = eng.handle_turn(s, A(corrections=[{"slot": "full_name", "new_value": "Ava Lopez"},
+                                          {"slot": "dob", "new_value": "1990-08-21"},
+                                          {"slot": "id_last4", "new_value": "9180"}]),
+                        "Sorry, this is Ava Lopez, born 1990-08-21, last four 9180.")
+    assert s.verification.party_id == "P7" and b.must_say[-1] == NO_CLAIMS  # Ava has no claims
+    assert EARLIER_DETAILS_STAND not in b.must_not  # Margaret's answer is behind the fence
+    b2 = eng.handle_turn(s, A(requests={"confirmation": "no", "closing": True}), "No, that's all.")
+    assert s.phase == Phase.POST_PROCESS and b2.must_say == [GOODBYE] and not s.counters.email_offered

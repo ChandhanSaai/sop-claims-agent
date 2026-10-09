@@ -83,7 +83,7 @@ class ConversationService:
 
     def _compose_guarded(self, session: Session, brief: ReplyBrief) -> tuple[str, dict[str, Any]]:
         try:
-            text = self.llm.compose(brief=brief, transcript=session.transcript)
+            text = self.llm.compose(brief=brief, transcript=session.transcript[session.transcript_fence:])
         except LLMError as e:
             log.warning("writer failed: %s", e)
             session.log("llm_error", stage="writer")
@@ -93,7 +93,7 @@ class ConversationService:
             return text, result.model_dump()
         session.log("guard_violation", violations=result.violations, attempt=1)
         try:
-            text = self.llm.compose(brief=brief, transcript=session.transcript,
+            text = self.llm.compose(brief=brief, transcript=session.transcript[session.transcript_fence:],
                                     violation="; ".join(result.violations))
         except LLMError as e:
             log.warning("writer regenerate failed: %s", e)

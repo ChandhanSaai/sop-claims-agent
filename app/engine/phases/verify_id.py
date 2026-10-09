@@ -9,7 +9,7 @@ from app.engine.briefs import HandlerResult
 from app.engine.context import HUMAN_ASK, TurnContext
 from app.engine.phases.post_process import GOODBYE
 from app.engine.phases.process_case import SUBMISSION_TOPICS
-from app.engine.state import IDENTITY_SLOTS, REP_SLOTS, PendingAsk, Phase, Session
+from app.engine.state import HINT_SLOTS, IDENTITY_SLOTS, REP_SLOTS, PendingAsk, Phase, Session
 from app.llm.schemas import ReplyBrief
 
 FIELD_LABELS = {
@@ -279,6 +279,12 @@ def _handle(
     passes = [(r, res) for r, res in checks if res.passed]
     if len(passes) == 1:
         rec, result = passes[0]
+        before = next((e.data["party_id"] for e in reversed(session.events)
+                       if e.type == "verification_reset"), None)
+        if before and before != rec.party_id:  # someone else: the hints given before the reset are not theirs
+            for n in HINT_SLOTS:
+                if (slot := session.memory.get(n)) and slot.source_turn < session.fence_turn:
+                    del session.memory.slots[n]
         v.status, v.party_id, v.role = "verified", rec.party_id, "policyholder"
         session.memory.mark_verified(result.matched)  # a wrong extra identifier stays provisional
         session.log("verified", party_id=rec.party_id, fields=len(provided))

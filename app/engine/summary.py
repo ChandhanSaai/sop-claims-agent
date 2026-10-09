@@ -10,7 +10,7 @@ def build_summary(session: Session, repos: Repos, today: date) -> str:
     One section per claim, in the order the claims were first discussed."""
     facts_by_claim: dict[str, set[str]] = {}
     current = None
-    for e in session.events:
+    for e in session.fenced_events():
         if e.type == "claim_selected":
             current = e.data["case_id"]
             facts_by_claim.setdefault(current, set())

@@ -40,12 +40,16 @@ def merge_analysis(session: Session, analysis: TurnAnalysis) -> list[str]:
         if session.memory.set(c.slot, c.new_value.strip(), t, overwrite_verified=True):
             changed.append(c.slot)
         if was_verified and session.verification.status == "verified":
+            party_id = session.verification.party_id
             # the representative flag is sticky for the session; everything else about verification resets
             session.verification = Verification(
                 declared_representative=session.verification.declared_representative)
             session.case = CaseState()  # a different party may verify next; its claims are re-resolved
             session.memory.reset_identity()
+            # the earlier party's answers and replies are not the next party's: the summary, the earlier-
+            # details rule, the email offer and the Writer's window look only past these fences
+            session.fence_turn, session.transcript_fence = t, len(session.transcript)
             session.phase = Phase.VERIFY_ID
             session.pending_ask = PendingAsk.NONE
-            session.log("verification_reset", slot=c.slot)
+            session.log("verification_reset", slot=c.slot, party_id=party_id)
     return changed

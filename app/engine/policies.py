@@ -162,7 +162,7 @@ def pass2(session: Session, ctx: TurnContext, brief: ReplyBrief) -> ReplyBrief:
     update: dict = {"must_say": list(brief.must_say) + ctx.extra_must_say}
     must_not = list(brief.must_not)
     has_claim_facts = any(k == "claim_id" or k.startswith("option_") for k in brief.allowed_facts)
-    if not has_claim_facts and any(e.type == "answered" for e in session.events):
+    if not has_claim_facts and any(e.type == "answered" for e in session.fenced_events()):
         must_not.append(EARLIER_DETAILS_STAND)  # a goodbye, offer or decline after claim details were given
     if any(e.turn == session.turn and e.type in STATE_CHANGE_EVENTS for e in session.events):
         must_not.append(NEW_DEVELOPMENT)
