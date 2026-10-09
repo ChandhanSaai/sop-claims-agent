@@ -7,7 +7,7 @@ const EXAMPLES = [
 ];
 const NEEDS_TOKEN = "This server needs an access token. Use the Access token button above to enter it.";
 
-// The guided walkthrough: the same conversation a caller would have, one phase per turn.
+// The guided walkthrough: the same conversation a caller would have, one phase at a time.
 const TOUR = [
   "Hi, I'm Margaret Chen, policy POL-9921.",
   "DOB 1985-03-15, SSN last four 4472.",
@@ -151,7 +151,7 @@ function showExamples() {
   EXAMPLES.forEach((text) => {
     const chip = el("button", "chip", text);
     chip.type = "button";
-    chip.addEventListener("click", () => { if (!busy) { $("input").value = text; sendMessage(); } });
+    chip.addEventListener("click", () => { if (!busy && !touring) { $("input").value = text; sendMessage(); } });
     box.appendChild(chip);
   });
   $("messages").appendChild(box);
@@ -425,13 +425,16 @@ async function runTour() {
       if (!(await sendMessage())) return;
       await new Promise((resolve) => setTimeout(resolve, 900));
     }
-    if (sessionId === sid) {
-      addMessage("system", "Walkthrough complete: four phases, one summary email in the outbox. Keep chatting, or "
-        + "start a new conversation.");
+    if (sessionId === sid) {  // the closing line claims only what the page shows
+      const phases = $("messages").querySelectorAll(".phase-divider").length;
+      const sent = $("outbox").querySelectorAll("li:not(.empty)").length;
+      const summary = phases === 4 && sent === 1 ? ": four phases, one summary email in the outbox" : "";
+      addMessage("system", `Walkthrough complete${summary}. Keep chatting, or start a new conversation.`);
     }
   } finally {
     touring = false;
     setBusy(busy);
+    $("input").focus();
   }
 }
 
