@@ -213,7 +213,7 @@ def test_the_outbox_stays_behind_the_fence(settings):
     assert all(e["turn"] >= 5 for e in session.snapshot()["events"])
 
 
-def test_a_confirmed_identity_puts_the_displaced_question_again_word_for_word(settings):
+def test_a_confirmed_identity_puts_the_displaced_question_again(settings):
     llm = ScriptedWriter([])
     for a in ({"identity": {"full_name": "Margaret Chen", "dob": "1985-03-15", "id_last4": "4472"},
                "case_hints": {"case_id": "CL-2048"}, "intent": "denial_question"},
@@ -226,10 +226,30 @@ def test_a_confirmed_identity_puts_the_displaced_question_again_word_for_word(se
     session = svc.start()
     for text in ("Margaret Chen, 1985-03-15, 4472, about CL-2048", "No, that's all.", "Maggie Chen here"):
         svc.chat(session, text)
-    offer = session.transcript[-3].text  # the email offer the question displaced
     assert session.pending_ask.value == "identity_confirm"
     assert "Is this still Margaret Chen?" in session.transcript[-1].text
     res = svc.chat(session, "Yes, Maggie Chen, that's me")
-    assert res.reply.endswith(offer) and session.pending_ask.value == "email_offer"
+    assert "send that summary" in res.reply and session.pending_ask.value == "email_offer"
+    assert "CL-2048" not in res.reply and session.last_guard["ok"]
     svc.chat(session, "yes please")
     assert session.pending_ask.value == "email_confirm"
+
+
+def test_nothing_said_before_the_question_is_replayed_after_a_switch(settings):
+    """A yes that also asks for a person, then a different caller: the earlier answer must not come back."""
+    llm = ScriptedWriter([])
+    for a in ({"identity": {"full_name": "Margaret Chen", "dob": "1985-03-15", "id_last4": "4472"},
+               "case_hints": {"case_id": "CL-2048"}, "intent": "denial_question"},
+              {"identity": {"full_name": "Maggie Chen"}},
+              {"requests": {"confirmation": "yes", "wants_human": True}},
+              {"identity": {"full_name": "Ma Tian"}, "intent": "status_inquiry"}):
+        llm.queue(TurnAnalysis.model_validate(a))
+    svc = build_service(settings, llm=llm)
+    session = svc.start()
+    svc.chat(session, "Margaret Chen, 1985-03-15, 4472, about CL-2048")
+    svc.chat(session, "Maggie Chen here")
+    svc.chat(session, "Yes it's me - can I talk to a person?")
+    assert session.escalation.requested and session.pending_identity is None
+    res = svc.chat(session, "This is Ma Tian now. What's my claim status?")
+    assert session.verification.status == "unverified" and session.fence_turn == 4
+    assert "CL-2048" not in res.reply and "pathology" not in res.reply

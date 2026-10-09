@@ -274,7 +274,8 @@ def test_no_name_from_an_open_question_is_stored_and_a_labelled_switch_wipes(rep
     b = eng.handle_turn(s, analysis(requests={"confirmation": "yes"}), "Yes.")  # Tom's yes: still Margaret
     assert s.verification.party_id == "P9" and s.memory.value("full_name") == "Margaret"
     b = eng.handle_turn(s, analysis(identity={"full_name": "Tom Chen"}), "I'm Tom Chen, really.")
-    assert s.pending_ask == PendingAsk.IDENTITY_CONFIRM  # still a question, never the same person
+    # a yes binds the name to the caller from then on; what matters is that nothing of Tom's was stored
+    assert s.pending_identity is None and s.memory.value("full_name") == "Margaret"
     eng = Engine(repos, settings)  # a labelled correction while the question is open wipes the identifiers
     s = Session.new()
     eng.greeting(s)
@@ -332,6 +333,7 @@ def test_a_yes_with_the_callers_name_does_not_loop_and_resumes_the_displaced_que
     eng.handle_turn(s, analysis(requests={"confirmation": "yes"}, identity={"full_name": "Maggie Chen"}),
                     "Yes, Maggie Chen, that's me")
     assert s.pending_identity is None and s.pending_ask == PendingAsk.EMAIL_OFFER  # resumed
+    assert s.reask == PendingAsk.NONE and "Maggie Chen" in s.confirmed_names
     eng.handle_turn(s, analysis(requests={"confirmation": "yes", "email_summary": "yes"}), "yes please")
     assert s.pending_ask == PendingAsk.EMAIL_CONFIRM
 
@@ -361,3 +363,35 @@ def test_an_unlabelled_different_date_of_birth_wipes_the_earlier_identifiers(rep
     b = eng.handle_turn(s, analysis(identity={"dob": "1964-09-10"}), "born 1964-09-10")
     assert s.verification.status == "unverified" and s.memory.value("full_name") is None
     assert s.memory.value("dob") == "1964-09-10" and "CL-2048" not in render_brief(b)
+
+
+def test_a_declined_offer_is_not_put_again_and_a_confirmed_name_is_the_callers(repos, settings):
+    eng = Engine(repos, settings)
+    s = Session.new()
+    eng.greeting(s)
+    margaret = {"full_name": "Margaret Chen", "dob": "1985-03-15", "id_last4": "4472"}
+    eng.handle_turn(s, analysis(identity=margaret, case_hints={"case_id": "CL-2048"}), "Margaret ...")
+    eng.handle_turn(s, analysis(affect={"frustration": 2}), "can I still appeal it?!")
+    eng.handle_turn(s, analysis(affect={"frustration": 2}), "this is taking forever")
+    assert s.pending_ask == PendingAsk.HUMAN_OFFER
+    eng.handle_turn(s, analysis(requests={"confirmation": "no"}, identity={"full_name": "Maggie Chen"},
+                                intent="document_submission"), "No thanks. This is Maggie Chen, documents?")
+    assert s.pending_identity.resume == PendingAsk.NONE and s.counters.human_declined
+    b = eng.handle_turn(s, analysis(requests={"confirmation": "yes"}), "Yes, it's me.")
+    assert not b.offer_human and s.pending_ask != PendingAsk.HUMAN_OFFER
+    b = eng.handle_turn(s, analysis(identity={"full_name": "Maggie Chen"}, intent="next_steps"),
+                        "Maggie Chen again, what's the deadline?")  # confirmed once: hers from now on
+    assert s.pending_identity is None and "CL-2048" in render_brief(b)
+
+
+def test_an_exact_restatement_of_the_callers_name_answers_the_question(repos, settings):
+    eng = Engine(repos, settings)
+    s = Session.new()
+    eng.greeting(s)
+    margaret = {"full_name": "Margaret Chen", "dob": "1985-03-15", "id_last4": "4472"}
+    eng.handle_turn(s, analysis(identity=margaret, case_hints={"case_id": "CL-2048"}), "Margaret ...")
+    eng.handle_turn(s, analysis(identity={"full_name": "Mrs. Chen"}), "Mrs. Chen here")
+    assert s.pending_ask == PendingAsk.IDENTITY_CONFIRM
+    b = eng.handle_turn(s, analysis(identity={"full_name": "Margaret Chen"}, intent="next_steps"),
+                        "Sorry - Margaret Chen. What's the deadline?")
+    assert s.pending_identity is None and s.verification.party_id == "P9" and "CL-2048" in render_brief(b)

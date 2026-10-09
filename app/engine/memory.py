@@ -103,9 +103,11 @@ def _known_names(session: Session) -> list[str]:
     verifies too)."""
     v, c = session.verification, session.consent
     if v.declared_representative:
-        return [n for n in (c.representative_name, session.memory.value("rep_name")) if n]
-    slot = session.memory.value("full_name")
-    return [*v.names, *([slot] if slot else [])]
+        names = [n for n in (c.representative_name, session.memory.value("rep_name")) if n]
+    else:
+        slot = session.memory.value("full_name")
+        names = [*v.names, *([slot] if slot else [])]
+    return names + session.confirmed_names
 
 
 def _names_given(analysis: TurnAnalysis, *, with_rep: bool) -> list[str]:
@@ -130,10 +132,13 @@ def _ask_identity(session: Session, analysis: TurnAnalysis, name: str) -> None:
     """Open the question "is this still X?". It names the caller as known so far, remembers the question it
     displaces so a yes can resume it, and holds everything identity-related in this message."""
     who_slot = "rep_name" if session.verification.declared_representative else "full_name"
-    resume = session.pending_ask if session.pending_ask != PendingAsk.IDENTITY_CONFIRM else PendingAsk.NONE
+    resume = session.pending_ask
+    declined = resume == PendingAsk.HUMAN_OFFER and analysis.requests.confirmation == "no"
+    if resume == PendingAsk.IDENTITY_CONFIRM or declined:  # a declined offer is not put again
+        resume = PendingAsk.NONE
     session.pending_identity = IdentityQuestion(
         candidate=name.strip(), who=session.memory.value(who_slot) or "the person verified earlier",
-        resume=resume, asked=(session.last_assistant_text() or "") if resume != PendingAsk.NONE else "")
+        resume=resume)
     session.pending_ask = PendingAsk.IDENTITY_CONFIRM
     _hold_identity(analysis)
 
@@ -153,16 +158,26 @@ def _confirm_answer(session: Session, analysis: TurnAnalysis) -> None:
     q = session.pending_identity
     if q is None:
         return
-    names = _names_given(analysis, with_rep=session.verification.declared_representative)
+    rep = session.verification.declared_representative
+    names = _names_given(analysis, with_rep=rep)
+    if rep:  # the policyholder's name names the person consent is asked from, not the caller
+        c = session.consent
+        holder = [n for n in (c.policyholder_name, session.memory.value("rep_policyholder_name")) if n]
+        names = [n for n in names if name_match(n, holder) != "same"]
     verdicts = [name_match(n, _known_names(session)) for n in names]
     # a labelled correction that is not the caller's name is an explicit no
     corrected = [c.new_value for c in analysis.corrections if c.slot == "full_name"]
     insists = any(name_match(n, _known_names(session)) != "same" for n in corrected)
     r = analysis.requests
     no = r.confirmation == "no" or "other" in verdicts or insists
-    if r.confirmation == "yes" and not no:
+    # an exact restatement of the caller's own name answers yes by itself
+    yes = r.confirmation == "yes" or ("same" in verdicts and "partial" not in verdicts)
+    if yes and not no:
         session.pending_identity, session.pending_ask = None, q.resume
-        session.resume_text = q.asked or None  # the displaced question is put again
+        session.confirmed_names.append(q.candidate)  # the nickname is theirs from now on
+        # the displaced question is put again in fixed words, through the Writer and the guard
+        if q.resume in (PendingAsk.EMAIL_OFFER, PendingAsk.EMAIL_CONFIRM, PendingAsk.HUMAN_OFFER):
+            session.reask = q.resume
         _hold_identity(analysis)
         return
     if no:
@@ -288,6 +303,8 @@ def _reset_verification(session: Session, *, slot: str, party_id: str | None, wi
     session.phase = Phase.VERIFY_ID
     session.pending_ask = PendingAsk.NONE
     session.pending_identity = None
+    session.reask = PendingAsk.NONE
+    session.confirmed_names = []
     session.pending_draft = None  # a draft written for the earlier party is never sent to the next
     session.escalation = Escalation()
     session.counters.human_declined = False

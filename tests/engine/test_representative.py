@@ -687,7 +687,19 @@ def test_the_representatives_own_full_name_in_a_yes_keeps_the_consent(repos, set
     eng.handle_turn(s, analysis(requests={"confirmation": "yes"}, identity={"full_name": "David Chen"}),
                     "Yes, this is David Chen")
     assert s.pending_identity is None and s.consent.status == "pending" and s.fence_turn == 0
+    assert s.consent.status == "pending"  # the yes turn polled once
     eng.handle_turn(s, analysis(representative={"name": "David Chen"}), "It's David Chen, any news?")
-    assert s.pending_identity is None and s.consent.status == "pending"  # the yes turn re-asked, no poll
-    eng.handle_turn(s, analysis(), "Anything now?")
-    assert s.consent.status == "approved"  # the second poll approves
+    assert s.pending_identity is None and s.consent.status == "approved"  # the second poll approves
+
+
+def test_a_yes_naming_the_policyholder_keeps_the_consent(repos, settings, no_policyholder_lookup):
+    eng = Engine(repos, settings, lambda: TODAY)
+    s = Session.new()
+    eng.greeting(s)
+    eng.handle_turn(s, analysis(caller_role="representative", representative=DAVID,
+                                identity={"policy_number": "POL-9921"}), "David Chen, for my mother")
+    eng.handle_turn(s, analysis(representative={"name": "Dave"}), "Dave here")
+    assert s.pending_ask == PendingAsk.IDENTITY_CONFIRM
+    eng.handle_turn(s, analysis(requests={"confirmation": "yes"}, identity={"full_name": "Margaret Chen"}),
+                    "Yes, I'm calling for Margaret Chen")
+    assert s.pending_identity is None and s.consent.status == "pending" and s.fence_turn == 0

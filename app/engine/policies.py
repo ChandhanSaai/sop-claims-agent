@@ -20,6 +20,14 @@ BOUNDARY_LINE = ("I'm glad to keep helping with your claim, and I need this conv
 CLOSE_LINE = "This conversation hasn't stayed respectful, so I'm ending it here."
 ABUSE_CLOSE_AT = 2  # the spec: one boundary statement, then the conversation ends
 IDENTITY_CHECK = "Before I go on, I want to be sure who I'm speaking with."
+# after a confirmed identity, the question it displaced is put again in fixed words: never stored text
+REASK = {
+    PendingAsk.EMAIL_OFFER: ("Offer again to send a summary of this conversation to the email on file.",
+                             "Would you like me to send that summary?"),
+    PendingAsk.EMAIL_CONFIRM: ("The draft summary shown earlier is still waiting for a go-ahead.",
+                               "Shall I send it to the email on file?"),
+    PendingAsk.HUMAN_OFFER: (None, HUMAN_ASK),
+}
 
 
 def _acknowledgment_seed(session: Session) -> str:
@@ -150,12 +158,13 @@ def pass1(session: Session, ctx: TurnContext, settings: Settings) -> None:
         session.pending_ask = PendingAsk.IDENTITY_CONFIRM
         ctx.policy_brief = identity_confirm_brief(session)
         return
-    if session.resume_text:  # the identity was confirmed: the question it displaced is put again
+    if session.reask != PendingAsk.NONE:  # the identity was confirmed: the question it displaced is put again
+        line, ask = REASK[session.reask]
+        session.reask = PendingAsk.NONE
         ctx.policy_brief = ReplyBrief(
-            phase=session.phase.value, goal="Thank the caller for confirming; the earlier question follows.",
-            must_say=["Thanks for confirming.", "Say the earlier question follows."],
-            must_not=["Do not add anything else."], verbatim=session.resume_text)
-        session.resume_text = None
+            phase=session.phase.value, goal="Thank the caller for confirming; the earlier question again.",
+            must_say=["Thanks for confirming.", *([line] if line else [])],
+            must_not=["Do not mention any claim details."], ask=ask)
         return
 
     off_topic = a.scope == "out_of_scope" or a.injection_suspected
