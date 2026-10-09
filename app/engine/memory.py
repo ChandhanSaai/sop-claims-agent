@@ -1,6 +1,9 @@
+import hashlib
 from datetime import date
 
-from app.data.normalize import normalize_id4, normalize_name, parse_dob
+from app.data.models import Policyholder
+from app.data.normalize import normalize_email, normalize_id4, normalize_name, normalize_phone, parse_dob
+from app.data.repos import id_key
 from app.engine.state import (
     IDENTITY_SLOTS,
     REP_SLOTS,
@@ -97,14 +100,50 @@ def _dob_readings(value: str) -> set[date]:
     return out
 
 
-def _same_value(slot: str, stored: str | None, given: str) -> bool:
-    """A date of birth or ID that reads as the stored value; an unreadable or ambiguous one that does not is a
-    question, never the same person by default."""
-    if not stored:
-        return False
+IDENTIFIERS = ("dob", "id_last4", "phone", "email", "policy_number")
+
+
+def _forms(slot: str, value: str) -> set[str]:
+    """Every normalized form a written identifier can mean (a date of birth: both orders when ambiguous)."""
     if slot == "dob":
-        return bool(_dob_readings(stored) & _dob_readings(given))
-    return normalize_id4(given) is not None and normalize_id4(given) == normalize_id4(stored)
+        return {d.isoformat() for d in _dob_readings(value)}
+    if slot == "id_last4":
+        n = normalize_id4(value)
+    elif slot == "phone":
+        n = normalize_phone(value)
+    elif slot == "email":
+        n = normalize_email(value)
+    else:
+        n = id_key(value)
+    return {n} if n else set()
+
+
+def fingerprint(slot: str, form: str) -> str:
+    return hashlib.sha256(f"{slot}:{form}".encode()).hexdigest()
+
+
+def record_fingerprints(rec: Policyholder) -> dict[str, list[str]]:
+    """Hashes of every identifier on file, aliases included: compared with, never shown."""
+    values = {
+        "dob": [rec.dob.isoformat()], "id_last4": [rec.id_last4],
+        "phone": [rec.phone, *rec.phone_aliases], "email": [rec.email, *rec.email_aliases],
+        "policy_number": [rec.policy_number],
+    }
+    return {slot: [fingerprint(slot, f) for v in vals for f in _forms(slot, str(v))]
+            for slot, vals in values.items()}
+
+
+def _same_value(session: Session, slot: str, given: str) -> bool:
+    """An identifier that reads as the one the caller gave, or, when they never gave this one, as the one on
+    file; an unreadable or ambiguous value that reads as neither is a question, never the same person."""
+    forms = _forms(slot, given)
+    if not forms:
+        return False
+    stored = session.memory.value(slot)
+    if stored:
+        return bool(forms & _forms(slot, stored))
+    on_file = session.verification.fingerprints.get(slot, [])
+    return any(fingerprint(slot, f) in on_file for f in forms)
 
 
 def signals(session: Session, analysis: TurnAnalysis) -> list[str]:
@@ -112,8 +151,9 @@ def signals(session: Session, analysis: TurnAnalysis) -> list[str]:
     On a policyholder session: a name other than the caller's, any representative detail, or a caller who
     says they are a representative (a helper mention is a representative detail too). On a representative
     session: a name other than the representative's or the policyholder's, a changed relationship, a caller
-    who now says they are the policyholder. On a policyholder session also a date of birth or ID that does
-    not read as the one given before. Each item is the text that raised it."""
+    who now says they are the policyholder. On a policyholder session also an identifier (date of birth,
+    ID, phone, email, policy number) that reads as neither the one given before nor the one on file. Each
+    item is the text that raised it."""
     v, rep, ident = session.verification, analysis.representative, analysis.identity
     known, holder = known_names(session), _holder_names(session)
     out: list[str] = []
@@ -132,18 +172,39 @@ def signals(session: Session, analysis: TurnAnalysis) -> list[str]:
         out.append(rep.name or rep.policyholder_name or "a representative")
     if v.declared_representative:  # a representative gives the policyholder's identifiers, never their own
         return out
-    for slot in ("dob", "id_last4"):
+    for slot in IDENTIFIERS:
         given = getattr(ident, slot) or next((c.new_value for c in analysis.corrections if c.slot == slot),
                                              None)
-        if given and not _same_value(slot, session.memory.value(slot), str(given)):
+        if given and not _same_value(session, slot, str(given)):
             out.append(str(given))
     return out
 
 
-def _restates_identity(analysis: TurnAnalysis) -> bool:
-    """The message carries identity content (all of it restated exactly when `signals` is empty)."""
-    rep, ident = analysis.representative, analysis.identity
-    return bool(ident.full_name or ident.dob or ident.id_last4 or analysis.corrections or rep.name)
+def _restates_identity(session: Session, analysis: TurnAnalysis) -> bool:
+    """The message carries identity content and every piece of it is something the gate compared and found
+    exact: a name of the caller's own, or (on a policyholder session) an identifier that reads as theirs.
+    Content the gate never compares (the policyholder's name or an identifier on a representative session,
+    a relationship) is no answer."""
+    v, rep, ident = session.verification, analysis.representative, analysis.identity
+    known = known_names(session)
+    names = [ident.full_name, *[c.new_value for c in analysis.corrections if c.slot == "full_name"]]
+    if v.declared_representative and rep.name:
+        names.append(rep.name)
+    names = [n for n in names if n]
+    idents = [] if v.declared_representative else [
+        (slot, getattr(ident, slot) or next((c.new_value for c in analysis.corrections if c.slot == slot),
+                                             None))
+        for slot in IDENTIFIERS]
+    idents = [(slot, g) for slot, g in idents if g]
+    other = [c for c in analysis.corrections if c.slot not in ("full_name", *IDENTIFIERS)]
+    if not names and not idents:
+        return False
+    if other or (v.declared_representative and (ident.dob or ident.id_last4 or ident.phone or ident.email
+                                                  or ident.policy_number or rep.relationship
+                                                  or rep.policyholder_name)):
+        return False
+    return (all(exact(n, known) for n in names)
+            and all(_same_value(session, slot, str(g)) for slot, g in idents))
 
 
 def _hold_identity(analysis: TurnAnalysis) -> None:
@@ -202,7 +263,7 @@ def _confirm_answer(session: Session, analysis: TurnAnalysis) -> None:
     if signals(session, analysis):
         _hold_identity(analysis)  # evidence of someone else beside a yes: asked again
         return
-    if analysis.requests.confirmation == "yes" or _restates_identity(analysis):
+    if analysis.requests.confirmation == "yes" or _restates_identity(session, analysis):
         session.pending_identity, session.pending_ask = None, q.resume
         if q.resume in (PendingAsk.EMAIL_OFFER, PendingAsk.EMAIL_CONFIRM, PendingAsk.HUMAN_OFFER):
             session.reask = q.resume  # put again in fixed words, through the Writer and the guard

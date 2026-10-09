@@ -161,8 +161,10 @@ def pass1(session: Session, ctx: TurnContext, settings: Settings) -> None:
         session.pending_ask = PendingAsk.NONE
         session.counters.human_declined = True
     off_topic = a.scope == "out_of_scope" or a.injection_suspected
-    if off_topic:  # counted even when the identity question takes the turn
+    if off_topic:  # counted even when the identity question takes the turn, up to the offer step
         session.counters.off_topic += 1
+        if session.pending_identity:
+            session.counters.off_topic = min(session.counters.off_topic, settings.offtopic_human_offer_at - 1)
     if session.pending_identity:  # open, or just raised by this message: nothing else is answered
         session.pending_ask = PendingAsk.IDENTITY_CONFIRM
         ctx.policy_brief = identity_confirm_brief(session)

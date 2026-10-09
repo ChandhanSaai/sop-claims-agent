@@ -454,3 +454,17 @@ def test_on_a_representative_call_a_changed_relationship_or_a_policyholder_claim
     eng.handle_turn(s, analysis(caller_role="policyholder", identity={"full_name": "Margaret Chen"}),
                     "This is Margaret Chen herself")
     assert s.pending_ask == PendingAsk.IDENTITY_CONFIRM and s.consent.status == "pending"
+
+
+def test_on_a_representative_call_uncompared_content_never_answers_the_question(repos, settings,
+                                                                                no_policyholder_lookup):
+    eng, s = declared(repos, settings)
+    eng.handle_turn(s, analysis(representative={"name": "Tom Lee"}), "Tom Lee here")
+    for answer in (analysis(identity={"dob": "1990-01-01"}), analysis(identity={"id_last4": "1234"}),
+                   analysis(corrections=[{"slot": "policy_number", "new_value": "POL-9921"}]),
+                   analysis(identity={"full_name": "Margaret Chen"}, caller_role="unknown"),
+                   analysis(representative={"relationship": "son"})):
+        eng.handle_turn(s, answer, "...")
+        assert s.pending_ask == PendingAsk.IDENTITY_CONFIRM and s.consent.status == "pending"
+    eng.handle_turn(s, analysis(representative={"name": "David Chen"}), "David Chen")  # his own name
+    assert s.pending_identity is None

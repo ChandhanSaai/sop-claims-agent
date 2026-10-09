@@ -7,6 +7,7 @@ from app.data.normalize import normalize_email, normalize_id4, normalize_name, n
 from app.data.repos import IDENTIFIERS, Repos
 from app.engine.briefs import HandlerResult
 from app.engine.context import HUMAN_ASK, TurnContext
+from app.engine.memory import record_fingerprints
 from app.engine.phases.post_process import GOODBYE
 from app.engine.phases.process_case import SUBMISSION_TOPICS
 from app.engine.state import HINT_SLOTS, IDENTITY_SLOTS, REP_SLOTS, Escalation, PendingAsk, Phase, Session
@@ -72,6 +73,11 @@ CONSENT_FACT = (
     "Give the consent_reference."
 )
 MEANWHILE_ASK = "Is there a general question I can help with in the meantime?"
+
+
+def _unspaced_script(name: str) -> bool:
+    return any("\u4e00" <= c <= "\u9fff" or "\u3040" <= c <= "\u30ff" or "\uac00" <= c <= "\ud7af"
+               for c in name)
 
 
 def _claims_poa(relationship: str | None) -> bool:
@@ -263,8 +269,9 @@ def _handle(
     provided = {n: val for n in IDENTIFIERS if (val := session.memory.value(n))}
     # a single Latin word is a first name: incomplete rather than wrong, so it costs no attempt (a name in
     # another script has no word boundaries to count)
-    first_name_only = ("full_name" in provided and normalize_name(provided["full_name"]).isascii()
-                       and len(normalize_name(provided["full_name"]).split()) < 2)
+    # one word is a first name, except in scripts that write a whole name without spaces (CJK, kana, Hangul)
+    first_name_only = ("full_name" in provided and len(normalize_name(provided["full_name"]).split()) < 2
+                       and not _unspaced_script(provided["full_name"]))
     if first_name_only:
         provided.pop("full_name")
     if "dob" in provided:
@@ -324,6 +331,7 @@ def _handle(
         _new_party_cleanup(session, f"policyholder:{rec.party_id}")
         v.status, v.party_id, v.role = "verified", rec.party_id, "policyholder"
         v.names = [rec.name, *rec.name_aliases]
+        v.fingerprints = record_fingerprints(rec)
         session.memory.mark_verified(result.matched)  # a wrong extra identifier stays provisional
         session.log("verified", party_id=rec.party_id, fields=len(provided))
         session.phase = Phase.RESOLVE_INTENT

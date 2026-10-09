@@ -318,3 +318,43 @@ def test_restating_a_declaration_is_no_answer_and_a_different_script_is_a_differ
     assert s.verification.party_id == "P9"
     eng.handle_turn(s, analysis(identity={"full_name": "मोना शर्मा"}), "...")
     assert s.pending_ask == PendingAsk.IDENTITY_CONFIRM
+
+
+def test_the_answer_counts_only_what_the_gate_compared(repos, settings):
+    eng, s = verified(repos, settings)
+    eng.handle_turn(s, analysis(identity={"full_name": "Tom Lee"}), "Tom Lee here")
+    for answer in (analysis(corrections=[{"slot": "policy_number", "new_value": "POL-8836"}]),
+                   analysis(corrections=[{"slot": "phone", "new_value": "650-208-8799"}]),
+                   analysis(identity={"email": "matian@example.com"}),
+                   analysis(identity={"dob": "1964-09-10"})):
+        b = eng.handle_turn(s, answer, "...")
+        assert s.pending_ask == PendingAsk.IDENTITY_CONFIRM and "CL-2048" not in render_brief(b)
+    b = eng.handle_turn(s, analysis(identity={"policy_number": "pol 9921", "dob": "15/03/1985"}), "...")
+    assert s.pending_identity is None and s.verification.party_id == "P9"  # her own, restated: a yes
+
+
+def test_identifiers_are_compared_with_the_record_when_never_given(repos, settings):
+    eng, s = verified(repos, settings, identity={"full_name": "Margaret Chen", "id_last4": "4472",
+                                                "phone": "650-521-2836"})
+    assert s.memory.value("dob") is None and "dob" in s.verification.fingerprints
+    for own in ({"dob": "March 15, 1985"}, {"email": "margaret@email.com"}, {"policy_number": "POL-9921"}):
+        eng.handle_turn(s, analysis(identity=own), "...")
+        assert s.pending_identity is None, own
+    for other in ({"dob": "1964-09-10"}, {"email": "matian@example.com"}, {"policy_number": "POL-8836"},
+                  {"phone": "650-208-8799"}):
+        eng, s = verified(repos, settings)
+        b = eng.handle_turn(s, analysis(identity=other, intent="status_inquiry"), "my details, status?")
+        assert s.pending_ask == PendingAsk.IDENTITY_CONFIRM and "CL-2048" not in render_brief(b), other
+    assert "fingerprints" not in s.snapshot()["verification"]
+
+
+def test_off_topic_during_the_question_never_skips_the_human_offer(repos, settings):
+    eng, s = verified(repos, settings)
+    eng.handle_turn(s, analysis(identity={"full_name": "Tom Lee"}), "Tom Lee here")
+    for _ in range(3):
+        eng.handle_turn(s, analysis(scope="out_of_scope"), "what is the weather?")
+    assert s.counters.off_topic == settings.offtopic_human_offer_at - 1 and not s.escalation.requested
+    eng.handle_turn(s, analysis(requests={"confirmation": "yes"}), "yes")  # in scope: the streak restarts
+    eng.handle_turn(s, analysis(scope="out_of_scope"), "the weather, though?")
+    b = eng.handle_turn(s, analysis(scope="out_of_scope"), "come on, the weather")
+    assert b.offer_human and not s.escalation.requested  # the offer step is never skipped

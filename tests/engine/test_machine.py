@@ -60,7 +60,7 @@ def test_one_turn_verify_resolve_answer_says_each_transition_fact_once(repos, se
     assert brief.allowed_facts["claim_id"] == "CL-2048" and brief.ask
 
 
-def test_a_plain_yes_or_no_to_the_identity_question_is_read_by_code():
+def test_a_bare_yes_or_no_to_the_identity_question_is_read_by_code():
     from app.engine.context import resolve_pending
     from app.engine.state import IdentityQuestion, PendingAsk, Session
     from app.llm.schemas import TurnAnalysis
@@ -68,10 +68,13 @@ def test_a_plain_yes_or_no_to_the_identity_question_is_read_by_code():
     s = Session.new()
     s.pending_identity = IdentityQuestion(candidate="Ma Tian", who="Margaret Chen")
     s.pending_ask = PendingAsk.IDENTITY_CONFIRM
-    for text, expected in (("No. Ma Tian, born 1964-09-10, last four 6688.", "no"), ("Nope", "no"),
-                           ("no, this is Ma Tian", "no"), ("Yes.", "yes"), ("yes it's me", "yes"),
-                           ("It's me, Margaret", "yes"), ("No wonder it took so long", "unspecified"),
-                           ("Yesterday I called", "unspecified"), ("Notably, no", "unspecified")):
+    for text, expected in (("No.", "no"), ("Nope", "no"), ("no!", "no"), ("Yes.", "yes"),
+                           ("yes, it's me", "yes"),
+                           ("Yep! Still me.", "yes"), ("No. Ma Tian, born 1964-09-10.", "unspecified"),
+                           ("Yes, this is her son David", "unspecified"), ("It's me, Tom", "unspecified"),
+                           ("No, that's all.", "unspecified"), ("No, it's still me.", "unspecified"),
+                           ("No wonder it took so long", "unspecified"),
+                           ("Yesterday I called", "unspecified")):
         a = TurnAnalysis.empty()
         resolve_pending(s, a, text)
         assert a.requests.confirmation == expected, text

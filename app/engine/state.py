@@ -86,6 +86,9 @@ class Verification(BaseModel):
     party_id: str | None = None
     # the verified party's names on file (record name, then aliases): what a later name is compared with
     names: list[str] = Field(default_factory=list)
+    # sha256 of each identifier on file (every alias), so a value the caller gives later can be compared
+    # without any stored value leaving the record
+    fingerprints: dict[str, list[str]] = Field(default_factory=dict)
     attempts: int = 0
     role: Literal["policyholder", "representative"] | None = None
     # the caller said they are calling for someone else; sticks for the session, so a later claim to be
@@ -221,7 +224,7 @@ class Session(BaseModel):
             "pending_ask": self.pending_ask.value,
             "closed": self.closed,
             "fence_turn": self.fence_turn,
-            "verification": self.verification.model_dump(exclude={"last_fingerprint"}),
+            "verification": self.verification.model_dump(exclude={"last_fingerprint", "fingerprints"}),
             "consent": self.consent.model_dump(exclude={"last_match"}),
             "case": self.case.model_dump(),
             "escalation": self.escalation.model_dump(),
