@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -32,6 +33,16 @@ class VerificationResult(BaseModel):
     matched: list[str] = Field(default_factory=list)
 
 
+def _policy_key(s: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", s.casefold())  # "POL-9921", "pol 9921" -> "pol9921"
+
+
+def _policy_matches(given_key: str, on_file: str) -> bool:
+    """The whole token, or the digits alone when the caller gives only digits ("9921")."""
+    f = _policy_key(on_file)
+    return given_key == f or (given_key.isdigit() and len(given_key) >= 4 and f.endswith(given_key))
+
+
 class PolicyholderRepo:
     def __init__(self, records: list[Policyholder]):
         self._records = records
@@ -56,12 +67,12 @@ class PolicyholderRepo:
              email: str | None = None, name: str | None = None) -> list[Policyholder]:
         """Every record any given key matches, in record order: a near-miss phone that belongs to another
         record must not hide the record the name, email or policy number points at (verify decides)."""
-        pn = policy_number.strip().casefold() if policy_number else None
+        pn = _policy_key(policy_number) if policy_number else None
         p = normalize_phone(phone) if phone else None
         e = normalize_email(email) if email else None
         n = normalize_name(name) if name else None
         return [r for r in self._records
-                if (pn and r.policy_number.casefold() == pn) or (p and p in self._phones(r))
+                if (pn and _policy_matches(pn, r.policy_number)) or (p and p in self._phones(r))
                 or (e and e in self._emails(r)) or (n and n in self._names(r))]
 
     def verify(self, record: Policyholder, provided: dict[str, str], *, min_fields: int,

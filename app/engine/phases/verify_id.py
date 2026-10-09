@@ -25,8 +25,7 @@ MEANWHILE = "Meanwhile, I can answer general questions about how claim documents
 GENERAL_SUBMISSION = ("Answer the general question about submitting claim documents from "
                       "submission_guidance, without reference to any claim.")
 GENERIC_FAIL = (
-    "I wasn't able to verify your identity with those details. Please check them and try again, "
-    "or share different identifiers."
+    "I wasn't able to verify your identity with those details."
 )
 NOTED = "I've noted what you're calling about and will look at it as soon as verification is complete."
 BASE_MUST_NOT = [
@@ -222,11 +221,10 @@ def _handle(
             session.pending_ask = PendingAsk.DOB_FORMAT
             brief = ReplyBrief(
                 phase=Phase.VERIFY_ID.value,
-                goal="Re-ask the date of birth with the month spelled out.",
-                must_say=["I want to make sure I read your date of birth correctly."],
+                goal="Re-ask the date of birth with the month as a word.",
+                must_say=["I want to make sure I have your date of birth right."],
                 must_not=BASE_MUST_NOT,
-                ask="Could you give your date of birth with the month spelled out, "
-                    "for example 4 July 1990?",
+                ask="Could you give it with the month written as a word, for example 4 July 1990?",
             )
             return HandlerResult(brief=brief)
 
@@ -252,7 +250,7 @@ def _handle(
         session.pending_ask = PendingAsk.IDENTITY_FIELDS
         brief = ReplyBrief(phase=Phase.VERIFY_ID.value, goal="Ask for corrected or different identifiers.",
                            must_say=[GENERIC_FAIL], must_not=BASE_MUST_NOT,
-                           ask="Could you re-check the details or share different identifiers?")
+                           ask="Could you double-check them, or give me a different detail instead?")
         return HandlerResult(brief=brief)
     v.last_fingerprint = fp
     candidates = repos.policyholders.find(
@@ -292,6 +290,6 @@ def _handle(
         goal="Report that verification did not succeed, without saying which detail failed.",
         must_say=[GENERIC_FAIL],
         must_not=BASE_MUST_NOT + ["Do not say which detail did not match."],
-        ask="Could you re-check the details or share different identifiers?",
+        ask="Could you double-check them, or give me a different detail instead?",
     )
     return HandlerResult(brief=brief)

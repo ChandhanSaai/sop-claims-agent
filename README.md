@@ -389,11 +389,11 @@ CI (`.github/workflows/ci.yml`) runs `ruff check .`, then `pytest -q --ignore=te
 - **API** (`tests/api`): the health check, the session, chat, outbox and trace routes, 404 and 422 handling,
   the access-token gate, session expiry, per-session locking under concurrent chats, the UI being served, and
   Margaret's first turn over HTTP end to end.
-- **Replay** (`tests/replay/test_replay.py`): fourteen scenarios run turn by turn through the full
+- **Replay** (`tests/replay/test_replay.py`): fifteen scenarios run turn by turn through the full
   `ConversationService`: `margaret_happy_path`, `angry_caller`, `refusing_caller`, `decoy_disambiguation`,
   `dob_correction`, `human_request_then_continue`, `injection_attempt`, `off_topic_three_times`,
   `question_after_goodbye`, `near_miss_phone_then_more`, `representative_declared`, `representative_approved`,
-  `representative_timeout` and `abusive_caller`. Each turn can assert
+  `representative_timeout`, `abusive_caller` and `casual_identity_phrasing`. Each turn can assert
   phase, verification, party, attempts, pending ask, escalation, off-topic count, outbox size, text that must
   and must not appear, and the guard's verdict (`guard_ok: true` also requires no fallback).
 - **Leak checks:** the guard tests (`tests/engine/test_guard.py`) prove a pre-verification reply cannot carry a
@@ -428,14 +428,15 @@ turns:
 the real Reader and Writer (it needs `ANTHROPIC_API_KEY` in `.env` and costs API calls) and writes
 `docs/live-transcripts.md`. State and leak expectations are hard checks, and so is a Reader or Writer
 failure; wording expectations are soft, because a live Writer paraphrases. Last run, with Sonnet 5.5 in both
-roles: 14 of 14 scenarios passed every hard check and every wording check over 51 turns, with no guard
-regeneration and 3 to 17 seconds per turn, most under 8 (the Secs column in the transcript). In an earlier
-run the first Reader call with a new output schema took about 35 seconds (the schema is compiled and cached
-server-side). The first live run exposed one Writer habit the offline suite could not: at the goodbye step
-it second-guessed facts it had stated correctly earlier, so the Writer prompt now says that earlier replies
-were grounded when written and are never retracted or commented on. The committed run shows no retraction,
-but one reply still opens with an apology for its earlier answers: the rule reduces the habit rather than
-removing it.
+roles: 15 of 15 scenarios passed every hard check over 53 turns, with one soft wording miss (an escalation
+reply paraphrased "I remain available"), no guard regeneration and 3 to 6 seconds per turn (the Secs
+column in the transcript). In an earlier run the first Reader call with a new output schema took about 35
+seconds (the schema is compiled and cached server-side). The first live run exposed one Writer habit the
+offline suite could not: at the goodbye step it second-guessed facts it had stated correctly earlier, so the
+Writer prompt now says that earlier replies were grounded when written and are never retracted or commented
+on. The committed run shows the habit reduced, not gone: no apology, but in `dob_correction` turn 2, after
+a corrected date of birth reset verification, the reply says its earlier claim details "shouldn't have"
+been given, although they were given to a verified caller at the time.
 
 Live persona evaluations (simulated callers scored as pass^k with an LLM judge) remain stretch item S02.
 

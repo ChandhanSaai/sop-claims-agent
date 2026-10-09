@@ -7,8 +7,9 @@ _NON_ALNUM = re.compile(r"[^a-z0-9 ]")
 _STOP = {"the", "a", "an", "of", "and", "or", "to", "for", "in", "on", "at", "by", "with", "original"}
 # not "one": "the denied one" is not a pick
 _ORDINALS = {"first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5}
-_DOB_FORMATS = (
-    "%Y-%m-%d", "%B %d, %Y", "%B %d %Y", "%d %B %Y", "%b %d, %Y", "%b %d %Y", "%d %b %Y", "%Y/%m/%d"
+_DOB_FORMATS = (  # commas are stripped before matching; month names match in any case
+    "%Y-%m-%d", "%Y/%m/%d", "%B %d %Y", "%b %d %Y", "%d %B %Y", "%d %b %Y",
+    "%Y %B %d", "%Y %b %d", "%Y %d %B", "%Y %d %b",
 )
 
 
@@ -39,6 +40,8 @@ def normalize_id4(s: str) -> str | None:
 def parse_dob(s: str) -> tuple[date | None, bool]:
     """Return (date, ambiguous). Ambiguous means a numeric date where day and month could be swapped."""
     s = re.sub(r"(\d)(st|nd|rd|th)\b", r"\1", s.strip())  # "March 15th, 1985" -> "March 15, 1985"
+    s = re.sub(r"\b(of|the)\b", " ", s, flags=re.IGNORECASE)  # "15th of March 1985"
+    s = re.sub(r"\s+", " ", s.replace(",", " ")).strip()
     for fmt in _DOB_FORMATS:
         try:
             return datetime.strptime(s, fmt).date(), False

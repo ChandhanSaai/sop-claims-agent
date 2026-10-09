@@ -139,3 +139,9 @@ def test_outbox_keeps_the_record_when_the_file_cannot_be_written(tmp_path):
     box = EmailOutbox(tmp_path / "blocked" / "outbox.jsonl")  # mkdir raises an OSError
     rec = box.send("margaret@email.com", "Summary", "body")
     assert rec.id == "EML-0001" and box.list() == [rec]
+
+
+def test_find_by_policy_digits_alone(repos):
+    assert [r.party_id for r in repos.policyholders.find(policy_number="9921")] == ["P9"]
+    assert [r.party_id for r in repos.policyholders.find(policy_number="pol 9921")] == ["P9"]
+    assert repos.policyholders.find(policy_number="992") == []
