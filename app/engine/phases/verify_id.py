@@ -9,7 +9,7 @@ from app.engine.briefs import HandlerResult
 from app.engine.context import HUMAN_ASK, TurnContext
 from app.engine.phases.post_process import GOODBYE
 from app.engine.phases.process_case import SUBMISSION_TOPICS
-from app.engine.state import HINT_SLOTS, IDENTITY_SLOTS, REP_SLOTS, PendingAsk, Phase, Session
+from app.engine.state import HINT_SLOTS, IDENTITY_SLOTS, REP_SLOTS, Escalation, PendingAsk, Phase, Session
 from app.llm.schemas import ReplyBrief
 
 FIELD_LABELS = {
@@ -102,15 +102,20 @@ def _human_brief(session: Session, goal: str, must_say: list[str],
 
 
 def _new_party_cleanup(session: Session, party_id: str) -> None:
-    """Someone other than the party before the verification reset verified: the hints given before the
-    reset are not theirs, and the summary offer is theirs to get."""
-    before = next((e.data["party_id"] for e in reversed(session.events)
-                   if e.type == "verification_reset"), None)
-    if before and before != party_id:
+    """After a verification reset: someone else verified, so the hints given before the reset are not theirs
+    and the summary offer is theirs to get; or the same party verified again, so their hand-off and declined
+    offer come back from the reset event unless a newer hand-off happened in between."""
+    ev = next((e for e in reversed(session.events) if e.type == "verification_reset"), None)
+    if ev is None:
+        return
+    if ev.data["party_id"] != party_id:
         for n in HINT_SLOTS:
             if (slot := session.memory.get(n)) and slot.source_turn < session.fence_turn:
                 del session.memory.slots[n]
         session.counters.email_offered = False
+    elif not session.escalation.requested:
+        session.escalation = Escalation(**ev.data["escalation"])
+        session.counters.human_declined = ev.data["human_declined"]
 
 
 def _approve(session: Session) -> HandlerResult:

@@ -61,7 +61,8 @@ def run_scenario(name: str, settings) -> dict:
         if res.reply == TROUBLE or (g or {}).get("fallback") == "llm_error":
             hard.append("model call failed")
         if "guard_ok" in e:
-            ok = g is not None and ((g["ok"] and not g.get("fallback")) if e["guard_ok"] else not g["ok"])
+            ok = g is not None and ((g["ok"] and not g.get("fallback")) if e["guard_ok"]
+                                    else (not g["ok"] or bool(g.get("draft_violations"))))
             if not ok:
                 hard.append(f"guard: expected ok={e['guard_ok']}, got {g}")
         turns.append({"i": i + 1, "user": t["user"], "reply": res.reply, "actual": actual, "guard": g,

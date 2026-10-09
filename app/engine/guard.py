@@ -15,6 +15,7 @@ NUMBER = re.compile(r"\d[\d,]*\.\d+|\d{3,}")  # bare numbers under 100 ("the 2 d
 THOUSANDS = re.compile(r"(?<=\d),(?=\d{3}(?!\d))")  # "$1,450.00" -> "$1450.00", not "March 18,2026"
 _MONTHS = {name.casefold(): i for names in (calendar.month_name, calendar.month_abbr)
            for i, name in enumerate(names) if name}  # "january" -> 1, "jan" -> 1
+_ENGLISH = set(_MONTHS)
 # the Writer answers in the caller's language: month words in the languages the demo is likely to meet
 for _words in ("enero febrero marzo abril mayo junio julio agosto septiembre octubre noviembre diciembre",
                "janvier février mars avril mai juin juillet août septembre octobre novembre décembre",
@@ -25,29 +26,36 @@ for _words in ("enero febrero marzo abril mayo junio julio agosto septiembre oct
     _MONTHS.update({w: i for i, w in enumerate(_words.split(), start=1)})
 _MONTH_WORDS = "|".join(sorted(_MONTHS, key=len, reverse=True))
 # any date mention, fixture or invented, month first or day first, ISO or m/d/yyyy: "April 30, 2026",
-# "apr 30th", "30 April 2026", "30 de abril de 2026", "30. April 2026", "2026-04-30", "4/30/2026";
-# a bare "may" after a number ("the 2 may differ") is a month only with a year
+# "apr 30th", "30 April 2026", "the 30th of April", "30 de abril de 2026", "30. April 2026", "2026-04-30",
+# "4/30/2026". A day-first English month needs a year, an ordinal or "of" ("2 January claims", "1. March" and
+# "the 2 may differ" are counts and list numbers), and a month word followed by a day is read month first.
 GENERIC_DATE = re.compile(
     rf"\b(?P<m1>{_MONTH_WORDS})\.?\s+(?P<d1>\d{{1,2}})(?:st|nd|rd|th)?(?:,?\s+(?P<y1>\d{{4}}))?\b"
-    rf"|\b(?P<d2>\d{{1,2}})(?:st|nd|rd|th|\.)?\s+(?:of\s+|de\s+)?(?P<m2>(?!may\b(?!,?\s+\d{{4}}))"
-    rf"(?:{_MONTH_WORDS}))\.?(?:,?\s+(?:de\s+)?(?P<y2>\d{{4}}))?\b"
+    rf"|\b(?P<d2>\d{{1,2}})(?P<mark>st|nd|rd|th|\.)?(?:\s+(?P<of>of|de))?\s+(?P<m2>{_MONTH_WORDS})"
+    rf"(?!\.?\s+\d{{1,2}}(?!\d))\.?(?:,?\s+(?:de\s+)?(?P<y2>\d{{4}}))?\b"
     r"|\b(?P<y3>\d{4})-(?P<m3>\d{2})-(?P<d3>\d{2})\b|\b(?P<m4>\d{1,2})/(?P<d4>\d{1,2})/(?P<y4>\d{4})\b",
     re.IGNORECASE)
 
 
-def date_mention(m: re.Match) -> tuple[int, int, int | None]:
-    """(month, day, year or None) for a GENERIC_DATE match."""
+def date_mention(m: re.Match) -> tuple[int, int, int | None] | None:
+    """(month, day, year or None) for a GENERIC_DATE match; None when the match is not a date after all."""
     g = m.groupdict()
-    for mo, da, yr in (("m1", "d1", "y1"), ("m2", "d2", "y2")):
-        if g[mo]:
-            return _MONTHS[g[mo].casefold()], int(g[da]), int(g[yr]) if g[yr] else None
     if g["y3"]:
         return int(g["m3"]), int(g["d3"]), int(g["y3"])
-    return int(g["m4"]), int(g["d4"]), int(g["y4"])
+    if g["y4"]:
+        return int(g["m4"]), int(g["d4"]), int(g["y4"])
+    mo, da, yr = ("m1", "d1", "y1") if g["m1"] else ("m2", "d2", "y2")
+    word = g[mo].casefold().replace("\u0131", "i")  # IGNORECASE matches a dotless i that casefold keeps
+    month = _MONTHS.get(word)
+    if month is None:
+        return None
+    if mo == "m2" and word in _ENGLISH and not (g[yr] or g["mark"] in ("st", "nd", "rd", "th") or g["of"]):
+        return None  # a count or a list number before an English month word, not a day
+    return month, int(g[da]), int(g[yr]) if g[yr] else None
 
 
 def mentions(text: str) -> list[tuple[int, int, int | None]]:
-    return [date_mention(m) for m in GENERIC_DATE.finditer(text)]
+    return [d for m in GENERIC_DATE.finditer(text) if (d := date_mention(m)) is not None]
 
 
 def names_date(ms: list[tuple[int, int, int | None]], d: date) -> bool:
@@ -162,9 +170,8 @@ class OutputGuard:
                     v.append("date_not_allowed")
                     break
             # a date written into allowed_facts (today's date, a deadline) is allowed at the same granularity
-            allowed_mentions = {date_mention(a) for a in GENERIC_DATE.finditer(allowed)}
-            for m in GENERIC_DATE.finditer(text):  # an invented date is a violation too, same granularity
-                month, day, year = date_mention(m)
+            allowed_mentions = set(mentions(allowed))
+            for month, day, year in mentions(text):  # an invented date is a violation too, same granularity
                 known = any(d.month == month and d.day == day and year in (None, d.year)
                             for d in allowed_dates)
                 mentioned = any(am == month and ad == day and year in (None, ay)

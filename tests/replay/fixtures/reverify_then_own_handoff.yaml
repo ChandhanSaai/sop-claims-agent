@@ -24,7 +24,6 @@ turns:
       party_id: P9
       escalated: true
       reply_contains: ["ESC-"]
-      reply_not_contains: ["-2"]
       guard_ok: true
   - user: "Sorry, this is actually Ma Tian, born 1964-09-10, last four 6688. Why was my claim denied?"
     analysis:
@@ -49,7 +48,7 @@ turns:
       verified: true
       party_id: P12
       escalated: true
-      reply_contains: ["ESC-", "-2"]
+      reply_contains: ["ESC-", "will follow up"]
       reply_not_contains: ["already been asked", "CL-2048", "Margaret"]
       guard_ok: true
   - user: "That's all, thanks."
@@ -66,7 +65,7 @@ turns:
     expect:
       phase: POST_PROCESS
       pending_ask: email_confirm
-      reply_contains: ["CL-3001", "-2"]
+      reply_contains: ["CL-3001", "ESC-"]
       reply_not_contains: ["CL-2048", "Margaret"]
       guard_ok: true
   - user: "Yes, send it."

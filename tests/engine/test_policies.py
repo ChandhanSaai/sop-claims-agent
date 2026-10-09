@@ -357,3 +357,20 @@ def test_a_later_party_gets_its_own_hand_off_packet_and_reference(repos, setting
     assert any(m.startswith("A representative will follow up") for m in b.must_say)
     packets = [e.data["packet"] for e in s.events if e.type == "escalated"]
     assert [p["verified"] for p in packets] == ["verified", "verified"] and len(packets) == 2
+
+
+def test_a_same_party_re_verification_keeps_its_hand_off(repos, settings):
+    eng = Engine(repos, settings)
+    s = Session.new()
+    eng.greeting(s)
+    eng.handle_turn(s, A(identity={"full_name": "Margaret Chen", "dob": "1985-03-15", "id_last4": "4472"}),
+                    "Margaret Chen, 1985-03-15, 4472.")
+    eng.handle_turn(s, A(requests={"wants_human": True}), "I want a person.")
+    ref = s.escalation.reference
+    eng.handle_turn(s, A(corrections=[{"slot": "dob", "new_value": "1985-03-15"}]),
+                    "Sorry, my date of birth is 15 March 1985.")  # re-verifies the same party
+    assert s.verification.party_id == "P9" and s.fence_turn == 3
+    assert s.escalation.requested and s.escalation.reference == ref
+    assert len([e for e in s.events if e.type == "escalated"]) == 1
+    b = eng.handle_turn(s, A(requests={"wants_human": True}), "Is someone going to call me?")
+    assert s.escalation.reference == ref and any("already been asked" in m for m in b.must_say)

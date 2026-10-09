@@ -23,7 +23,7 @@ owns the SOP; the model reads and phrases:** one LLM call reads each message int
 - **Live transcripts:** [docs/live-transcripts.md](docs/live-transcripts.md) replays all 22 scenarios against
   the real Reader and Writer (Sonnet 5.5) and shows each reply with its state, guard verdict, latency and
   checks, and [docs/live-reliability.md](docs/live-reliability.md) repeats every scenario and reports pass^N.
-- **Replay suite:** `pytest -q` runs 277 tests offline with no key or network, including the 22 scenarios turn
+- **Replay suite:** `pytest -q` runs 283 tests offline with no key or network, including the 22 scenarios turn
   by turn and a leak check on every reply that ends unverified.
 - **Where each requirement and attack lives:** the [Grader's map](#graders-map) names the code, the test that
   pins each requirement and the live turn that shows it, and [Attacks we tried](#attacks-we-tried) pairs each
@@ -725,7 +725,11 @@ Live persona evaluations (simulated callers scored as pass^k with an LLM judge) 
 - A switch to another person reaches the engine through corrections, which reset verification and fence off
   the earlier party (claims, hints, hand-off, declined offer and summary); the Reader prompt asks for that
   form, and a different name, birth date or ID returned as plain identity fields is read as a correction
-  too. Off-topic, frustration and abuse counts belong to the conversation and survive the switch.
+  too (a title, a first name alone or a middle name added is a restatement; a nickname is not, and costs
+  a re-verification). On a representative call, a different representative name while consent is pending
+  or approved drops that consent and starts the representative flow again; the representative flag itself
+  stays for the session. Off-topic, frustration and abuse counts belong to the conversation and survive
+  the switch.
 - A one-word name is treated as a first name: the assistant asks for the full name as it appears on the
   policy instead of spending a verification attempt. A policyholder whose legal name is one word cannot use
   it as an identifier and has to verify with three of the other four.

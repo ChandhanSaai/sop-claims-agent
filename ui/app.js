@@ -212,6 +212,11 @@ function renderGuard(guard) {
     guard.violations.forEach((v) => ul.appendChild(el("li", "", v)));
     frag.appendChild(ul);
   }
+  if (guard.draft_violations?.length) {
+    const ul = el("ul", "violations");
+    guard.draft_violations.forEach((v) => ul.appendChild(el("li", "", `draft rejected: ${v}`)));
+    frag.appendChild(ul);
+  }
   box.replaceChildren(frag);
 }
 

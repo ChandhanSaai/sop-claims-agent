@@ -41,7 +41,8 @@ def test_guard_violation_regenerates_once(settings):
 
 def test_persistent_violation_falls_back_to_the_template(settings):
     res, session = chat(settings, ScriptedWriter(["Your claim CL-2048 was denied.", "Still CL-2048."]))
-    assert session.last_guard["fallback"] == "template" and not session.last_guard["ok"]
+    assert session.last_guard == {"ok": True, "violations": [], "fallback": "template",
+                                  "draft_violations": ["claim_id_before_verification"]}
     assert res.reply == render_brief(session.last_brief)
     assert len([e for e in session.events if e.type == "guard_violation"]) == 2
 
@@ -118,8 +119,8 @@ def test_general_submission_question_is_answered_before_verification(settings):
 def test_writer_error_on_regeneration_falls_back_to_the_template(settings):
     res, session = chat(settings, ScriptedWriter(["Your claim CL-2048 was denied.", LLMError("boom")]))
     assert res.reply == render_brief(session.last_brief)
-    assert session.last_guard == {"ok": False, "violations": ["claim_id_before_verification"],
-                                  "fallback": "llm_error"}
+    assert session.last_guard == {"ok": True, "violations": [], "fallback": "llm_error",
+                                  "draft_violations": ["claim_id_before_verification"]}
     assert [e.data["attempt"] for e in session.events if e.type == "guard_violation"] == [1]
     assert [e.data["stage"] for e in session.events if e.type == "llm_error"] == ["writer_regenerate"]
 

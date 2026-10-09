@@ -64,6 +64,7 @@ class Memory(BaseModel):
         if cur and cur.status == SlotStatus.VERIFIED and not overwrite_verified:
             return False
         if cur and cur.value == value and cur.status != SlotStatus.REJECTED:
+            cur.source_turn = turn  # restated now: this caller's too, whatever fence came between
             return False
         self.slots[name] = Slot(value=value, source_turn=turn)
         return True

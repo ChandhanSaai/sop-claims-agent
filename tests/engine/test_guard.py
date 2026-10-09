@@ -223,3 +223,21 @@ def test_day_first_and_other_language_dates_are_read_like_english_ones(store):
     assert "identifier:dob" in g.check("Thanks, born 15 March.", dob, pre).violations
     fixture = g.check("Su reclamo fue abierto el 12 de enero de 2026.", unverified(store), pre)
     assert "fixture_date_before_verification" in fixture.violations
+
+
+def test_counts_and_list_numbers_before_a_month_word_are_not_dates(store):
+    g = OutputGuard(store)
+    s = unverified(store)
+    s.verification = Verification(status="verified", party_id="P9", role="policyholder")
+    post = ReplyBrief(phase="PROCESS_CASE", goal="g", allowed_facts={
+        "option_1": "CL-2048, healthcare claim opened January 12, 2026",
+        "option_2": "CL-2011, healthcare claim opened January 28, 2025"})
+    for ok in ("I see 2 January claims: CL-2048 (January 12, 2026) and CL-2011 (January 28, 2025).",
+               "1. January 12, 2026: CL-2048. 2. January 28, 2025: CL-2011."):
+        assert g.check(ok, s, post).ok, ok
+    pre = ReplyBrief(phase="VERIFY_ID", goal="g")
+    assert g.check("Step 1. March is when most claims arrive.", unverified(store), pre).ok
+    dob = unverified(store)
+    dob.memory.set("dob", "1990-05-30", 1)
+    assert "identifier:dob" in g.check("Thanks, born the 30th of May.", dob, pre).violations
+    assert g.check("Su cita es el 30 de abr\u0131l.", unverified(store), pre).ok  # dotless i: read, no crash

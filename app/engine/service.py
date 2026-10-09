@@ -9,7 +9,7 @@ from app.config import Settings
 from app.data.repos import Repos, build_repos
 from app.data.store import FixtureStore
 from app.engine.briefs import render_brief
-from app.engine.guard import OutputGuard
+from app.engine.guard import GuardResult, OutputGuard
 from app.engine.machine import Engine
 from app.engine.state import Session, Turn
 from app.llm.anthropic_client import LLMError, build_llm
@@ -87,8 +87,7 @@ class ConversationService:
         except LLMError as e:  # the state already moved (an email may have gone out): the reply must agree
             log.warning("writer failed: %s", e)
             session.log("llm_error", stage="writer")
-            text = render_brief(brief)  # guarded like any reply: no recorded pass without a check
-            return text, {**self.guard.check(text, session, brief).model_dump(), "fallback": "llm_error"}
+            return self._fallback(session, brief, "llm_error")
         result = self.guard.check(text, session, brief)
         if result.ok:
             return text, result.model_dump()
@@ -99,12 +98,22 @@ class ConversationService:
         except LLMError as e:
             log.warning("writer regenerate failed: %s", e)
             session.log("llm_error", stage="writer_regenerate")
-            return render_brief(brief), {**result.model_dump(), "fallback": "llm_error"}
+            return self._fallback(session, brief, "llm_error", result)
         result2 = self.guard.check(text, session, brief)
         if result2.ok:
             return text, {**result2.model_dump(), "regenerated": True}
         session.log("guard_violation", violations=result2.violations, attempt=2)
-        return render_brief(brief), {**result2.model_dump(), "fallback": "template"}
+        return self._fallback(session, brief, "template", result2)
+
+    def _fallback(self, session: Session, brief: ReplyBrief, why: str,
+                  draft: GuardResult | None = None) -> tuple[str, dict[str, Any]]:
+        """The templated rendering is guarded like any reply: the trace records the verdict on the text sent,
+        why a template was sent, and what the guard rejected in the Writer's last draft."""
+        text = render_brief(brief)
+        verdict = {**self.guard.check(text, session, brief).model_dump(), "fallback": why}
+        if draft is not None:
+            verdict["draft_violations"] = draft.violations
+        return text, verdict
 
     def outbox(self, session: Session) -> list[dict[str, Any]]:
         ids = {e.data.get("email_id") for e in session.events if e.type == "email_sent"}

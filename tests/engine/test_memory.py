@@ -1,3 +1,4 @@
+from app.engine.machine import Engine
 from app.engine.memory import merge_analysis
 from app.engine.state import CaseState, Counters, Escalation, Phase, Session, SlotStatus, Verification
 from app.llm.schemas import TurnAnalysis
@@ -119,11 +120,38 @@ def test_a_different_person_in_the_identity_fields_is_a_correction_even_when_unl
     assert [c.slot for c in a.corrections] == ["full_name", "dob", "id_last4"]  # visible in the trace
     assert s.verification.status == "unverified" and s.events[-1].type == "verification_reset"
     assert set(changed) == {"full_name", "dob", "id_last4"} and s.memory.value("full_name") == "Ma Tian"
-    for same in ({"full_name": "margaret chen"}, {"full_name": "Margaret"}, {"dob": "March 15, 1985"},
-                 {"dob": "not sure"}, {"id_last4": "4472"}, {"phone": "650-000-0000"},
-                 {"email": "other@example.com"}):
+    for same in ({"full_name": "margaret chen"}, {"full_name": "Margaret"}, {"full_name": "Mrs. Chen"},
+                 {"full_name": "Margaret A. Chen"}, {"full_name": "Margaret Ann Chen"},
+                 {"dob": "March 15, 1985"}, {"dob": "not sure"}, {"dob": "10/09/1985"},  # ambiguous: re-asked
+                 {"id_last4": "4472"}, {"phone": "650-000-0000"}, {"email": "other@example.com"}):
         s = verified_margaret()
         a = analysis(identity=same)
         merge_analysis(s, a)
         assert a.corrections == [] and s.verification.status == "verified", same
 
+
+def test_a_restated_hint_counts_as_given_now():
+    s = Session.new()
+    assert s.memory.set("case_type", "healthcare", 1)
+    assert not s.memory.set("case_type", "healthcare", 3) and s.memory.get("case_type").source_turn == 3
+
+
+def test_the_next_party_restating_the_earlier_hints_keeps_them(repos, settings):
+    """Ma Tian asks about a denied healthcare claim; Margaret takes over and asks about her denied healthcare
+    claim from January in the same message: the restated hints are hers too and select CL-2048 at once."""
+    eng = Engine(repos, settings)
+    s = Session.new()
+    eng.greeting(s)
+    eng.handle_turn(s, analysis(identity={"full_name": "Ma Tian", "dob": "1964-09-10", "id_last4": "6688"},
+                                case_hints={"case_type": "healthcare", "status": "denied"},
+                                intent="denial_question"), "Ma Tian, my denied healthcare claim")
+    assert s.verification.party_id == "P12"
+    eng.handle_turn(s, analysis(identity={"full_name": "Margaret Chen", "dob": "1985-03-15",
+                                          "id_last4": "4472"},
+                                corrections=[{"slot": "full_name", "new_value": "Margaret Chen"}],
+                                case_hints={"case_type": "healthcare", "status": "denied", "month": 1},
+                                intent="denial_question"),
+                    "Sorry, this is Margaret Chen, 1985-03-15, 4472. Why was my denied healthcare claim from "
+                    "January denied?")
+    assert s.verification.party_id == "P9" and s.case.selected_case_id == "CL-2048"
+    assert s.phase == Phase.PROCESS_CASE and s.case.intent == "denial_question"
