@@ -84,10 +84,10 @@ class ConversationService:
     def _compose_guarded(self, session: Session, brief: ReplyBrief) -> tuple[str, dict[str, Any]]:
         try:
             text = self.llm.compose(brief=brief, transcript=session.transcript[session.transcript_fence:])
-        except LLMError as e:
+        except LLMError as e:  # the state already moved (an email may have gone out): the reply must agree
             log.warning("writer failed: %s", e)
             session.log("llm_error", stage="writer")
-            return TROUBLE, {"ok": True, "violations": [], "fallback": "llm_error"}
+            return render_brief(brief), {"ok": True, "violations": [], "fallback": "llm_error"}
         result = self.guard.check(text, session, brief)
         if result.ok:
             return text, result.model_dump()

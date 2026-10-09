@@ -61,8 +61,9 @@ flowchart TD
     T --> OUT
 ```
 
-Not drawn: a Reader failure, or a Writer failure on the first try, ends the turn with a fixed trouble line
-(a failed regeneration falls back to the template), and a session closed for abuse answers from code with no
+Not drawn: a Reader failure ends the turn with a fixed trouble line and no state change; a Writer failure on
+either try falls back to the template, so the reply agrees with what the turn already did (an email that went
+out is confirmed, not followed by "say that again"); a session closed for abuse answers from code with no
 model call.
 
 The four phases and every transition in the code (each `session.phase` assignment is in

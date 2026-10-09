@@ -74,10 +74,32 @@ def test_session_trace_is_the_redacted_record(settings):
     assert res.trace == session.traces[-1]
 
 
-def test_writer_error_gives_the_trouble_line(settings):
+def test_writer_error_gives_the_rendered_brief(settings):
     res, session = chat(settings, ScriptedWriter([LLMError("boom")]))
-    assert res.reply == TROUBLE and session.last_guard["fallback"] == "llm_error"
+    assert res.reply == render_brief(session.last_brief) == session.transcript[-1].text
+    assert session.last_guard == {"ok": True, "violations": [], "fallback": "llm_error"}
     assert session.events[-1].type == "llm_error" and session.traces[-1]["guard"]["fallback"] == "llm_error"
+
+
+def test_writer_error_after_the_email_was_sent_confirms_it_from_the_brief(settings):
+    llm = ScriptedWriter([])
+    for a in ({"identity": {"full_name": "Margaret Chen", "dob": "1985-03-15", "id_last4": "4472"},
+               "case_hints": {"case_id": "CL-2048"}, "intent": "denial_question"},
+              {"requests": {"confirmation": "no", "closing": True}},
+              {"requests": {"confirmation": "yes", "email_summary": "yes"}},
+              {"requests": {"confirmation": "yes"}}):
+        llm.queue(TurnAnalysis.model_validate(a))
+    svc = build_service(settings, llm=llm)
+    session = svc.start()
+    for text in ("Margaret Chen, 1985-03-15, 4472, about CL-2048", "No, that's all.", "Yes please."):
+        svc.chat(session, text)
+    assert session.pending_ask.value == "email_confirm" and svc.outbox(session) == []
+    llm.texts = [LLMError("boom")]  # the Writer fails on the send turn, after the email went out
+    res = svc.chat(session, "Yes, send it.")
+    assert len(svc.outbox(session)) == 1 and session.pending_ask.value == "none"
+    assert res.reply == render_brief(session.last_brief) and res.reply != TROUBLE
+    assert "EML-0001" in res.reply and "sent to the email on file" in res.reply
+    assert session.last_guard == {"ok": True, "violations": [], "fallback": "llm_error"}
 
 
 def test_general_submission_question_is_answered_before_verification(settings):
