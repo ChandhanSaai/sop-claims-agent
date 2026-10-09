@@ -200,3 +200,55 @@ def test_violations_name_the_kind_only_and_are_deduplicated(store):
     assert len(r.violations) == len(set(r.violations))
     for leaked in ("1985", "3500.00", "CL-2011", "February 28, 2026", "April 30, 2026"):
         assert not any(leaked in v for v in r.violations)  # the echoed values stay out of the record
+
+
+def test_day_first_and_other_language_dates_are_read_like_english_ones(store):
+    g = OutputGuard(store)
+    s = unverified(store)
+    s.verification = Verification(status="verified", party_id="P9", role="policyholder")
+    post = ReplyBrief(phase="PROCESS_CASE", goal="g", allowed_facts={"appeal_deadline": "March 18, 2026"})
+    for leak in ("You can still appeal until 30 April 2026.", "Appeal by the 30th of April.",
+                 "Puede apelar hasta el 30 de abril de 2026.",
+                 "Vous pouvez faire appel avant le 30 avril 2026.",
+                 "Sie können bis zum 30. April 2026 Einspruch einlegen.", "Pode recorrer até 30 de abril."):
+        assert "date_not_allowed" in g.check(leak, s, post).violations, leak
+    for ok in ("The deadline was 18 March 2026.", "La fecha límite fue el 18 de marzo de 2026.",
+               "Die Frist war der 18. März 2026.", "The 2 may differ from the first.",  # not "May 2"
+               "Send the 2 documents before 18 March."):
+        assert g.check(ok, s, post).ok, ok
+    pre = ReplyBrief(phase="VERIFY_ID", goal="g")
+    dob = unverified(store)
+    dob.memory.set("dob", "1985-03-15", 1)
+    assert "identifier:dob" in g.check("Gracias, nacida el 15 de marzo de 1985.", dob, pre).violations
+    assert "identifier:dob" in g.check("Thanks, born 15 March.", dob, pre).violations
+    fixture = g.check("Su reclamo fue abierto el 12 de enero de 2026.", unverified(store), pre)
+    assert "fixture_date_before_verification" in fixture.violations
+
+
+def test_counts_and_list_numbers_before_a_month_word_are_not_dates(store):
+    g = OutputGuard(store)
+    s = unverified(store)
+    s.verification = Verification(status="verified", party_id="P9", role="policyholder")
+    post = ReplyBrief(phase="PROCESS_CASE", goal="g", allowed_facts={
+        "option_1": "CL-2048, healthcare claim opened January 12, 2026",
+        "option_2": "CL-2011, healthcare claim opened January 28, 2025"})
+    for ok in ("I see 2 January claims: CL-2048 (January 12, 2026) and CL-2011 (January 28, 2025).",
+               "1. January 12, 2026: CL-2048. 2. January 28, 2025: CL-2011."):
+        assert g.check(ok, s, post).ok, ok
+    pre = ReplyBrief(phase="VERIFY_ID", goal="g")
+    assert g.check("Step 1. March is when most claims arrive.", unverified(store), pre).ok
+    dob = unverified(store)
+    dob.memory.set("dob", "1990-05-30", 1)
+    assert "identifier:dob" in g.check("Thanks, born the 30th of May.", dob, pre).violations
+    assert g.check("Su cita es el 30 de abr\u0131l.", unverified(store), pre).ok  # dotless i: read, no crash
+
+
+def test_german_day_first_dates_keep_their_marker_after_a_preposition(store):
+    g = OutputGuard(store)
+    pre = ReplyBrief(phase="VERIFY_ID", goal="g")
+    dob = unverified(store)
+    dob.memory.set("dob", "1964-09-10", 1)
+    assert "identifier:dob" in g.check("Danke, geboren am 10. September.", dob, pre).violations
+    r = g.check("Ihr Antrag vom 3. November liegt vor.", unverified(store), pre)
+    assert "fixture_date_before_verification" in r.violations
+    assert g.check("Step 1. March is when most claims arrive.", unverified(store), pre).ok  # a list number

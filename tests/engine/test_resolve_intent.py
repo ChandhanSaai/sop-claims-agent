@@ -112,3 +112,15 @@ def test_no_claims_no_and_goodbye_in_one_turn_is_a_plain_goodbye(repos, settings
     assert s.phase == Phase.POST_PROCESS and s.pending_ask == PendingAsk.NONE
     assert b.must_say == [NO_CLAIMS, GOODBYE]
     assert "email" not in " ".join(b.must_say).lower() and not b.ask
+
+
+def test_claim_ids_match_without_hyphen_or_case(repos, settings):
+    s = verified_session(repos)
+    r = turn(s, repos, settings, resolve_intent.handle, case_hints={"case_id": "cl 2048"})
+    assert r.advanced and s.case.selected_case_id == "CL-2048"
+    s2 = verified_session(repos)
+    turn(s2, repos, settings, resolve_intent.handle, case_hints={"case_type": "healthcare"})
+    assert s2.pending_ask == PendingAsk.DISAMBIGUATION and set(s2.case.candidates) == {"CL-2048", "CL-2011"}
+    r2 = turn(s2, repos, settings, resolve_intent.handle, user_text="CL2011",
+              case_hints={"case_id": "CL2011"})
+    assert r2.advanced and s2.case.selected_case_id == "CL-2011"

@@ -1,0 +1,80 @@
+name: reverify_then_own_handoff
+scenario: default
+today: "2026-10-07"
+turns:
+  - user: "I'm Margaret Chen, DOB 1985-03-15, SSN last four 4472. Why was my healthcare claim from January denied?"
+    analysis:
+      identity: {full_name: "Margaret Chen", dob: "1985-03-15", id_last4: "4472"}
+      caller_role: policyholder
+      case_hints: {case_type: healthcare, status: denied, month: 1}
+      intent: denial_question
+    expect:
+      phase: PROCESS_CASE
+      verified: true
+      party_id: P9
+      reply_contains: ["CL-2048", "pathology report"]
+      reply_not_contains: ["1985-03-15", "4472"]
+      guard_ok: true
+  - user: "I want to speak to a person about this."
+    analysis:
+      requests: {wants_human: true}
+    expect:
+      phase: PROCESS_CASE
+      verified: true
+      party_id: P9
+      escalated: true
+      reply_contains: ["ESC-"]
+      guard_ok: true
+  - user: "Sorry, this is actually Ma Tian, born 1964-09-10, last four 6688. Why was my claim denied?"
+    analysis:
+      identity: {full_name: "Ma Tian", dob: "1964-09-10", id_last4: "6688"}
+      corrections:
+        - {slot: full_name, new_value: "Ma Tian"}
+      case_hints: {status: denied}
+      intent: denial_question
+    expect:
+      phase: PROCESS_CASE
+      verified: true
+      party_id: P12
+      escalated: false
+      reply_contains: ["CL-3001"]
+      reply_not_contains: ["CL-2048", "Margaret", "ESC-", "1964-09-10", "6688"]
+      guard_ok: true
+  - user: "I want a person too."
+    analysis:
+      requests: {wants_human: true}
+    expect:
+      phase: PROCESS_CASE
+      verified: true
+      party_id: P12
+      escalated: true
+      reply_contains: ["ESC-", "will follow up"]
+      reply_not_contains: ["already been asked", "CL-2048", "Margaret"]
+      guard_ok: true
+  - user: "That's all, thanks."
+    analysis:
+      requests: {closing: true}
+    expect:
+      phase: POST_PROCESS
+      pending_ask: email_offer
+      reply_not_contains: ["CL-2048", "Margaret"]
+      guard_ok: true
+  - user: "Yes please."
+    analysis:
+      requests: {confirmation: "yes", email_summary: "yes"}
+    expect:
+      phase: POST_PROCESS
+      pending_ask: email_confirm
+      reply_contains: ["CL-3001", "ESC-"]
+      reply_not_contains: ["CL-2048", "Margaret"]
+      guard_ok: true
+  - user: "Yes, send it."
+    analysis:
+      requests: {confirmation: "yes"}
+    expect:
+      phase: POST_PROCESS
+      pending_ask: none
+      outbox_len: 1
+      reply_contains: ["EML-"]
+      reply_not_contains: ["CL-2048", "Margaret"]
+      guard_ok: true

@@ -64,6 +64,7 @@ class Memory(BaseModel):
         if cur and cur.status == SlotStatus.VERIFIED and not overwrite_verified:
             return False
         if cur and cur.value == value and cur.status != SlotStatus.REJECTED:
+            cur.source_turn = turn  # restated now: this caller's too, whatever fence came between
             return False
         self.slots[name] = Slot(value=value, source_turn=turn)
         return True
@@ -82,6 +83,8 @@ class Memory(BaseModel):
 class Verification(BaseModel):
     status: Literal["unverified", "verified", "exhausted"] = "unverified"
     party_id: str | None = None
+    # the verified party's names on file (record name, then aliases): what a later name is compared with
+    names: list[str] = Field(default_factory=list)
     attempts: int = 0
     role: Literal["policyholder", "representative"] | None = None
     # the caller said they are calling for someone else; sticks for the session, so a later claim to be
@@ -94,12 +97,15 @@ class Verification(BaseModel):
 class Consent(BaseModel):
     status: Literal["none", "pending", "approved", "timed_out"] = "none"
     representative_name: str | None = None
+    policyholder_name: str | None = None  # both names as matched on file, never a restated slot
+    relationship: str | None = None  # as matched on file: a short name with another one is someone else
     polls: int = 0
     consent_id: str | None = None
     party_id: str | None = None  # the policyholder the consent was requested from
     # normalized representative, relationship and policyholder names of the last match attempt
     last_match: str | None = None
     match_attempts: int = 0  # failed name-pair matches; capped so the branch is not an enumeration oracle
+    requests: int = 0  # consent requests sent this session, kept across a representative switch: one only
 
 
 class CaseState(BaseModel):
@@ -195,6 +201,7 @@ class Session(BaseModel):
             "turn": self.turn,
             "pending_ask": self.pending_ask.value,
             "closed": self.closed,
+            "fence_turn": self.fence_turn,
             "verification": self.verification.model_dump(exclude={"last_fingerprint"}),
             "consent": self.consent.model_dump(exclude={"last_match"}),
             "case": self.case.model_dump(),

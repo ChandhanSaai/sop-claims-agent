@@ -17,3 +17,10 @@ def test_snapshot_masks_identifiers_and_omits_fingerprint():
     assert {n: snap["memory"][n]["value"] for n in VISIBLE} == VISIBLE
     assert "last_fingerprint" not in snap["verification"]
     assert not any(v in repr(snap) for v in [*MASKED.values(), "f" * 64])
+
+
+def test_snapshot_carries_the_fence_turn():
+    s = Session.new()
+    assert s.snapshot()["fence_turn"] == 0
+    s.fence_turn = 3
+    assert s.snapshot()["fence_turn"] == 3

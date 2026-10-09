@@ -30,7 +30,8 @@ def _acknowledgment_seed(session: Session) -> str:
 def escalate(session: Session, reason: str) -> str:
     """Issue a reference and log the hand-off packet once. The session keeps its phase and gates."""
     if not session.escalation.requested:
-        ref = "ESC-" + session.id[:6].upper()
+        n = sum(1 for e in session.events if e.type == "escalated")  # a later party gets its own packet
+        ref = "ESC-" + session.id[:6].upper() + (f"-{n + 1}" if n else "")
         session.escalation = Escalation(requested=True, reference=ref, reason=reason)
         session.log("escalated", reference=ref, reason=reason, packet={
             "phase": session.phase.value, "verified": session.verification.status,

@@ -76,4 +76,5 @@ def assert_turn(i: int, turn_spec: dict, result: dict) -> None:
         assert sub.lower() not in low, f"{ctx}: leaked {sub!r} in {reply!r}"
     if "guard_ok" in e:  # true: the guard passed with no fallback; false: the guard caught something
         g = result["guard"]
-        assert (g["ok"] and not g.get("fallback")) if e["guard_ok"] else not g["ok"], f"{ctx}: guard {g}"
+        caught = not g["ok"] or bool(g.get("draft_violations"))
+        assert (g["ok"] and not g.get("fallback")) if e["guard_ok"] else caught, f"{ctx}: guard {g}"

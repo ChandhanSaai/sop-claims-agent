@@ -20,10 +20,10 @@ owns the SOP; the model reads and phrases:** one LLM call reads each message int
 - **Golden transcripts:** both transcripts from the spec (Margaret in one turn, the angry caller) and the
   representative approve and timeout paths are in [Golden transcripts](#golden-transcripts), with the state
   after each turn and what each reply must and must not say.
-- **Live transcripts:** [docs/live-transcripts.md](docs/live-transcripts.md) replays all 20 scenarios against
+- **Live transcripts:** [docs/live-transcripts.md](docs/live-transcripts.md) replays all 22 scenarios against
   the real Reader and Writer (Sonnet 5.5) and shows each reply with its state, guard verdict, latency and
   checks, and [docs/live-reliability.md](docs/live-reliability.md) repeats every scenario and reports pass^N.
-- **Replay suite:** `pytest -q` runs 265 tests offline with no key or network, including the 20 scenarios turn
+- **Replay suite:** `pytest -q` runs 298 tests offline with no key or network, including the 22 scenarios turn
   by turn and a leak check on every reply that ends unverified.
 - **Where each requirement and attack lives:** the [Grader's map](#graders-map) names the code, the test that
   pins each requirement and the live turn that shows it, and [Attacks we tried](#attacks-we-tried) pairs each
@@ -244,7 +244,7 @@ Every variable in `.env.example`, read by `app/config.py` from the environment o
 | `LLM_BACKEND` | `anthropic` | `anthropic` calls the Reader and Writer models; `fake` uses the offline `FakeLLM` (see the offline demo). |
 | `READER_MODEL` | `claude-sonnet-5-5` | Model that reads each caller message into `TurnAnalysis` with structured output. |
 | `WRITER_MODEL` | `claude-sonnet-5-5` | Model that phrases the `ReplyBrief`. `thinking: between_tools` is sent only for `claude-sonnet-5-5` ids, so an Opus id works without code changes. |
-| `VERIFY_MIN_FIELDS` | `3` | Identifiers that must match, out of full name, date of birth, phone, email and SSN or national-ID last 4. A verify call (an attempt) is made only once this many are on hand. Policy number is a lookup key and never counts. |
+| `VERIFY_MIN_FIELDS` | `3` | Identifiers that must match, out of full name, date of birth, phone, email and SSN or national-ID last 4. A verify call (an attempt) is made only once this many are on hand. Policy number is a lookup key and never counts, and it is not part of the attempt fingerprint: with the default of three, one identifier is always a lookup key, so the policy number cannot change the outcome; with two, a corrected policy number alone is not a new attempt. |
 | `VERIFY_REQUIRE_STRONG_FIELD` | `false` | When `true`, date of birth or ID last 4 must be among the matches. Off because the brief says any 3 of 5; recommended on in production. |
 | `VERIFY_MAX_ATTEMPTS` | `3` | Failed verify calls allowed per session; then verification is exhausted, the agent stops asking for identifiers and offers a representative. Counted per session, not per record. Also caps failed representative name-pair matches per session. |
 | `OFFTOPIC_HUMAN_OFFER_AT` | `2` | Off-topic turn on which a human is offered; the next off-topic turn escalates. |
@@ -600,12 +600,13 @@ CI (`.github/workflows/ci.yml`) runs `ruff check .`, then `pytest -q --ignore=te
 - **API** (`tests/api`): the health check, the session, chat, outbox and trace routes, 404 and 422 handling,
   the access-token gate, session expiry, per-session locking under concurrent chats, the UI being served with
   a text-only script, and Margaret's first turn over HTTP end to end.
-- **Replay** (`tests/replay/test_replay.py`): twenty scenarios run turn by turn through the full
+- **Replay** (`tests/replay/test_replay.py`): twenty-two scenarios run turn by turn through the full
   `ConversationService`: `margaret_happy_path`, `angry_caller`, `refusing_caller`, `decoy_disambiguation`,
   `dob_correction`, `human_request_then_continue`, `injection_attempt`, `off_topic_three_times`,
   `question_after_goodbye`, `near_miss_phone_then_more`, `representative_declared`, `representative_approved`,
   `representative_timeout`, `abusive_caller`, `casual_identity_phrasing`, `spanish_caller`,
-  `first_name_only`, `document_checklist`, `no_claims_on_file` and `reverify_as_another_party`. Each turn
+  `first_name_only`, `document_checklist`, `no_claims_on_file`, `reverify_as_another_party`,
+  `reverify_then_own_handoff` and `representative_after_policyholder`. Each turn
   can assert
   phase, verification, party, attempts, pending ask, escalation, off-topic count, outbox size, text that must
   and must not appear, and the guard's verdict (`guard_ok: true` also requires no fallback).
@@ -644,9 +645,9 @@ the real Reader and Writer (it needs `ANTHROPIC_API_KEY` in `.env` and costs API
 with hard passes and pass^N per scenario. State and leak expectations are hard checks, and so are a Reader
 or Writer failure and, on the turns where it once appeared, any retraction of or apology for an earlier reply;
 wording expectations are soft, because a live Writer paraphrases. Last run, with Sonnet 5.5 in both roles:
-20 of 20 scenarios passed every hard check over 67 turns, with one soft wording miss (Checks column),
-no guard regeneration and 2.8 to 6.5 seconds per model-call turn (the Secs column);
-across three repetitions, 60 of 60 scenario runs passed every hard check (100%). In an earlier
+22 of 22 scenarios passed every hard check over 79 turns, with one soft wording miss (Checks column),
+no guard regeneration and 2.6 to 6.4 seconds per model-call turn (the Secs column);
+across three repetitions, 66 of 66 scenario runs passed every hard check (100%). In an earlier
 run the first Reader call with a new output schema took about 35 seconds (the schema is compiled and cached
 server-side). Earlier live runs exposed one Writer habit the offline suite could not: when the state moved
 on (a goodbye brief without claim facts, a corrected date of birth resetting verification, a consent
@@ -717,12 +718,22 @@ Live persona evaluations (simulated callers scored as pass^k with an LLM judge) 
 - The Reader reads identifiers, dates and requests in any language or format and normalizes the date of birth
   itself (code still validates it and re-asks when day and month cannot be told apart); replies follow the
   caller's language, except the templated fallback, the trouble line and the closed-session text, which stay
-  in English. Guideline text exists only in English and the guard recognizes English date forms, so claim
-  ids, dates, amounts, references and the email address are quoted in their English form inside a translated
-  reply, and a date of birth echoed in non-English words would not be caught by the guard.
+  in English. Guideline text exists only in English, so claim ids, dates, amounts, references and the email
+  address are quoted in their English form inside a translated reply. The guard reads month words in
+  Spanish, French, German, Portuguese and Italian and day-first forms (an English-spelled month in a German
+  day-first date needs a year or one of am, vom, bis, zum, den, der before the day); a date written in another
+  language would not be caught.
 - A switch to another person reaches the engine through corrections, which reset verification and fence off
-  the earlier party; the Reader prompt asks for that form. If the Reader returned the new person's details as
-  plain identity fields instead, the verified slots would stay and nothing would reset.
+  the earlier party (claims, hints, hand-off, declined offer and summary); the Reader prompt asks for that
+  form, and a different name, birth date or ID returned as plain identity fields is read as a correction
+  too (a title, a first name alone or a middle name added is a restatement; a nickname is not, and costs
+  a re-verification). On a representative call, a different person while consent is pending or approved
+  drops that consent; consent is requested once per session, so the new caller is offered a person rather
+  than a second request, and the representative flag itself stays for the session (a one-word name that
+  fits the representative's name, Dave for David, is not a new person; any other name is, so a nickname
+  can cost the session's one consent request). A verified policyholder who asks about someone else's
+  claim is handled as a representative call from then on; their own claims need a new conversation.
+  Off-topic, frustration and abuse counts belong to the conversation and survive the switch.
 - A one-word name is treated as a first name: the assistant asks for the full name as it appears on the
   policy instead of spending a verification attempt. A policyholder whose legal name is one word cannot use
   it as an identifier and has to verify with three of the other four.

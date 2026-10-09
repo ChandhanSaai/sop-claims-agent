@@ -4,7 +4,7 @@ from app.engine.briefs import render_brief
 from app.engine.machine import Engine
 from app.engine.memory import merge_analysis
 from app.engine.phases import verify_id
-from app.engine.phases.verify_id import CONSENT_FACT, NO_AUTHORIZATION, REP_CALL
+from app.engine.phases.verify_id import CONSENT_FACT, CONSENT_ONCE, NO_AUTHORIZATION, REP_CALL
 from app.engine.service import build_service
 from app.engine.state import REP_SLOTS, Consent, PendingAsk, Phase, Session, SlotStatus
 from app.llm.fake import FakeLLM
@@ -330,3 +330,284 @@ def test_power_of_attorney_without_names_routes_too_and_a_changed_relationship_r
     assert r.brief.offer_human and s.pending_ask == PendingAsk.HUMAN_OFFER and s.consent.status == "none"
     declare(s, repos, settings, representative=DAVID)
     assert s.consent.status == "pending" and s.consent.consent_id == "CON-0001"
+
+
+def test_an_approved_representative_of_someone_else_does_not_inherit_the_earlier_hints(repos, settings):
+    """Ma Tian verifies and asks about his claim; the next message is David Chen, calling for his mother. Once
+    her consent arrives the hints Ma Tian gave are gone (they are not hers), the email offer is David's to
+    get, and the brief lists Margaret's claims without the no-match line."""
+    eng = Engine(repos, settings, lambda: TODAY)
+    s = Session.new()
+    eng.greeting(s)
+    eng.handle_turn(s, analysis(identity={"full_name": "Ma Tian", "dob": "1964-09-10", "id_last4": "6688"},
+                                case_hints={"case_type": "healthcare", "status": "denied", "month": 3},
+                                intent="denial_question"), "Ma Tian, 1964-09-10, 6688, my March claim")
+    assert s.verification.party_id == "P12" and s.case.selected_case_id == "CL-3001"
+    s.counters.email_offered = True
+    eng.handle_turn(s, analysis(caller_role="representative", representative=DAVID,
+                                identity={"policy_number": "POL-9921"},
+                                corrections=[{"slot": "full_name", "new_value": "David Chen"}]),
+                    "Actually this is David Chen, calling for my mother Margaret Chen, policy POL-9921")
+    assert s.fence_turn == 2 and s.consent.status == "pending" and s.phase == Phase.VERIFY_ID
+    assert s.memory.value("case_type") == "healthcare"  # still held while unverified; purged on approval
+    eng.handle_turn(s, analysis(), "Has she approved it yet?")
+    b = eng.handle_turn(s, analysis(), "Anything now?")
+    v = s.verification
+    assert (v.status, v.role, v.party_id) == ("verified", "representative", "P9")
+    assert all(s.memory.value(n) is None for n in ("case_type", "status_hint", "month", "intent"))
+    assert not s.counters.email_offered
+    assert s.pending_ask == PendingAsk.DISAMBIGUATION and s.case.selected_case_id is None
+    assert not any(m.startswith("I don't see a claim") for m in b.must_say)
+    assert "CL-3001" not in render_brief(b) and "CL-2048" in render_brief(b)
+
+
+def test_a_different_name_while_consent_is_pending_drops_the_consent(repos, settings, no_policyholder_lookup):
+    eng = Engine(repos, settings, lambda: TODAY)
+    s = Session.new()
+    eng.greeting(s)
+    eng.handle_turn(s, analysis(caller_role="representative", representative=DAVID,
+                                identity={"policy_number": "POL-9921"}), "David Chen, calling for my mother")
+    assert s.consent.status == "pending"
+    eng.handle_turn(s, analysis(representative={"name": "David Chen"}), "David Chen here, any news?")
+    assert s.consent.status == "pending" and s.fence_turn == 0  # a restated name is not a switch
+    b = eng.handle_turn(s, analysis(corrections=[{"slot": "full_name", "new_value": "Ma Tian"}],
+                                    identity={"dob": "1964-09-10", "id_last4": "6688"}),
+                        "Sorry, this is actually Ma Tian, born 1964-09-10, last four 6688. Why denied?")
+    assert s.consent.status == "none" and s.verification.status == "unverified"
+    assert s.verification.declared_representative and s.fence_turn == 3 and s.phase == Phase.VERIFY_ID
+    assert all(s.memory.value(n) is None for n in REP_SLOTS)
+    assert "CL-" not in render_brief(b) and s.pending_ask == PendingAsk.HUMAN_OFFER  # one request per session
+    assert CONSENT_ONCE in b.must_say
+    b2 = eng.handle_turn(s, analysis(caller_role="policyholder", identity={"full_name": "Ma Tian"}),
+                         "I am the policyholder, Ma Tian")  # the representative flag still wins
+    assert s.verification.status == "unverified" and "CL-" not in render_brief(b2)
+
+
+def test_a_different_representative_name_after_approval_drops_the_consent_too(repos, settings):
+    eng = Engine(repos, settings, lambda: TODAY)
+    s = Session.new()
+    eng.greeting(s)
+    eng.handle_turn(s, analysis(caller_role="representative", representative=DAVID,
+                                identity={"policy_number": "POL-9921"}, case_hints=HINTS,
+                                intent="denial_question"), "David Chen, calling for my mother")
+    eng.handle_turn(s, analysis(), "Has she approved it yet?")
+    eng.handle_turn(s, analysis(), "Anything now?")
+    assert s.verification.role == "representative" and s.case.selected_case_id == "CL-2048"
+    b = eng.handle_turn(s, analysis(representative={"name": "Ma Tian", "relationship": "friend",
+                                                    "policyholder_name": "Margaret Chen"}),
+                        "Actually I'm Ma Tian, her friend")
+    assert s.verification.status == "unverified" and s.consent.status == "none"
+    assert s.case.selected_case_id is None and "CL-2048" not in render_brief(b)
+    ev = [e for e in s.events if e.type == "verification_reset"][-1]
+    assert ev.data["slot"] == "rep_name" and ev.data["party_id"] == "P9"
+    assert s.consent.match_attempts == 0 and s.consent.requests == 1  # not matched: one request per session
+    assert s.pending_ask == PendingAsk.HUMAN_OFFER and CONSENT_ONCE in b.must_say
+
+
+def test_a_representative_declaration_after_a_verified_policyholder_is_a_switch(repos, settings):
+    """The live Reader read "Actually, this is David Chen. I'm calling for my mother Margaret Chen" as a
+    representative declaration with a policy-number correction and no name correction: it still names someone
+    else, so Ma Tian's verification resets and the representative flow starts in the same turn."""
+    eng = Engine(repos, settings, lambda: TODAY)
+    s = Session.new()
+    eng.greeting(s)
+    eng.handle_turn(s, analysis(identity={"full_name": "Ma Tian", "dob": "1964-09-10", "id_last4": "6688"},
+                                case_hints={"case_type": "healthcare", "status": "denied", "month": 3},
+                                intent="denial_question"), "Ma Tian, 1964-09-10, 6688, my March claim")
+    assert s.verification.party_id == "P12" and s.case.selected_case_id == "CL-3001"
+    b = eng.handle_turn(s, analysis(caller_role="representative", representative=DAVID,
+                                    identity={"policy_number": "POL-9921"},
+                                    corrections=[{"slot": "policy_number", "new_value": "POL-9921"}]),
+                        "Actually, this is David Chen, calling for my mother Margaret Chen, POL-9921.")
+    assert s.verification.status == "unverified" and s.verification.declared_representative
+    assert s.fence_turn == 2 and s.consent.status == "pending" and s.pending_ask == PendingAsk.CONSENT_WAIT
+    assert "CL-3001" not in render_brief(b) and "consent" in render_brief(b)
+
+
+def test_a_partial_restatement_does_not_widen_who_the_consent_is_for(repos, settings, no_policyholder_lookup):
+    eng = Engine(repos, settings, lambda: TODAY)
+    s = Session.new()
+    eng.greeting(s)
+    eng.handle_turn(s, analysis(caller_role="representative", representative=DAVID,
+                                identity={"policy_number": "POL-9921"}), "David Chen, for my mother")
+    eng.handle_turn(s, analysis(representative={"name": "Mr. Chen"}), "Mr. Chen here, any news?")
+    assert s.consent.status == "pending" and s.consent.requests == 1
+    b = eng.handle_turn(s, analysis(representative={"name": "Tom Chen", "relationship": "husband",
+                                                    "policyholder_name": "Margaret Chen"}),
+                        "Actually this is Tom Chen, her husband. Why was her claim denied?")
+    assert s.consent.status == "none" and s.verification.status == "unverified"
+    assert "CL-2048" not in render_brief(b) and CONSENT_ONCE in b.must_say
+    assert s.consent.requests == 1 and s.pending_ask == PendingAsk.HUMAN_OFFER  # one request per session
+    assert not any(e.type == "consent_requested" for e in session_events(s)[1:])
+
+
+def session_events(s):
+    return [e for e in s.events if e.type == "consent_requested"]
+
+
+def test_an_unlabelled_switch_on_the_representative_path_drops_the_consent(repos, settings,
+                                                                           no_policyholder_lookup):
+    eng = Engine(repos, settings, lambda: TODAY)
+    s = Session.new()
+    eng.greeting(s)
+    eng.handle_turn(s, analysis(caller_role="representative", representative=DAVID,
+                                identity={"policy_number": "POL-9921"}), "David Chen, for my mother")
+    eng.handle_turn(s, analysis(identity={"full_name": "Margaret Chen"}), "It is for Margaret Chen")
+    assert s.consent.status == "pending" and s.fence_turn == 0  # the policyholder's name is not a new caller
+    ma_tian = {"full_name": "Ma Tian", "dob": "1964-09-10", "id_last4": "6688"}
+    b = eng.handle_turn(s, analysis(caller_role="policyholder", identity=ma_tian),
+                        "Sorry, this is actually Ma Tian, born 1964-09-10, last four 6688. Why denied?")
+    assert s.consent.status == "none" and s.verification.declared_representative and s.fence_turn == 3
+    assert "CL-2048" not in render_brief(b)
+
+
+def test_a_declaration_for_another_policyholder_is_a_switch_whatever_the_label(repos, settings):
+    ma_tian = {"full_name": "Ma Tian", "dob": "1964-09-10", "id_last4": "6688"}
+    for fields in ({"caller_role": "unknown", "representative": DAVID},
+                   {"caller_role": "unknown",
+                    "representative": {"relationship": "son", "policyholder_name": "Margaret Chen"}}):
+        eng = Engine(repos, settings, lambda: TODAY)
+        s = Session.new()
+        eng.greeting(s)
+        eng.handle_turn(s, analysis(identity=ma_tian, case_hints={"case_id": "CL-3001"}), "Ma Tian, CL-3001")
+        assert s.verification.party_id == "P12"
+        b = eng.handle_turn(s, analysis(**fields), "I'm calling for my mother Margaret Chen")
+        assert s.verification.status == "unverified" and s.verification.declared_representative, fields
+        assert "CL-3001" not in render_brief(b) and s.fence_turn == 2, fields
+    eng = Engine(repos, settings, lambda: TODAY)
+    s = Session.new()
+    eng.greeting(s)
+    eng.handle_turn(s, analysis(identity=ma_tian, case_hints={"case_id": "CL-3001"}), "Ma Tian, CL-3001")
+    b = eng.handle_turn(s, analysis(caller_role="policyholder",
+                                    representative={"name": "David Chen", "relationship": "son"}),
+                        "My son David Chen will help me with the documents")  # a helper, not a switch
+    assert s.verification.party_id == "P12" and s.fence_turn == 0 and "CL-3001" in render_brief(b)
+
+
+def test_a_restated_policyholder_name_does_not_widen_who_counts_as_the_policyholder(repos, settings,
+                                                                                    no_policyholder_lookup):
+    eng = Engine(repos, settings, lambda: TODAY)
+    s = Session.new()
+    eng.greeting(s)
+    eng.handle_turn(s, analysis(caller_role="representative", representative=DAVID,
+                                identity={"policy_number": "POL-9921"}), "David Chen, for my mother")
+    eng.handle_turn(s, analysis(representative={"policyholder_name": "Mrs. Chen"}), "Any news on Mrs. Chen?")
+    assert s.consent.status == "pending" and s.consent.policyholder_name == "Margaret Chen"
+    b = eng.handle_turn(s, analysis(identity={"full_name": "Tom Chen"},
+                                    representative={"relationship": "husband"}),
+                        "Actually this is Tom Chen, her husband. Why was her claim denied?")
+    assert s.consent.status == "none" and s.fence_turn == 3 and "CL-2048" not in render_brief(b)
+    eng.handle_turn(s, analysis(), "Anything now?")
+    assert s.verification.status == "unverified" and s.consent.status == "none"
+
+
+def test_a_one_word_name_from_the_representative_is_not_a_switch(repos, settings, no_policyholder_lookup):
+    eng = Engine(repos, settings, lambda: TODAY)
+    s = Session.new()
+    eng.greeting(s)
+    eng.handle_turn(s, analysis(caller_role="representative", representative=DAVID,
+                                identity={"policy_number": "POL-9921"}), "David Chen, for my mother")
+    eng.handle_turn(s, analysis(representative={"name": "Dave"}), "Dave here, any news?")
+    assert s.consent.status == "pending" and s.fence_turn == 0 and s.consent.requests == 1
+
+
+def test_a_nameless_representative_declaration_for_the_verified_person_is_a_switch(repos, settings):
+    ma_tian = {"full_name": "Ma Tian", "dob": "1964-09-10", "id_last4": "6688"}
+    for rep in ({"relationship": "wife", "policyholder_name": "Ma Tian"}, {"relationship": "wife"}):
+        eng = Engine(repos, settings, lambda: TODAY)
+        s = Session.new()
+        eng.greeting(s)
+        eng.handle_turn(s, analysis(identity=ma_tian, case_hints={"case_id": "CL-3001"}), "Ma Tian, CL-3001")
+        b = eng.handle_turn(s, analysis(caller_role="representative", representative=rep),
+                            "Hi, I'm his wife, calling on his behalf. Why was his claim denied?")
+        assert s.verification.status == "unverified" and s.verification.declared_representative, rep
+        assert "CL-3001" not in render_brief(b), rep
+
+
+def test_naming_the_policy_owner_after_verifying_without_a_name_is_not_a_switch(repos, settings):
+    eng = Engine(repos, settings, lambda: TODAY)
+    s = Session.new()
+    eng.greeting(s)
+    eng.handle_turn(s, analysis(identity={"dob": "1985-03-15", "id_last4": "4472", "phone": "650-521-2836"}),
+                    "1985-03-15, 4472, 650-521-2836")
+    assert s.verification.party_id == "P9" and s.verification.names == ["Margaret Chen"]
+    assert s.memory.value("full_name") is None
+    b = eng.handle_turn(s, analysis(caller_role="unknown",
+                                    representative={"policyholder_name": "Margaret Chen"},
+                                    case_hints={"case_type": "healthcare", "status": "denied", "month": 1}),
+                        "The policy is in the name of Margaret Chen. Why was the January claim denied?")
+    assert s.verification.party_id == "P9" and s.fence_turn == 0 and "CL-2048" in render_brief(b)
+
+
+def test_a_first_name_alone_from_a_different_person_is_a_switch(repos, settings, no_policyholder_lookup):
+    for approved in (False, True):
+        eng = Engine(repos, settings, lambda: TODAY)
+        s = Session.new()
+        eng.greeting(s)
+        eng.handle_turn(s, analysis(caller_role="representative", representative=DAVID,
+                                    identity={"policy_number": "POL-9921"}), "David Chen, for my mother")
+        if approved:
+            eng.handle_turn(s, analysis(), "Any news?")
+            eng.handle_turn(s, analysis(), "Anything now?")
+            assert s.consent.status == "approved"
+        b = eng.handle_turn(s, analysis(representative={"name": "Tom", "relationship": "husband"}),
+                            "Actually this is Tom, her husband. Why was her claim denied?")
+        assert s.consent.status == "none" and s.verification.status == "unverified", approved
+        assert "CL-2048" not in render_brief(b) and CONSENT_ONCE in b.must_say, approved
+    eng = Engine(repos, settings, lambda: TODAY)  # a labelled one-word correction follows the same rule
+    s = Session.new()
+    eng.greeting(s)
+    eng.handle_turn(s, analysis(caller_role="representative", representative=DAVID,
+                                identity={"policy_number": "POL-9921"}), "David Chen, for my mother")
+    eng.handle_turn(s, analysis(corrections=[{"slot": "full_name", "new_value": "Dave"}]), "It's Dave.")
+    assert s.consent.status == "pending" and s.fence_turn == 0
+    eng.handle_turn(s, analysis(corrections=[{"slot": "full_name", "new_value": "Tom"}]), "No, it's Tom.")
+    assert s.consent.status == "none" and s.fence_turn == 3
+
+
+def test_a_bare_representative_label_without_any_detail_does_not_reset(repos, settings):
+    eng = Engine(repos, settings, lambda: TODAY)
+    s = Session.new()
+    eng.greeting(s)
+    eng.handle_turn(s, analysis(identity={"full_name": "Ma Tian", "dob": "1964-09-10", "id_last4": "6688"},
+                                case_hints={"case_id": "CL-3001"}), "Ma Tian, CL-3001")
+    b = eng.handle_turn(s, analysis(caller_role="representative", intent="document_submission"),
+                        "What documents do I still need?")  # a Reader mislabel, nothing else said
+    assert s.verification.party_id == "P12" and s.fence_turn == 0 and "CL-3001" in render_brief(b)
+
+
+def test_an_alias_on_file_is_the_same_policyholder(repos, settings):
+    eng = Engine(repos, settings, lambda: TODAY)
+    s = Session.new()
+    eng.greeting(s)
+    eng.handle_turn(s, analysis(identity={"full_name": "Ya Wen Li", "dob": "1989-12-03", "id_last4": "5317"}),
+                    "Ya Wen Li, 1989-12-03, 5317")
+    assert s.verification.party_id == "P13" and s.verification.names == ["Ya Wen Li", "Yaven Li"]
+    eng.handle_turn(s, analysis(caller_role="unknown", representative={"policyholder_name": "Yaven Li"}),
+                    "The policy is in the name of Yaven Li.")
+    assert s.verification.party_id == "P13" and s.fence_turn == 0
+
+
+def test_a_short_form_with_another_relationship_is_someone_else(repos, settings, no_policyholder_lookup):
+    eng = Engine(repos, settings, lambda: TODAY)
+    s = Session.new()
+    eng.greeting(s)
+    eng.handle_turn(s, analysis(caller_role="representative", representative=DAVID,
+                                identity={"policy_number": "POL-9921"}), "David Chen, for my mother")
+    assert s.consent.relationship == "son"
+    eng.handle_turn(s, analysis(representative={"name": "Dave", "relationship": "son"}), "Dave, her son")
+    assert s.consent.status == "pending" and s.fence_turn == 0
+    b = eng.handle_turn(s, analysis(representative={"name": "Davina", "relationship": "daughter"}),
+                        "Actually this is Davina, her daughter. Why was her claim denied?")
+    assert s.consent.status == "none" and s.fence_turn == 3 and "CL-2048" not in render_brief(b)
+
+
+def test_restating_an_alias_on_file_is_not_a_correction(repos, settings):
+    eng = Engine(repos, settings, lambda: TODAY)
+    s = Session.new()
+    eng.greeting(s)
+    eng.handle_turn(s, analysis(identity={"full_name": "Ya Wen Li", "dob": "1989-12-03", "id_last4": "5317"}),
+                    "Ya Wen Li, 1989-12-03, 5317")
+    eng.handle_turn(s, analysis(identity={"full_name": "Yaven Li"}), "It is Yaven Li, by the way.")
+    assert s.verification.party_id == "P13" and s.fence_turn == 0
+    assert not any(e.type == "verification_reset" for e in s.events)

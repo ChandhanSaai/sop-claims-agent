@@ -156,6 +156,7 @@ details.block[open] summary { margin-bottom: 8px; }
 .list li { padding: 2px 0; overflow-wrap: anywhere; }
 .events li { font-family: var(--mono); font-size: 12px; }
 .events .turn { color: var(--muted); margin-right: 6px; }
+.events li.fenced { color: var(--muted); text-decoration: line-through; }
 pre {
   margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--mono); font-size: 12px;
   background: var(--bot); padding: 10px; border-radius: 8px; max-height: 320px; overflow: auto;

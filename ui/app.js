@@ -122,6 +122,7 @@ function renderStatus(state) {
     ["Email offered", state.counters.email_offered ? "yes" : "no"],
     ["Human declined", state.counters.human_declined ? "yes" : "no"],
     ["Escalation", state.escalation.requested ? pill(state.escalation.reference ?? "requested", "warn") : "no"],
+    ["Fence", state.fence_turn ? `turn ${state.fence_turn}` : "none"],
     ["Consent", state.consent.status === "none" ? "none" : pill(state.consent.status,
       state.consent.status === "approved" ? "ok" : state.consent.status === "timed_out" ? "bad" : "warn")],
     ["Closed", state.closed ? pill("yes", "bad") : "no"],
@@ -211,14 +212,20 @@ function renderGuard(guard) {
     guard.violations.forEach((v) => ul.appendChild(el("li", "", v)));
     frag.appendChild(ul);
   }
+  if (guard.draft_violations?.length) {
+    const ul = el("ul", "violations");
+    guard.draft_violations.forEach((v) => ul.appendChild(el("li", "", `draft rejected: ${v}`)));
+    frag.appendChild(ul);
+  }
   box.replaceChildren(frag);
 }
 
-function renderEvents(events) {
+function renderEvents(events, fence) {
   const recent = events.slice(-12);
   if (!recent.length) { $("events").replaceChildren(el("li", "empty", "No events yet.")); return; }
   $("events").replaceChildren(...recent.map((e) => {
-    const li = el("li");
+    const li = el("li", e.turn < fence ? "fenced" : "");
+    if (e.turn < fence) li.title = "Before the verification reset: not reused for the party verified since.";
     li.appendChild(el("span", "turn", `t${e.turn}`));
     li.appendChild(document.createTextNode(e.type));
     return li;
@@ -231,7 +238,7 @@ function renderState(state) {
   renderMemory(state.memory);
   renderBrief(state.last_brief);
   renderGuard(state.last_guard);
-  renderEvents(state.events);
+  renderEvents(state.events, state.fence_turn);
 }
 
 async function refreshOutbox() {
