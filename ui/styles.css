@@ -167,7 +167,7 @@ pre {
   flex: 1; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; resize: none;
   background: var(--panel); color: var(--ink); line-height: 1.4; max-height: 160px;
 }
-#form button:disabled, #form textarea:disabled { opacity: 0.6; cursor: default; }
+button:disabled, #form textarea:disabled { opacity: 0.6; cursor: default; filter: none; }
 button.secondary { background: transparent; color: var(--ink); border: 1px solid var(--line); font-weight: 500; }
 
 /* Phase dividers and the harness line under each reply */
@@ -200,7 +200,9 @@ button.secondary { background: transparent; color: var(--ink); border: 1px solid
   font-size: 12.5px; font-weight: 600; color: var(--accent);
 }
 .tour-progress[hidden] { display: none; }
-.tour-progress .bar { flex: 1; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.tour-progress .bar {
+  flex: 1; min-width: 60px; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden;
+}
 .tour-progress .bar div { height: 100%; width: 0; background: var(--accent); transition: width 0.4s; }
 .chip {
   align-self: flex-start; max-width: 100%; text-align: left; padding: 8px 12px; border-radius: 10px;

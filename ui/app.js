@@ -149,9 +149,9 @@ function addDecided(node, data, events) {
 // The start panel of a new conversation: the walkthrough first, the example messages under it.
 function showStart() {
   const box = el("div", "start");
-  box.appendChild(el("h2", "start-title", "See the whole procedure in one click"));
-  box.appendChild(el("p", "start-text", "Seven turns, one phase at a time, with what the harness decided under "
-    + "each reply."));
+  box.appendChild(el("h2", "start-title", "All four phases, one at a time"));
+  box.appendChild(el("p", "start-text", "Seven turns, from the identity check to the emailed summary, with what "
+    + "the harness decided under each reply."));
   const go = el("button", "start-button", "Walk through the procedure");
   go.type = "button";
   go.addEventListener("click", runTour);
@@ -168,13 +168,14 @@ function showStart() {
   $("messages").appendChild(box);
 }
 
-// The strip above the composer while the walkthrough runs: which step, and the phase the conversation is in.
-function showTourProgress(step, total) {
+// The strip above the composer while the walkthrough runs: the step, the phase the conversation is in, and a
+// bar that fills to the step once its reply is in.
+function showTourProgress(step, total, replied = false) {
   const strip = $("tour-progress");
   if (step === null) { strip.hidden = true; return; }
   strip.hidden = false;
   $("tour-step").textContent = `Walkthrough · step ${step} of ${total} · ${currentPhase.replace("_", " ")}`;
-  $("tour-bar").style.width = `${Math.round(((step - 1) / total) * 100)}%`;
+  $("tour-bar").style.width = `${Math.round(((step - (replied ? 0 : 1)) / total) * 100)}%`;
 }
 
 function pill(text, kind) {
@@ -349,7 +350,8 @@ function setBusy(on) {
   ["send", "input", "tour"].forEach((id) => { $(id).disabled = on || touring; });
 }
 
-async function newConversation() {
+// start: show the start panel; the walkthrough starts its own conversation without it.
+async function newConversation(start = true) {
   if (busy) return;
   if (linkToken) {  // a token from the link is never used silently: the person confirms it first
     const prefill = linkToken;
@@ -386,10 +388,14 @@ async function newConversation() {
   sessionId = data.session_id;
   addPhaseDivider(null, data.state.phase, []);
   addMessage("assistant", data.greeting);
-  if (!touring) showStart();
+  if (start) {  // a person started this one, perhaps to stop a walkthrough: no tour state carries over
+    showStart();
+    showTourProgress(null);
+    $("input").placeholder = "Write a message";
+  }
   renderState(data.state);
   await refreshOutbox();
-  $("input").focus();
+  $("input").focus({ preventScroll: true });  // on a phone the top bar stays in view
 }
 
 async function sendMessage() {
@@ -435,7 +441,7 @@ async function runTour() {
   touring = true;
   $("tour").disabled = true;
   try {
-    await newConversation();
+    await newConversation(false);
     const sid = sessionId;
     if (!sid) return;
     addMessage("system", "Guided walkthrough: one phase at a time. Each divider marks the phase the harness moved to, "
@@ -446,9 +452,9 @@ async function runTour() {
       showTourProgress(i + 1, TOUR.length);
       $("input").value = text;
       if (!(await sendMessage())) return;
+      showTourProgress(i + 1, TOUR.length, true);  // the phase the reply moved to, and the bar to this step
       await new Promise((resolve) => setTimeout(resolve, 900));
     }
-    $("tour-bar").style.width = "100%";
     if (sessionId === sid) {  // the closing line claims only what the page shows
       const phases = $("messages").querySelectorAll(".phase-divider").length;
       const sent = $("outbox").querySelectorAll("li:not(.empty)").length;
@@ -489,7 +495,7 @@ $("token-dialog").addEventListener("cancel", (ev) => {
   }
 });
 $("token-button").addEventListener("click", () => showTokenDialog());
-$("new").addEventListener("click", newConversation);
+$("new").addEventListener("click", () => newConversation());
 $("tour").addEventListener("click", runTour);
 loadToken();
 newConversation();
