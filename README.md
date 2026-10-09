@@ -23,7 +23,7 @@ owns the SOP; the model reads and phrases:** one LLM call reads each message int
 - **Live transcripts:** [docs/live-transcripts.md](docs/live-transcripts.md) replays all 20 scenarios against
   the real Reader and Writer (Sonnet 5.5) and shows each reply with its state, guard verdict, latency and
   checks, and [docs/live-reliability.md](docs/live-reliability.md) repeats every scenario and reports pass^N.
-- **Replay suite:** `pytest -q` runs 263 tests offline with no key or network, including the 20 scenarios turn
+- **Replay suite:** `pytest -q` runs 264 tests offline with no key or network, including the 20 scenarios turn
   by turn and a leak check on every reply that ends unverified.
 - **Where each requirement and attack lives:** the [Grader's map](#graders-map) names the code, the test that
   pins each requirement and the live turn that shows it, and [Attacks we tried](#attacks-we-tried) pairs each
@@ -621,10 +621,9 @@ the real Reader and Writer (it needs `ANTHROPIC_API_KEY` in `.env` and costs API
 with hard passes and pass^N per scenario. State and leak expectations are hard checks, and so are a Reader
 or Writer failure and, on the turns where it once appeared, any retraction of or apology for an earlier reply;
 wording expectations are soft, because a live Writer paraphrases. Last run, with Sonnet 5.5 in both roles:
-18 of 18 scenarios passed every hard check over 60 turns, with one soft wording miss (Checks column),
-1 guard regeneration (shown in the Guard column) and 2.6 to 6.7 seconds per model-call turn, 8.0 for the
-regenerated one (the Secs column);
-across three repetitions, 54 of 54 scenario runs passed every hard check (100%). In an earlier
+20 of 20 scenarios passed every hard check over 67 turns, with one soft wording miss (Checks column),
+no guard regeneration and 2.8 to 6.5 seconds per model-call turn (the Secs column);
+across three repetitions, 60 of 60 scenario runs passed every hard check (100%). In an earlier
 run the first Reader call with a new output schema took about 35 seconds (the schema is compiled and cached
 server-side). Earlier live runs exposed one Writer habit the offline suite could not: when the state moved
 on (a goodbye brief without claim facts, a corrected date of birth resetting verification, a consent
