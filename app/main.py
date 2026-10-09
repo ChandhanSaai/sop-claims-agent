@@ -14,6 +14,10 @@ UI_DIR = Path(__file__).resolve().parent.parent / "ui"
 
 def create_app(settings: Settings | None = None, llm=None, service=None) -> FastAPI:
     settings = settings or get_settings()
+    if settings.require_access_token and not settings.demo_access_token:
+        raise RuntimeError("REQUIRE_ACCESS_TOKEN is set but DEMO_ACCESS_TOKEN is empty: the API would be "
+                           "public. Set the token (fly secrets set DEMO_ACCESS_TOKEN=...) or unset "
+                           "REQUIRE_ACCESS_TOKEN.")
     configure_logging(settings.log_level)
     app = FastAPI(title="SOP Claims Agent", docs_url=None, redoc_url=None)
     app.state.settings = settings

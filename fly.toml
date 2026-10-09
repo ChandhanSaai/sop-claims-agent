@@ -16,6 +16,7 @@ primary_region = "iad"
   PORT = "8000"
   LLM_BACKEND = "anthropic"
   LOG_LEVEL = "INFO"
+  REQUIRE_ACCESS_TOKEN = "true"  # the app refuses to start until DEMO_ACCESS_TOKEN is set (fly secrets)
 
 [http_service]
   internal_port = 8000

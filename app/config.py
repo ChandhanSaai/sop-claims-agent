@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     consent_scenario: str = "default"
     session_ttl_minutes: int = 60
     demo_access_token: str = ""
+    require_access_token: bool = False  # refuse to start without demo_access_token (set by fly.toml)
     log_level: str = "INFO"
     port: int = 8000
     fixtures_dir: Path = Path("fixtures")

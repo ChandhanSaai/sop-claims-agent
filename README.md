@@ -189,6 +189,8 @@ fly deploy --ha=false
 ```
 
 Visitors paste the token into the page's "Access token" field; `/healthz` stays open. Traces are ephemeral there.
+`fly.toml` sets `REQUIRE_ACCESS_TOKEN=true`, so a deploy that skipped the secrets step refuses to start instead of
+serving the API without a token.
 `--ha=false` keeps a single machine: sessions live in one process's memory (`app/api/sessions.py`), so a second
 machine would answer 404 for a session it never saw.
 
@@ -226,6 +228,7 @@ Every variable in `.env.example`, read by `app/config.py` from the environment o
 | `CONSENT_SCENARIO` | `default` | Consent scenario for new sessions when `POST /api/session` sends none or `scripts/chat_cli.py` gets no argument (`default`: pending, then approved; `timeout`: five pendings, then timed out). A scenario in the request body wins (the UI selector always sends its value); an unknown name falls back to `default`. |
 | `SESSION_TTL_MINUTES` | `60` | Idle minutes before an in-memory session expires; later calls on it get 404. |
 | `DEMO_ACCESS_TOKEN` | empty (off) | When set, every `/api/*` request needs header `X-Access-Token` with this value. |
+| `REQUIRE_ACCESS_TOKEN` | `false` | When `true`, the app refuses to start while `DEMO_ACCESS_TOKEN` is empty. `fly.toml` sets it, so a hosted deploy is never a public endpoint. |
 | `LOG_LEVEL` | `INFO` | Root level for the JSON logs. |
 | `PORT` | `8000` | Port uvicorn binds inside the container. `docker-compose.yml` publishes `8000:8000` and the healthcheck probes 8000, so change them together. Local `uvicorn` ignores it; pass `--port`. |
 
