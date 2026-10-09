@@ -1,8 +1,7 @@
-import re
 from datetime import date
 
 from app.data.normalize import normalize_email, normalize_id4, normalize_name, normalize_phone, parse_dob
-from app.data.repos import id_key
+from app.data.repos import id_key, id_matches
 from app.engine.state import (
     IDENTITY_SLOTS,
     REP_SLOTS,
@@ -103,8 +102,7 @@ IDENTIFIERS = ("dob", "id_last4", "phone", "email", "policy_number")
 
 
 def _forms(slot: str, value: str) -> set[str]:
-    """Every normalized form a written identifier can mean: a date of birth in both orders when ambiguous, a
-    policy number with or without its prefix."""
+    """Every normalized form a written identifier can mean (a date of birth in both orders when ambiguous)."""
     if slot == "dob":
         return {d.isoformat() for d in _dob_readings(value)}
     if slot == "id_last4":
@@ -114,8 +112,7 @@ def _forms(slot: str, value: str) -> set[str]:
     elif slot == "email":
         n = normalize_email(value)
     else:
-        digits = re.sub(r"\D", "", value)
-        return {f for f in (id_key(value), digits) if f}
+        n = id_key(value)
     return {n} if n else set()
 
 
@@ -129,7 +126,11 @@ def _same_value(session: Session, slot: str, given: str) -> bool:
     """An identifier that reads as the one the caller gave before. One never given is a question, whatever its
     value: comparing it with the record would tell whoever is speaking when a guess is right."""
     stored = session.memory.value(slot)
-    return bool(stored) and bool(_forms(slot, given) & _forms(slot, stored))
+    if not stored:
+        return False
+    if slot == "policy_number":  # the digits alone name it only when that is all the caller gives
+        return id_matches(id_key(given), stored) or id_matches(id_key(stored), given)
+    return bool(_forms(slot, given) & _forms(slot, stored))
 
 
 def signals(session: Session, analysis: TurnAnalysis) -> list[str]:

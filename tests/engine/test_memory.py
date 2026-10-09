@@ -370,6 +370,9 @@ def test_every_value_given_for_a_slot_is_compared(repos, settings):
                                     corrections=[{"slot": "dob", "new_value": "1964-09-10"}]), "same again")
     assert s.pending_ask == PendingAsk.IDENTITY_CONFIRM  # no answer either
     eng, s = verified(repos, settings, identity={**MARGARET, "policy_number": "POL-9921"})
+    eng.handle_turn(s, analysis(identity={"policy_number": "ABC-9921"}), "policy ABC-9921")
+    assert s.pending_ask == PendingAsk.IDENTITY_CONFIRM  # another prefix is another policy
+    eng.handle_turn(s, analysis(requests={"confirmation": "yes"}), "yes")
     eng.handle_turn(s, analysis(identity={"policy_number": "9921"}), "policy 9921")
     assert s.pending_identity is None  # the digits alone are the policy number
 
