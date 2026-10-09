@@ -198,4 +198,5 @@ def test_violations_name_the_kind_only_and_are_deduplicated(store):
     assert set(r.violations) == {"identifier:dob", "claim_id_not_allowed", "date_not_allowed",
                                  "number_not_allowed"}
     assert len(r.violations) == len(set(r.violations))
-    assert not any(ch.isdigit() for v in r.violations for ch in v)  # the echoed values stay out of the record
+    for leaked in ("1985", "3500.00", "CL-2011", "February 28, 2026", "April 30, 2026"):
+        assert not any(leaked in v for v in r.violations)  # the echoed values stay out of the record

@@ -697,6 +697,9 @@ Live persona evaluations (simulated callers scored as pass^k with an LLM judge) 
   in English. Guideline text exists only in English and the guard recognizes English date forms, so claim
   ids, dates, amounts, references and the email address are quoted in their English form inside a translated
   reply, and a date of birth echoed in non-English words would not be caught by the guard.
+- A switch to another person reaches the engine through corrections, which reset verification and fence off
+  the earlier party; the Reader prompt asks for that form. If the Reader returned the new person's details as
+  plain identity fields instead, the verified slots would stay and nothing would reset.
 - A one-word name is treated as a first name: the assistant asks for the full name as it appears on the
   policy instead of spending a verification attempt. A policyholder whose legal name is one word cannot use
   it as an identifier and has to verify with three of the other four.

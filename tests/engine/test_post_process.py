@@ -2,7 +2,7 @@ import pytest
 
 from app.engine.machine import Engine
 from app.engine.phases import post_process, process_case, resolve_intent
-from app.engine.state import PendingAsk, Phase
+from app.engine.state import PendingAsk, Phase, Session
 from app.llm.schemas import TurnAnalysis
 from tests.engine.helpers import TODAY, turn, verified_session
 
@@ -193,3 +193,27 @@ def test_engine_reentry_answer_states_the_passed_deadline_once(repos, settings):
     assert s.phase == Phase.PROCESS_CASE and any(x.startswith("State appeal_deadline") for x in m)
     assert sum("deadline" in x for x in m) == 1 and process_case.DEADLINE_CAVEAT not in m
     assert m.index(process_case.NO_CHAT_UPLOAD) + 1 == m.index(process_case.SUBMISSION_SHORT)
+
+
+def test_a_reset_turn_never_sends_the_earlier_party_s_draft(repos, settings):
+    A = TurnAnalysis.model_validate
+    eng = Engine(repos, settings)
+    s = Session.new()
+    eng.greeting(s)
+    eng.handle_turn(s, A({"identity": {"full_name": "Margaret Chen", "dob": "1985-03-15", "id_last4": "4472"},
+                          "intent": "denial_question",
+                          "case_hints": {"status": "denied", "case_type": "healthcare", "month": 1}}),
+                    "Margaret Chen, 1985-03-15, 4472, my denied claim")
+    eng.handle_turn(s, A({"requests": {"confirmation": "no", "closing": True}}), "No, that's all.")
+    eng.handle_turn(s, A({"requests": {"confirmation": "yes", "email_summary": "yes"}}), "Yes please.")
+    assert s.pending_draft and "CL-2048" in s.pending_draft
+    ava = repos.policyholders.find(name="Ava Lopez")[0]
+    corrections = [{"slot": "full_name", "new_value": ava.name},
+                   {"slot": "dob", "new_value": ava.dob.isoformat()},
+                   {"slot": "id_last4", "new_value": ava.id_last4}]
+    analysis = A({"requests": {"confirmation": "yes", "closing": True}, "corrections": corrections})
+    b = eng.handle_turn(s, analysis, "Yes, send it. Actually this is Ava Lopez.")
+    assert s.verification.party_id == ava.party_id and s.pending_draft is None
+    assert repos.outbox.list() == []  # nothing of Margaret's goes to Ava's address
+    assert s.phase == Phase.POST_PROCESS and s.pending_ask == PendingAsk.NONE  # a goodbye, no offer
+    assert not any("CL-2048" in v for v in b.allowed_facts.values())

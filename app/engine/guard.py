@@ -99,7 +99,8 @@ class OutputGuard:
         if TAG.search(text):
             v.append("markup_tag")
         v += [f"identifier:{x}" for x in self._identifier_leaks(text, session)]
-        user_text = " ".join(t.text for t in session.transcript if t.role == "user")
+        window = session.transcript[session.transcript_fence:]  # the earlier party's words are not exemptions
+        user_text = " ".join(t.text for t in window if t.role == "user")
         allowed = " ".join(brief.allowed_facts.values())
         # amounts and numbers compare without thousands separators
         plain, user_plain, allowed_plain = (THOUSANDS.sub("", x) for x in (text, user_text, allowed))
