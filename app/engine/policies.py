@@ -19,6 +19,15 @@ BOUNDARY_LINE = ("I'm glad to keep helping with your claim, and I need this conv
                  "so that I can.")
 CLOSE_LINE = "This conversation hasn't stayed respectful, so I'm ending it here."
 ABUSE_CLOSE_AT = 2  # the spec: one boundary statement, then the conversation ends
+IDENTITY_CHECK = "Before I go on, I want to be sure who I'm speaking with."
+# after a confirmed identity, the question it displaced is put again in fixed words: never stored text
+REASK = {
+    PendingAsk.EMAIL_OFFER: ("Offer again to send a summary of this conversation to the email on file.",
+                             "Would you like me to send that summary?"),
+    PendingAsk.EMAIL_CONFIRM: ("The draft summary shown earlier is still waiting for a go-ahead.",
+                               "Shall I send it to the email on file?"),
+    PendingAsk.HUMAN_OFFER: (None, HUMAN_ASK),
+}
 
 
 def _acknowledgment_seed(session: Session) -> str:
@@ -52,6 +61,16 @@ def escalation_brief(session: Session, first: bool, lead: list[str] | None = Non
     return ReplyBrief(phase=session.phase.value, goal="Confirm the hand-off and give the reference.",
                       allowed_facts={"handoff_reference": session.escalation.reference}, must_say=must_say,
                       must_not=["Do not disclose any claim details beyond what was already allowed."])
+
+
+def identity_confirm_brief(session: Session) -> ReplyBrief:
+    """A name that is partly the verified caller's: ask, never guess, and say nothing about claims meanwhile.
+    The question names what the caller gave, never the record."""
+    who = session.pending_identity.who if session.pending_identity else "the person verified earlier"
+    return ReplyBrief(phase=session.phase.value, goal="Confirm who is speaking before anything else.",
+                      must_say=[IDENTITY_CHECK],
+                      must_not=["Do not mention any claim details.", "Do not repeat identifiers."],
+                      ask=f"Is this still {who}? If not, please tell me your full name.")
 
 
 def closing_brief(session: Session, first: bool) -> ReplyBrief:
@@ -103,6 +122,8 @@ def pass1(session: Session, ctx: TurnContext, settings: Settings) -> None:
             ctx.acknowledge = _acknowledgment_seed(session)
     else:
         session.counters.frustration_streak = 0
+        if max(a.affect.anxiety, a.affect.confusion) >= 2:  # worried or lost, not angry: a warmer reply
+            ctx.tone = "warm"
     if session.counters.frustration_streak >= 2:
         ctx.offer_human = True
 
@@ -125,13 +146,32 @@ def pass1(session: Session, ctx: TurnContext, settings: Settings) -> None:
     if a.requests.wants_human or ctx.human_yes:
         first = not session.escalation.requested
         escalate(session, "caller asked for a representative")
-        session.pending_ask = PendingAsk.NONE
+        # the identity question survives the hand-off (asked again next turn); a question a yes was about
+        # to put again stays answerable instead of being re-asked after the hand-off
+        if session.pending_identity:
+            session.pending_ask = PendingAsk.IDENTITY_CONFIRM
+        elif session.reask != PendingAsk.NONE:
+            session.pending_ask, session.reask = session.reask, PendingAsk.NONE
+        else:
+            session.pending_ask = PendingAsk.NONE
         ctx.offer_human = False
         ctx.policy_brief = escalation_brief(session, first)
         return
     if ctx.human_no:
         session.pending_ask = PendingAsk.NONE
         session.counters.human_declined = True
+    if session.pending_identity:  # open, or just raised by this message: nothing else is answered
+        session.pending_ask = PendingAsk.IDENTITY_CONFIRM
+        ctx.policy_brief = identity_confirm_brief(session)
+        return
+    if session.reask != PendingAsk.NONE:  # the identity was confirmed: the question it displaced is put again
+        line, ask = REASK[session.reask]
+        session.reask = PendingAsk.NONE
+        ctx.policy_brief = ReplyBrief(
+            phase=session.phase.value, goal="Thank the caller for confirming; the earlier question again.",
+            must_say=["Thanks for confirming.", *([line] if line else [])],
+            must_not=["Do not mention any claim details."], ask=ask)
+        return
 
     off_topic = a.scope == "out_of_scope" or a.injection_suspected
     if off_topic:
@@ -174,7 +214,7 @@ def pass2(session: Session, ctx: TurnContext, brief: ReplyBrief) -> ReplyBrief:
     if ctx.acknowledge and not brief.acknowledge:
         update["acknowledge"] = ctx.acknowledge
     if (ctx.offer_human and not brief.offer_human and not session.escalation.requested
-            and not session.counters.human_declined):
+            and not session.counters.human_declined and not session.pending_identity):
         update["offer_human"] = True
         update["ask"] = HUMAN_ASK
         session.pending_ask = PendingAsk.HUMAN_OFFER

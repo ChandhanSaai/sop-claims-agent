@@ -175,7 +175,7 @@ def main() -> int:
         parser.error("--repeat must be at least 1")
     settings = get_settings()
     configure_logging(settings.log_level)
-    names = args.scenarios or scenario_names()
+    names = [n for n in (args.scenarios or scenario_names()) if not load(n).get("offline_only")]
     runs, failed = [], 0
     for k in range(repeat):
         results, f = run_all(names, settings, f"run {k + 1}/{repeat} " if repeat > 1 else "")

@@ -25,6 +25,7 @@ class PendingAsk(StrEnum):
     EMAIL_CONFIRM = "email_confirm"
     HUMAN_OFFER = "human_offer"
     CONSENT_WAIT = "consent_wait"
+    IDENTITY_CONFIRM = "identity_confirm"
 
 
 class SlotStatus(StrEnum):
@@ -98,7 +99,6 @@ class Consent(BaseModel):
     status: Literal["none", "pending", "approved", "timed_out"] = "none"
     representative_name: str | None = None
     policyholder_name: str | None = None  # both names as matched on file, never a restated slot
-    relationship: str | None = None  # as matched on file: a short name with another one is someone else
     polls: int = 0
     consent_id: str | None = None
     party_id: str | None = None  # the policyholder the consent was requested from
@@ -130,6 +130,14 @@ class Counters(BaseModel):
     abusive: int = 0
 
 
+class IdentityQuestion(BaseModel):
+    """An open \"is this still X?\": the name that raised it, how the caller is known so far, and the question
+    it displaced (restored on yes)."""
+    candidate: str
+    who: str
+    resume: PendingAsk = PendingAsk.NONE
+
+
 class Event(BaseModel):
     turn: int
     type: str
@@ -158,6 +166,9 @@ class Session(BaseModel):
     events: list[Event] = Field(default_factory=list)
     transcript: list[Turn] = Field(default_factory=list)
     pending_draft: str | None = None
+    pending_identity: IdentityQuestion | None = None  # open until answered, whatever else is asked
+    reask: PendingAsk = PendingAsk.NONE  # after a yes: the displaced question to put again, in fixed words
+    confirmed_names: list[str] = Field(default_factory=list)  # names the caller confirmed as their own
     # a verification reset fences off the earlier party: events before fence_turn and transcript entries
     # before transcript_fence are not reused for whoever verifies next
     fence_turn: int = 0
@@ -178,6 +189,14 @@ class Session(BaseModel):
         answer in the reset turn itself."""
         return [e for e in self.events if e.turn >= self.fence_turn]
 
+    @staticmethod
+    def _event_view(e: "Event") -> dict[str, Any]:
+        """A reset event carries the earlier party's hand-off and ids for the engine; the inspector sees only
+        which slot changed."""
+        if e.type == "verification_reset":
+            return {"turn": e.turn, "type": e.type, "data": {"slot": e.data.get("slot")}}
+        return e.model_dump()
+
     def last_assistant_text(self) -> str | None:
         for t in reversed(self.transcript):
             if t.role == "assistant":
@@ -193,6 +212,7 @@ class Session(BaseModel):
                 "source_turn": s.source_turn,
             }
             for name, s in self.memory.slots.items()
+            if name not in HINT_SLOTS or s.source_turn >= self.fence_turn  # earlier party's hints stay out
         }
         return {
             "session_id": self.id,
@@ -210,5 +230,5 @@ class Session(BaseModel):
             "memory": memory,
             "last_brief": self.last_brief.model_dump() if self.last_brief else None,
             "last_guard": self.last_guard,
-            "events": [e.model_dump() for e in self.events[-30:]],
+            "events": [self._event_view(e) for e in self.fenced_events()[-30:]],
         }

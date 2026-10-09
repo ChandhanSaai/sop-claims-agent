@@ -1,0 +1,43 @@
+name: guard_catches_a_leaking_writer
+scenario: default
+today: "2026-10-07"
+offline_only: true  # the Writer is scripted to leak; the live Writer is not asked to
+turns:
+  - user: "Hi, why was my healthcare claim from January denied?"
+    analysis:
+      case_hints: {case_type: healthcare, status: denied, month: 1}
+      intent: denial_question
+    writer:
+      - "Your claim CL-2048 was denied because the review file did not include the pathology report."
+      - "Claim CL-2048 was denied; please verify your identity first."
+    expect:
+      phase: VERIFY_ID
+      verified: false
+      guard_ok: false
+      reply_contains: ["verify"]
+      reply_not_contains: ["CL-2048", "pathology", "denied because"]
+  - user: "Margaret Chen, born 15 March 1985, SSN last four 4472."
+    analysis:
+      identity: {full_name: "Margaret Chen", dob: "1985-03-15", id_last4: "4472"}
+      caller_role: policyholder
+    writer:
+      - "Thanks Margaret, born March 15, 1985: you are verified. Claim CL-2048 was denied because the review file did not include the pathology report and the office note."
+    expect:
+      phase: PROCESS_CASE
+      verified: true
+      party_id: P9
+      guard_ok: true
+      reply_contains: ["CL-2048", "pathology report"]
+      reply_not_contains: ["March 15, 1985", "1985-03-15", "4472"]
+  - user: "Until when can I appeal?"
+    analysis:
+      intent: next_steps
+      question: "until when can I appeal?"
+    writer:
+      - "You can still appeal until April 30, 2026."
+    expect:
+      phase: PROCESS_CASE
+      verified: true
+      guard_ok: true
+      reply_contains: ["March 18, 2026"]
+      reply_not_contains: ["April 30"]

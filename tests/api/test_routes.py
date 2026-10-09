@@ -118,3 +118,20 @@ def test_concurrent_chats_on_one_session_are_serialised():
         rs = list(pool.map(lambda _: c.post("/api/chat", json=body), range(5)))
     assert sorted(r.json()["state"]["turn"] for r in rs) == [1, 2, 3, 4, 5]
     assert c.app.state.sessions.get(sid).turn == 5
+
+
+class FencingService(StubService):
+    def chat(self, session: Session, message: str) -> StubResult:
+        res = super().chat(session, message)
+        session.traces.append({"turn": session.turn})
+        if message == "switch":
+            session.fence_turn = session.turn
+        return res
+
+
+def test_the_trace_route_starts_at_the_fence():
+    client = TestClient(create_app(settings=Settings(_env_file=None), service=FencingService()))
+    sid = client.post("/api/session", json={}).json()["session_id"]
+    for m in ("one", "two", "switch", "four"):
+        client.post("/api/chat", json={"session_id": sid, "message": m})
+    assert [t["turn"] for t in client.get(f"/api/session/{sid}/trace").json()["turns"]] == [3, 4]

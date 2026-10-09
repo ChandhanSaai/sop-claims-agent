@@ -21,10 +21,12 @@ def test_zero_claim_vocabulary_before_verification(name, settings):
     vocab = OutputGuard(store)
     spec = load(name)
     results = run_scenario(spec, settings)
+    if all(r["verified_after"] and r["session"].pending_identity is None for r in results):
+        pytest.skip("every turn ends verified: nothing for the pre-verification rule to check")
     said = ""
     for turn_spec, r in zip(spec["turns"], results, strict=True):
         said += " " + turn_spec["user"]
-        if r["verified_after"]:
+        if r["verified_after"] and r["session"].pending_identity is None:  # an open question says nothing
             continue
         reply = r["reply"]
         assert not re.search(r"\bCL-\d+", reply), (name, reply)

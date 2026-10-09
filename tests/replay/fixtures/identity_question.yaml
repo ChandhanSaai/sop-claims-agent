@@ -1,0 +1,47 @@
+name: identity_question
+scenario: default
+today: "2026-10-07"
+turns:
+  - user: "I'm Margaret Chen, DOB 1985-03-15, SSN last four 4472. Why was my healthcare claim from January denied?"
+    analysis:
+      identity: {full_name: "Margaret Chen", dob: "1985-03-15", id_last4: "4472"}
+      caller_role: policyholder
+      case_hints: {case_type: healthcare, status: denied, month: 1}
+      intent: denial_question
+    expect:
+      phase: PROCESS_CASE
+      verified: true
+      party_id: P9
+      reply_contains: ["CL-2048", "pathology report"]
+      guard_ok: true
+  - user: "Thanks. Maggie Chen here, what is the appeal deadline?"
+    analysis:
+      identity: {full_name: "Maggie Chen"}
+      intent: next_steps
+    expect:
+      phase: PROCESS_CASE
+      verified: true
+      party_id: P9
+      pending_ask: identity_confirm
+      reply_contains: ["Margaret Chen"]
+      reply_not_contains: ["CL-2048", "March 18", "pathology"]
+      guard_ok: true
+  - user: "Yes, it's me."
+    analysis:
+      requests: {confirmation: "yes"}
+    expect:
+      phase: PROCESS_CASE
+      verified: true
+      party_id: P9
+      reply_not_contains: ["Is this still"]
+      guard_ok: true
+  - user: "So what is the appeal deadline?"
+    analysis:
+      intent: next_steps
+      question: "what is the appeal deadline?"
+    expect:
+      phase: PROCESS_CASE
+      verified: true
+      party_id: P9
+      reply_contains: ["March 18, 2026"]
+      guard_ok: true

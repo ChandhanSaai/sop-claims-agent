@@ -63,4 +63,4 @@ def outbox(session_id: str, request: Request):
 def trace(session_id: str, request: Request):
     session, lock = _get_session(request, session_id)
     with lock:
-        return TraceResponse(turns=session.traces)
+        return TraceResponse(turns=[t for t in session.traces if t["turn"] >= session.fence_turn])

@@ -5,7 +5,7 @@ from app.config import Settings
 from app.data.repos import Repos
 from app.engine.briefs import HandlerResult, merge_briefs
 from app.engine.context import resolve_pending
-from app.engine.memory import merge_analysis
+from app.engine.memory import flagged_identity_check, merge_analysis
 from app.engine.phases import HANDLERS
 from app.engine.policies import pass1, pass2
 from app.engine.state import PendingAsk, Session, Turn
@@ -36,7 +36,9 @@ class Engine:
         session.turn += 1
         session.transcript.append(Turn(role="user", text=user_text))
         ctx = resolve_pending(session, analysis, user_text)
-        if not analysis.injection_suspected:  # an injection-flagged turn never changes memory
+        if analysis.injection_suspected:  # an injection-flagged turn never changes memory
+            flagged_identity_check(session, analysis)  # but a name in it can still raise the question
+        else:
             changed = merge_analysis(session, analysis)
             if session.fence_turn == session.turn:  # a verification reset happened on this turn
                 # the context was read against the earlier party's pending question; read it again now

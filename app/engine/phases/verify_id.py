@@ -74,6 +74,12 @@ CONSENT_FACT = (
 MEANWHILE_ASK = "Is there a general question I can help with in the meantime?"
 
 
+def _claims_poa(relationship: str | None) -> bool:
+    """Spec 7: a claimed power of attorney goes to a person for document review."""
+    r = normalize_name(relationship or "")
+    return r == "poa" or "power of attorney" in r or "attorney in fact" in r
+
+
 def _fingerprint(provided: dict[str, str]) -> str:
     """Hash of the normalized identifiers, so a format-only restatement ("March 15, 1985" vs "1985-03-15")
     is not a new attempt. A value that does not normalize is hashed as given; str(date) is ISO."""
@@ -103,19 +109,20 @@ def _human_brief(session: Session, goal: str, must_say: list[str],
     return HandlerResult(brief=brief)
 
 
-def _new_party_cleanup(session: Session, party_id: str) -> None:
-    """After a verification reset: someone else verified, so the hints given before the reset are not theirs
-    and the summary offer is theirs to get; or the same party verified again, so their hand-off and declined
-    offer come back from the reset event unless a newer hand-off happened in between."""
+def _new_party_cleanup(session: Session, caller: str) -> None:
+    """After a verification reset: someone else verified (a representative of the same policyholder is someone
+    else), so the hints given before the reset are not theirs and the summary offer is theirs to get; or the
+    same caller verified again, so their hand-off and declined offer come back from the reset event unless a
+    newer hand-off happened in between."""
     resets = [e for e in session.events if e.type == "verification_reset"]
     if not resets:
         return
-    if resets[-1].data["party_id"] != party_id:
+    if resets[-1].data["caller"] != caller:
         for n in HINT_SLOTS:
             if (slot := session.memory.get(n)) and slot.source_turn < session.fence_turn:
                 del session.memory.slots[n]
         session.counters.email_offered = False
-    own = next((e for e in reversed(resets) if e.data["party_id"] == party_id), None)
+    own = next((e for e in reversed(resets) if e.data["caller"] == caller), None)
     if own is not None and not session.escalation.requested:  # back after someone else in between too
         session.escalation = Escalation(**own.data["escalation"])
         session.counters.human_declined = own.data["human_declined"]
@@ -123,7 +130,7 @@ def _new_party_cleanup(session: Session, party_id: str) -> None:
 
 def _approve(session: Session, repos: Repos) -> HandlerResult:
     v, c = session.verification, session.consent
-    _new_party_cleanup(session, c.party_id)
+    _new_party_cleanup(session, f"representative:{c.party_id}:{normalize_name(c.representative_name or '')}")
     rec = repos.policyholders.get(c.party_id)
     v.status, v.party_id, v.role = "verified", c.party_id, "representative"
     v.names = [rec.name, *rec.name_aliases]
@@ -167,8 +174,7 @@ def _representative(session: Session, ctx: TurnContext, repos: Repos, settings: 
         return _human_brief(session, "A consent request already went out this conversation; offer a human.",
                             lead + [CONSENT_ONCE])
     # spec 7: a claimed power of attorney goes to a person for document review, before any match or consent
-    relationship = normalize_name(session.memory.value("rep_relationship") or "")
-    if relationship == "poa" or "power of attorney" in relationship or "attorney in fact" in relationship:
+    if _claims_poa(session.memory.value("rep_relationship")):
         if not any(e.type == "poa_claimed" for e in session.events):
             session.log("poa_claimed")
         return _human_brief(session, "A claimed power of attorney needs document review by a person; "
@@ -196,7 +202,6 @@ def _representative(session: Session, ctx: TurnContext, repos: Repos, settings: 
             c.status, c.consent_id, c.party_id = "pending", cid, match.buyer_party_id
             c.requests += 1
             c.representative_name, c.policyholder_name = match.rep_name, match.buyer_name
-            c.relationship = match.relationship
             session.log("consent_requested", consent_id=cid, scenario=session.scenario)
             session.pending_ask = PendingAsk.CONSENT_WAIT
             brief = ReplyBrief(
@@ -246,9 +251,11 @@ def _handle(
         for n in ("case_type", "status_hint", "month", "year", "case_id", "free_text", "intent")
     )
     rep = a.representative
-    # a policyholder who merely mentions a helper keeps the policyholder path; once set, the flag wins
+    # a policyholder who merely mentions a helper keeps the policyholder path, and a relationship word alone
+    # ("my husband told me to call") declares nothing unless it claims power of attorney; once set it wins
     if a.caller_role != "policyholder" and (
-            a.caller_role == "representative" or rep.name or rep.relationship or rep.policyholder_name):
+            a.caller_role == "representative" or rep.name or rep.policyholder_name
+            or _claims_poa(rep.relationship)):
         v.declared_representative = True
     if v.declared_representative:
         return _representative(session, ctx, repos, settings, hints_noted)
@@ -312,7 +319,7 @@ def _handle(
     passes = [(r, res) for r, res in checks if res.passed]
     if len(passes) == 1:
         rec, result = passes[0]
-        _new_party_cleanup(session, rec.party_id)
+        _new_party_cleanup(session, f"policyholder:{rec.party_id}")
         v.status, v.party_id, v.role = "verified", rec.party_id, "policyholder"
         v.names = [rec.name, *rec.name_aliases]
         session.memory.mark_verified(result.matched)  # a wrong extra identifier stays provisional

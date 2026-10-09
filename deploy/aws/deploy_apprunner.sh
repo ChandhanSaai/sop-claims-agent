@@ -17,7 +17,8 @@ aws ecr describe-images --repository-name "$APP" --image-ids imageTag=main --reg
 KEY="${ANTHROPIC_API_KEY:-$(grep '^ANTHROPIC_API_KEY=' .env 2>/dev/null | cut -d= -f2- | tr -d '\r' || true)}"
 [ -n "$KEY" ] || { echo "set ANTHROPIC_API_KEY (environment or .env)"; exit 1; }
 if [ -f "$HOME/.sop-demo-token" ]; then TOKEN=$(cat "$HOME/.sop-demo-token"); else
-  TOKEN=$(python -c "import secrets; print(secrets.token_urlsafe(24))"); printf '%s' "$TOKEN" > "$HOME/.sop-demo-token"; fi
+  TOKEN=$(python -c "import secrets; print(secrets.token_urlsafe(24))")
+  (umask 077; printf '%s' "$TOKEN" > "$HOME/.sop-demo-token"); fi  # owner-readable only
 aws ssm put-parameter --name "/$APP/anthropic-api-key" --type SecureString --value "$KEY" --overwrite --region "$REGION" >/dev/null
 aws ssm put-parameter --name "/$APP/demo-access-token" --type SecureString --value "$TOKEN" --overwrite --region "$REGION" >/dev/null
 KEY_ARN="arn:aws:ssm:$REGION:$ACCOUNT:parameter/$APP/anthropic-api-key"

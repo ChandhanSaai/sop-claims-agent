@@ -391,3 +391,13 @@ def test_the_hand_off_comes_back_after_another_party_in_between(repos, settings)
                          corrections=[{"slot": "full_name", "new_value": "Margaret Chen"}]),
                     "Sorry, it is Margaret again, 1985-03-15, 4472.")
     assert s.verification.party_id == "P9" and s.escalation.requested and s.escalation.reference == ref
+
+
+def test_a_worried_or_confused_caller_gets_a_warmer_tone(repos, settings):
+    eng = Engine(repos, settings)
+    s = Session.new()
+    eng.greeting(s)
+    b = eng.handle_turn(s, A(affect={"anxiety": 2}), "I'm really worried about this, I don't know what to do")
+    assert b.tone == "warm" and s.counters.frustration_streak == 0
+    b2 = eng.handle_turn(s, A(affect={"anxiety": 3, "anger": 2}), "and I'm angry too")
+    assert b2.tone == "de_escalate"  # heat wins
