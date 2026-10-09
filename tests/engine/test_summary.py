@@ -85,3 +85,27 @@ def test_reverification_as_another_party_fences_off_the_earlier_claim(repos, set
     sent = repos.outbox.list()
     assert len(sent) == 1 and sent[0].to == "matian@example.com"
     assert "CL-3001" in sent[0].body and "CL-2048" not in sent[0].body and "Margaret" not in sent[0].body
+
+
+def test_the_fence_keeps_the_correction_message_and_resets_the_email_offer(repos, settings):
+    from app.engine.machine import Engine
+    from app.engine.state import Session
+    from app.llm.schemas import TurnAnalysis
+
+    eng = Engine(repos, settings)
+    s = Session.new()
+    eng.greeting(s)
+    first = {"identity": {"full_name": "Margaret Chen", "dob": "1985-03-15", "id_last4": "4472"},
+             "intent": "denial_question",
+             "case_hints": {"status": "denied", "case_type": "healthcare", "month": 1}}
+    eng.handle_turn(s, TurnAnalysis.model_validate(first), "Margaret Chen, 1985-03-15, 4472, my denied claim")
+    s.counters.email_offered = True
+    tian = next(r for r in repos.policyholders._records if r.name == "Ma Tian")
+    corrections = [{"slot": "full_name", "new_value": tian.name},
+                   {"slot": "dob", "new_value": tian.dob.isoformat()},
+                   {"slot": "id_last4", "new_value": tian.id_last4}]
+    text = "sorry, this is actually Ma Tian"
+    eng.handle_turn(s, TurnAnalysis.model_validate({"corrections": corrections}), text)
+    assert s.verification.party_id == tian.party_id
+    assert s.transcript[s.transcript_fence].text == text  # the correction stays in the Writer window
+    assert s.counters.email_offered is False

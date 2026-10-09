@@ -56,7 +56,8 @@ def _apply_corrections(session: Session, analysis: TurnAnalysis, changed: list[s
             session.memory.reset_identity()
             # the earlier party's answers and replies are not the next party's: the summary, the earlier-
             # details rule, the email offer and the Writer's window look only past these fences
-            session.fence_turn, session.transcript_fence = t, len(session.transcript)
+            # the fence sits before the correction message itself, so the Writer still sees what was just said
+            session.fence_turn, session.transcript_fence = t, max(len(session.transcript) - 1, 0)
             session.phase = Phase.VERIFY_ID
             session.pending_ask = PendingAsk.NONE
             session.log("verification_reset", slot=c.slot, party_id=party_id)

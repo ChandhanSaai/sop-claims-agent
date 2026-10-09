@@ -20,7 +20,7 @@ owns the SOP; the model reads and phrases:** one LLM call reads each message int
 - **Golden transcripts:** both transcripts from the spec (Margaret in one turn, the angry caller) and the
   representative approve and timeout paths are in [Golden transcripts](#golden-transcripts), with the state
   after each turn and what each reply must and must not say.
-- **Live transcripts:** [docs/live-transcripts.md](docs/live-transcripts.md) replays all 18 scenarios against
+- **Live transcripts:** [docs/live-transcripts.md](docs/live-transcripts.md) replays all 20 scenarios against
   the real Reader and Writer (Sonnet 5.5) and shows each reply with its state, guard verdict, latency and
   checks, and [docs/live-reliability.md](docs/live-reliability.md) repeats every scenario and reports pass^N.
 - **Replay suite:** `pytest -q` runs 263 tests offline with no key or network, including the 20 scenarios turn

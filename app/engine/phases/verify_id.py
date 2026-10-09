@@ -290,6 +290,7 @@ def _handle(
             for n in HINT_SLOTS:
                 if (slot := session.memory.get(n)) and slot.source_turn < session.fence_turn:
                     del session.memory.slots[n]
+            session.counters.email_offered = False  # the new party gets their own summary offer
         v.status, v.party_id, v.role = "verified", rec.party_id, "policyholder"
         session.memory.mark_verified(result.matched)  # a wrong extra identifier stays provisional
         session.log("verified", party_id=rec.party_id, fields=len(provided))
