@@ -586,3 +586,28 @@ def test_an_alias_on_file_is_the_same_policyholder(repos, settings):
     eng.handle_turn(s, analysis(caller_role="unknown", representative={"policyholder_name": "Yaven Li"}),
                     "The policy is in the name of Yaven Li.")
     assert s.verification.party_id == "P13" and s.fence_turn == 0
+
+
+def test_a_short_form_with_another_relationship_is_someone_else(repos, settings, no_policyholder_lookup):
+    eng = Engine(repos, settings, lambda: TODAY)
+    s = Session.new()
+    eng.greeting(s)
+    eng.handle_turn(s, analysis(caller_role="representative", representative=DAVID,
+                                identity={"policy_number": "POL-9921"}), "David Chen, for my mother")
+    assert s.consent.relationship == "son"
+    eng.handle_turn(s, analysis(representative={"name": "Dave", "relationship": "son"}), "Dave, her son")
+    assert s.consent.status == "pending" and s.fence_turn == 0
+    b = eng.handle_turn(s, analysis(representative={"name": "Davina", "relationship": "daughter"}),
+                        "Actually this is Davina, her daughter. Why was her claim denied?")
+    assert s.consent.status == "none" and s.fence_turn == 3 and "CL-2048" not in render_brief(b)
+
+
+def test_restating_an_alias_on_file_is_not_a_correction(repos, settings):
+    eng = Engine(repos, settings, lambda: TODAY)
+    s = Session.new()
+    eng.greeting(s)
+    eng.handle_turn(s, analysis(identity={"full_name": "Ya Wen Li", "dob": "1989-12-03", "id_last4": "5317"}),
+                    "Ya Wen Li, 1989-12-03, 5317")
+    eng.handle_turn(s, analysis(identity={"full_name": "Yaven Li"}), "It is Yaven Li, by the way.")
+    assert s.verification.party_id == "P13" and s.fence_turn == 0
+    assert not any(e.type == "verification_reset" for e in s.events)

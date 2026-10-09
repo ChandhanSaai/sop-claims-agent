@@ -196,6 +196,7 @@ def _representative(session: Session, ctx: TurnContext, repos: Repos, settings: 
             c.status, c.consent_id, c.party_id = "pending", cid, match.buyer_party_id
             c.requests += 1
             c.representative_name, c.policyholder_name = match.rep_name, match.buyer_name
+            c.relationship = match.relationship
             session.log("consent_requested", consent_id=cid, scenario=session.scenario)
             session.pending_ask = PendingAsk.CONSENT_WAIT
             brief = ReplyBrief(

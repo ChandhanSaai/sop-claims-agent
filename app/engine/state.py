@@ -98,6 +98,7 @@ class Consent(BaseModel):
     status: Literal["none", "pending", "approved", "timed_out"] = "none"
     representative_name: str | None = None
     policyholder_name: str | None = None  # both names as matched on file, never a restated slot
+    relationship: str | None = None  # as matched on file: a short name with another one is someone else
     polls: int = 0
     consent_id: str | None = None
     party_id: str | None = None  # the policyholder the consent was requested from

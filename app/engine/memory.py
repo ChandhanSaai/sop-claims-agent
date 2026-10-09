@@ -76,7 +76,8 @@ def _implicit_corrections(session: Session, analysis: TurnAnalysis) -> None:
     for slot in PERSON_SLOTS:
         given, cur = getattr(analysis.identity, slot), session.memory.get(slot)
         if given and slot not in labelled and cur is not None and cur.status == SlotStatus.VERIFIED:
-            if not _same_person(slot, cur.value, str(given)):
+            known = [cur.value, *session.verification.names] if slot == "full_name" else [cur.value]
+            if not any(_same_person(slot, k, str(given)) for k in known):  # an alias on file is the same
                 analysis.corrections.append(Correction(slot=slot, new_value=str(given).strip()))
 
 
@@ -116,8 +117,12 @@ def _representative_switch(session: Session, analysis: TurnAnalysis) -> None:
     named = [x.new_value for x in analysis.corrections if x.slot == "full_name"]
     named += [n for n in (analysis.representative.name, analysis.identity.full_name) if n]
     # the policyholder's own name in an identity field names the person consent is asked from, not a caller;
-    # a one-word name that fits the representative's own ("Dave", "Chen") is not a new person either
-    named = [n for n in named if not (holder and _same_person("full_name", holder, n)) and not _fits(n, held)]
+    # a one-word name that fits the representative's own ("Dave", "Chen") is not a new person either, unless
+    # it fits only as a short form and comes with another relationship ("Davina, her daughter")
+    stated = analysis.representative.relationship
+    same_role = not (stated and c.relationship and normalize_name(stated) != normalize_name(c.relationship))
+    named = [n for n in named if not (holder and _same_person("full_name", holder, n))
+             and not _fits(n, held, short=same_role)]
     if not named or all(_same_person("full_name", held, n) for n in named):
         return
     _reset_verification(session, slot="rep_name", party_id=c.party_id)
@@ -126,14 +131,14 @@ def _representative_switch(session: Session, analysis: TurnAnalysis) -> None:
         session.memory.slots.pop(n, None)
 
 
-def _fits(given: str, held: str) -> bool:
-    """One word that fits a name on file: one of its words, an initial, or a short form sharing its first
-    three letters (Dave for David). Any other one-word name names someone else, like a full name does."""
+def _fits(given: str, held: str, *, short: bool = True) -> bool:
+    """One word that fits a name on file: one of its words, an initial, or (when short forms are allowed) a
+    form sharing its first three letters (Dave for David). Any other one-word name names someone else."""
     words = normalize_name(given).split()
     if len(words) != 1 or not held:
         return False
     w, on_file = words[0], normalize_name(held).split()
-    return _within({w}, set(on_file)) or (len(w) >= 3 and w[:3] == on_file[0][:3])
+    return _within({w}, set(on_file)) or (short and len(w) >= 3 and w[:3] == on_file[0][:3])
 
 
 def _reset_verification(session: Session, *, slot: str, party_id: str | None) -> None:
