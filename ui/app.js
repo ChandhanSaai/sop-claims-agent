@@ -451,7 +451,7 @@ async function runTour() {
       if (sessionId !== sid) return;
       showTourProgress(i + 1, TOUR.length);
       $("input").value = text;
-      if (!(await sendMessage())) return;
+      if (!(await sendMessage()) || sessionId !== sid) return;
       showTourProgress(i + 1, TOUR.length, true);  // the phase the reply moved to, and the bar to this step
       await new Promise((resolve) => setTimeout(resolve, 900));
     }
@@ -466,7 +466,7 @@ async function runTour() {
     showTourProgress(null);
     $("input").placeholder = "Write a message";
     setBusy(busy);
-    $("input").focus();
+    $("input").focus({ preventScroll: true });
   }
 }
 
