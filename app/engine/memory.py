@@ -70,16 +70,23 @@ def name_match(given: str, known: list[str]) -> str:
     b = set(normalize_name(given).split())
     if not b:
         return "same"
-    sets = [set(normalize_name(k).split()) for k in known if k]
-    if any(a == b for a in sets):
+    if any(set(normalize_name(k).split()) == b for k in known if k):
         return "same"
-    for a in sets:
+    if _overlaps(given, known):
+        return "partial"
+    return "partial" if len(b) == 1 else "other"
+
+
+def _overlaps(given: str, known: list[str]) -> bool:
+    """A word, an initial or a three-letter start in common with a name on file."""
+    b = set(normalize_name(given).split())
+    for a in (set(normalize_name(k).split()) for k in known if k):
         for x in b:
             for y in a:
                 initial = (len(x) == 1 and y.startswith(x)) or (len(y) == 1 and x.startswith(y))
                 if x == y or initial or x[:3] == y[:3]:
-                    return "partial"
-    return "partial" if len(b) == 1 else "other"
+                    return True
+    return False
 
 
 def _same_person(slot: str, verified: str, given: str) -> bool:
@@ -174,9 +181,12 @@ def _confirm_answer(session: Session, analysis: TurnAnalysis) -> None:
     yes = r.confirmation == "yes" or ("same" in verdicts and "partial" not in verdicts)
     if yes and not no:
         session.pending_identity, session.pending_ask = None, q.resume
-        # only a name the confirming message itself states becomes the caller's ("Yes, Maggie Chen, that's
-        # me"); the name that raised the question is usually someone else's and never binds
-        session.confirmed_names += [n for n, v in zip(names, verdicts, strict=True) if v == "partial"]
+        # only a name the confirming message itself states, and that overlaps the caller's ("Yes, Maggie Chen,
+        # that's me"), becomes the caller's; a lone word with nothing in common ("that was Tom") and the name
+        # that raised the question never bind
+        known = _known_names(session)
+        session.confirmed_names += [n for n, v in zip(names, verdicts, strict=True)
+                                    if v == "partial" and _overlaps(n, known)]
         # the displaced question is put again in fixed words, through the Writer and the guard
         if q.resume in (PendingAsk.EMAIL_OFFER, PendingAsk.EMAIL_CONFIRM, PendingAsk.HUMAN_OFFER):
             session.reask = q.resume
