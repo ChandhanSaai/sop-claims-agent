@@ -424,8 +424,20 @@ turns:
       guard_ok: true
 ```
 
-Live persona evaluations (simulated callers against the real model, scored as pass^k with an LLM judge) are
-stretch item S02 and not in this build.
+**Live-model run.** `python scripts/live_replay.py` replays every fixture in `tests/replay/fixtures` against
+the real Reader and Writer (it needs `ANTHROPIC_API_KEY` in `.env` and costs API calls) and writes
+`docs/live-transcripts.md`. State and leak expectations are hard checks, and so is a Reader or Writer
+failure; wording expectations are soft, because a live Writer paraphrases. Last run, with Sonnet 5.5 in both
+roles: 14 of 14 scenarios passed every hard check and every wording check over 51 turns, with no guard
+regeneration and 3 to 17 seconds per turn, most under 8 (the Secs column in the transcript). In an earlier
+run the first Reader call with a new output schema took about 35 seconds (the schema is compiled and cached
+server-side). The first live run exposed one Writer habit the offline suite could not: at the goodbye step
+it second-guessed facts it had stated correctly earlier, so the Writer prompt now says that earlier replies
+were grounded when written and are never retracted or commented on. The committed run shows no retraction,
+but one reply still opens with an apology for its earlier answers: the rule reduces the habit rather than
+removing it.
+
+Live persona evaluations (simulated callers scored as pass^k with an LLM judge) remain stretch item S02.
 
 ## Security and privacy posture
 
@@ -513,9 +525,9 @@ app/                    FastAPI application
     phases/             one handler per SOP phase: verify_id, resolve_intent, process_case, post_process
   llm/                  TurnAnalysis and ReplyBrief contracts, prompts, Anthropic client, FakeLLM
   observability/        JSON logging with redaction, per-turn trace records
-docs/                   design spec, research report and notes, implementation plan, task tracker
+docs/                   design spec, research report and notes, implementation plan, task tracker, live transcripts
 fixtures/               the starter data files, unchanged
-scripts/                golden-transcript renderer and terminal chat
+scripts/                golden-transcript renderer, terminal chat, live replay against the real models
 tests/
   unit/                 normalization, repositories, guideline, logging, trace, schemas
   engine/               phase handlers, chaining, policies, memory, guard, summary, service

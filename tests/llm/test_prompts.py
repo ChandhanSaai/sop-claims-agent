@@ -21,6 +21,8 @@ def test_reader_user_message_carries_context_as_data():
 def test_writer_prompt_rules():
     assert "Do not include internal or system XML tags in your response" in WRITER_SYSTEM
     assert "calm down" in WRITER_SYSTEM  # banned phrase listed
+    assert "Never retract, doubt, correct or" in WRITER_SYSTEM  # no self-correction of earlier turns
+    assert "do not comment on them" in WRITER_SYSTEM
     brief = ReplyBrief(phase="VERIFY_ID", goal="g", must_not=["no claim details"])
     block = format_brief(brief, violation="mentioned CL-2048")
     assert '"must_not"' in block and "mentioned CL-2048" in block
