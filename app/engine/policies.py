@@ -146,8 +146,14 @@ def pass1(session: Session, ctx: TurnContext, settings: Settings) -> None:
     if a.requests.wants_human or ctx.human_yes:
         first = not session.escalation.requested
         escalate(session, "caller asked for a representative")
-        # the identity question survives the hand-off: it is asked again next turn
-        session.pending_ask = PendingAsk.IDENTITY_CONFIRM if session.pending_identity else PendingAsk.NONE
+        # the identity question survives the hand-off (asked again next turn); a question a yes was about
+        # to put again stays answerable instead of being re-asked after the hand-off
+        if session.pending_identity:
+            session.pending_ask = PendingAsk.IDENTITY_CONFIRM
+        elif session.reask != PendingAsk.NONE:
+            session.pending_ask, session.reask = session.reask, PendingAsk.NONE
+        else:
+            session.pending_ask = PendingAsk.NONE
         ctx.offer_human = False
         ctx.policy_brief = escalation_brief(session, first)
         return

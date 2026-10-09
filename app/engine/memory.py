@@ -174,7 +174,9 @@ def _confirm_answer(session: Session, analysis: TurnAnalysis) -> None:
     yes = r.confirmation == "yes" or ("same" in verdicts and "partial" not in verdicts)
     if yes and not no:
         session.pending_identity, session.pending_ask = None, q.resume
-        session.confirmed_names.append(q.candidate)  # the nickname is theirs from now on
+        # only a name the confirming message itself states becomes the caller's ("Yes, Maggie Chen, that's
+        # me"); the name that raised the question is usually someone else's and never binds
+        session.confirmed_names += [n for n, v in zip(names, verdicts, strict=True) if v == "partial"]
         # the displaced question is put again in fixed words, through the Writer and the guard
         if q.resume in (PendingAsk.EMAIL_OFFER, PendingAsk.EMAIL_CONFIRM, PendingAsk.HUMAN_OFFER):
             session.reask = q.resume

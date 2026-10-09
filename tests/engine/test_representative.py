@@ -703,3 +703,21 @@ def test_a_yes_naming_the_policyholder_keeps_the_consent(repos, settings, no_pol
     eng.handle_turn(s, analysis(requests={"confirmation": "yes"}, identity={"full_name": "Margaret Chen"}),
                     "Yes, I'm calling for Margaret Chen")
     assert s.pending_identity is None and s.consent.status == "pending" and s.fence_turn == 0
+
+
+def test_a_yes_from_the_representative_does_not_bind_the_other_name(repos, settings, no_policyholder_lookup):
+    eng = Engine(repos, settings, lambda: TODAY)
+    s = Session.new()
+    eng.greeting(s)
+    eng.handle_turn(s, analysis(caller_role="representative", representative=DAVID,
+                                identity={"policy_number": "POL-9921"}), "David Chen, for my mother")
+    eng.handle_turn(s, analysis(representative={"name": "Tom"}), "Tom here, any news?")
+    assert s.pending_ask == PendingAsk.IDENTITY_CONFIRM
+    eng.handle_turn(s, analysis(requests={"confirmation": "yes"}), "Yes, it's David again.")
+    eng.handle_turn(s, analysis(), "Anything now?")
+    assert s.consent.status == "approved" and s.confirmed_names == []
+    b = eng.handle_turn(s, analysis(representative={"name": "Tom", "relationship": "husband"},
+                                    case_hints={"case_type": "healthcare", "status": "denied"},
+                                    intent="denial_question"),
+                        "Tom, her husband, here. Why was her healthcare claim from January denied?")
+    assert s.pending_ask == PendingAsk.IDENTITY_CONFIRM and "CL-2048" not in render_brief(b)
