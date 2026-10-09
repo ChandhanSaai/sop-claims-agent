@@ -617,7 +617,8 @@ with hard passes and pass^N per scenario. State and leak expectations are hard c
 or Writer failure and, on the turns where it once appeared, any retraction of or apology for an earlier reply;
 wording expectations are soft, because a live Writer paraphrases. Last run, with Sonnet 5.5 in both roles:
 18 of 18 scenarios passed every hard check over 60 turns, with one soft wording miss (Checks column),
-1 guard regeneration (shown in the Guard column) and 2.6 to 6.7 seconds per model-call turn (the Secs column);
+1 guard regeneration (shown in the Guard column) and 2.6 to 6.7 seconds per model-call turn, 8.0 for the
+regenerated one (the Secs column);
 across three repetitions, 54 of 54 scenario runs passed every hard check (100%). In an earlier
 run the first Reader call with a new output schema took about 35 seconds (the schema is compiled and cached
 server-side). Earlier live runs exposed one Writer habit the offline suite could not: when the state moved
