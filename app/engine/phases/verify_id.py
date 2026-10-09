@@ -7,7 +7,6 @@ from app.data.normalize import normalize_email, normalize_id4, normalize_name, n
 from app.data.repos import IDENTIFIERS, Repos
 from app.engine.briefs import HandlerResult
 from app.engine.context import HUMAN_ASK, TurnContext
-from app.engine.memory import record_fingerprints
 from app.engine.phases.post_process import GOODBYE
 from app.engine.phases.process_case import SUBMISSION_TOPICS
 from app.engine.state import HINT_SLOTS, IDENTITY_SLOTS, REP_SLOTS, Escalation, PendingAsk, Phase, Session
@@ -331,7 +330,6 @@ def _handle(
         _new_party_cleanup(session, f"policyholder:{rec.party_id}")
         v.status, v.party_id, v.role = "verified", rec.party_id, "policyholder"
         v.names = [rec.name, *rec.name_aliases]
-        v.fingerprints = record_fingerprints(rec)
         session.memory.mark_verified(result.matched)  # a wrong extra identifier stays provisional
         session.log("verified", party_id=rec.party_id, fields=len(provided))
         session.phase = Phase.RESOLVE_INTENT

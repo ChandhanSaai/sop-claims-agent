@@ -156,6 +156,8 @@ def pass1(session: Session, ctx: TurnContext, settings: Settings) -> None:
             session.pending_ask = PendingAsk.NONE
         ctx.offer_human = False
         ctx.policy_brief = escalation_brief(session, first)
+        if session.pending_identity:  # the open question is put in the same reply, so a bare no answers it
+            ctx.policy_brief.ask = identity_confirm_brief(session).ask
         return
     if ctx.human_no:
         session.pending_ask = PendingAsk.NONE

@@ -1,7 +1,6 @@
-import hashlib
+import re
 from datetime import date
 
-from app.data.models import Policyholder
 from app.data.normalize import normalize_email, normalize_id4, normalize_name, normalize_phone, parse_dob
 from app.data.repos import id_key
 from app.engine.state import (
@@ -104,7 +103,8 @@ IDENTIFIERS = ("dob", "id_last4", "phone", "email", "policy_number")
 
 
 def _forms(slot: str, value: str) -> set[str]:
-    """Every normalized form a written identifier can mean (a date of birth: both orders when ambiguous)."""
+    """Every normalized form a written identifier can mean: a date of birth in both orders when ambiguous, a
+    policy number with or without its prefix."""
     if slot == "dob":
         return {d.isoformat() for d in _dob_readings(value)}
     if slot == "id_last4":
@@ -114,36 +114,22 @@ def _forms(slot: str, value: str) -> set[str]:
     elif slot == "email":
         n = normalize_email(value)
     else:
-        n = id_key(value)
+        digits = re.sub(r"\D", "", value)
+        return {f for f in (id_key(value), digits) if f}
     return {n} if n else set()
 
 
-def fingerprint(slot: str, form: str) -> str:
-    return hashlib.sha256(f"{slot}:{form}".encode()).hexdigest()
-
-
-def record_fingerprints(rec: Policyholder) -> dict[str, list[str]]:
-    """Hashes of every identifier on file, aliases included: compared with, never shown."""
-    values = {
-        "dob": [rec.dob.isoformat()], "id_last4": [rec.id_last4],
-        "phone": [rec.phone, *rec.phone_aliases], "email": [rec.email, *rec.email_aliases],
-        "policy_number": [rec.policy_number],
-    }
-    return {slot: [fingerprint(slot, f) for v in vals for f in _forms(slot, str(v))]
-            for slot, vals in values.items()}
+def _given(analysis: TurnAnalysis, slot: str) -> list[str]:
+    """Every value the message gives for an identifier: the field and each labelled correction."""
+    field = getattr(analysis.identity, slot)
+    return [str(v) for v in (field, *[c.new_value for c in analysis.corrections if c.slot == slot]) if v]
 
 
 def _same_value(session: Session, slot: str, given: str) -> bool:
-    """An identifier that reads as the one the caller gave, or, when they never gave this one, as the one on
-    file; an unreadable or ambiguous value that reads as neither is a question, never the same person."""
-    forms = _forms(slot, given)
-    if not forms:
-        return False
+    """An identifier that reads as the one the caller gave before. One never given is a question, whatever its
+    value: comparing it with the record would tell whoever is speaking when a guess is right."""
     stored = session.memory.value(slot)
-    if stored:
-        return bool(forms & _forms(slot, stored))
-    on_file = session.verification.fingerprints.get(slot, [])
-    return any(fingerprint(slot, f) in on_file for f in forms)
+    return bool(stored) and bool(_forms(slot, given) & _forms(slot, stored))
 
 
 def signals(session: Session, analysis: TurnAnalysis) -> list[str]:
@@ -152,8 +138,8 @@ def signals(session: Session, analysis: TurnAnalysis) -> list[str]:
     says they are a representative (a helper mention is a representative detail too). On a representative
     session: a name other than the representative's or the policyholder's, a changed relationship, a caller
     who now says they are the policyholder. On a policyholder session also an identifier (date of birth,
-    ID, phone, email, policy number) that reads as neither the one given before nor the one on file. Each
-    item is the text that raised it."""
+    ID, phone, email, policy number) that does not read as the one given before, or that was never given.
+    Each item is the text that raised it."""
     v, rep, ident = session.verification, analysis.representative, analysis.identity
     known, holder = known_names(session), _holder_names(session)
     out: list[str] = []
@@ -173,38 +159,27 @@ def signals(session: Session, analysis: TurnAnalysis) -> list[str]:
     if v.declared_representative:  # a representative gives the policyholder's identifiers, never their own
         return out
     for slot in IDENTIFIERS:
-        given = getattr(ident, slot) or next((c.new_value for c in analysis.corrections if c.slot == slot),
-                                             None)
-        if given and not _same_value(session, slot, str(given)):
-            out.append(str(given))
+        out += [g for g in _given(analysis, slot) if not _same_value(session, slot, g)]
     return out
 
 
 def _restates_identity(session: Session, analysis: TurnAnalysis) -> bool:
     """The message carries identity content and every piece of it is something the gate compared and found
-    exact: a name of the caller's own, or (on a policyholder session) an identifier that reads as theirs.
-    Content the gate never compares (the policyholder's name or an identifier on a representative session,
-    a relationship) is no answer."""
+    exact: a name of the caller's own, or (on a policyholder session) an identifier that reads as the one they
+    gave before. Content the gate never compares (the policyholder's name, an identifier or a relationship on
+    a representative session) is no answer."""
     v, rep, ident = session.verification, analysis.representative, analysis.identity
-    known = known_names(session)
     names = [ident.full_name, *[c.new_value for c in analysis.corrections if c.slot == "full_name"]]
     if v.declared_representative and rep.name:
         names.append(rep.name)
     names = [n for n in names if n]
-    idents = [] if v.declared_representative else [
-        (slot, getattr(ident, slot) or next((c.new_value for c in analysis.corrections if c.slot == slot),
-                                             None))
-        for slot in IDENTIFIERS]
-    idents = [(slot, g) for slot, g in idents if g]
-    other = [c for c in analysis.corrections if c.slot not in ("full_name", *IDENTIFIERS)]
+    idents = [(slot, g) for slot in IDENTIFIERS for g in _given(analysis, slot)]
     if not names and not idents:
         return False
-    if other or (v.declared_representative and (ident.dob or ident.id_last4 or ident.phone or ident.email
-                                                  or ident.policy_number or rep.relationship
-                                                  or rep.policyholder_name)):
+    if v.declared_representative and (idents or rep.relationship or rep.policyholder_name):
         return False
-    return (all(exact(n, known) for n in names)
-            and all(_same_value(session, slot, str(g)) for slot, g in idents))
+    return (all(exact(n, known_names(session)) for n in names)
+            and all(_same_value(session, slot, g) for slot, g in idents))
 
 
 def _hold_identity(analysis: TurnAnalysis) -> None:

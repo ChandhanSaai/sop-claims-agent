@@ -462,6 +462,8 @@ def test_on_a_representative_call_uncompared_content_never_answers_the_question(
     eng.handle_turn(s, analysis(representative={"name": "Tom Lee"}), "Tom Lee here")
     for answer in (analysis(identity={"dob": "1990-01-01"}), analysis(identity={"id_last4": "1234"}),
                    analysis(corrections=[{"slot": "policy_number", "new_value": "POL-9921"}]),
+                   analysis(representative={"name": "David Chen"},
+                            corrections=[{"slot": "dob", "new_value": "1985-03-15"}]),
                    analysis(identity={"full_name": "Margaret Chen"}, caller_role="unknown"),
                    analysis(representative={"relationship": "son"})):
         eng.handle_turn(s, answer, "...")
