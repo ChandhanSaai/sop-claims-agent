@@ -28,7 +28,7 @@ Merge order for the reviewer: #1, #2, #3, then the wave-3 PRs #4 to #8, then #9,
 | ID | Task | Model | Depends on | Status | PR | Notes |
 |---|---|---|---|---|---|---|
 | S01 | Representative and consent sub-flow (approve and timeout scenarios) | Fable 5.1 | T10 | ready to merge | #13 | plan `docs/superpowers/plans/2026-10-08-s01-representative-consent.md`; also routes a claimed power of attorney to a human and makes CONSENT_SCENARIO the default scenario; base task/T10-integration, merge after #10 |
-| S02 | Live persona evaluations with pass^k and an LLM judge (opt-in) | Opus 5.5 | T11 | partly done: live replay + pass^3 reliability table (#15, #18); LLM judge still todo | #15, #18 | live replay of all 14 fixtures against the real models (`scripts/live_replay.py`, `docs/live-transcripts.md`): 14/14 hard and wording checks; Writer no-retraction rule; pass^k judge still todo; PR stacked on #14 |
+| S02 | Live persona evaluations with pass^k and an LLM judge (opt-in) | Opus 5.5 | T11 | partly done: live replay + pass^3 reliability table (#15, #18 approved); LLM judge still todo | #15, #18 | live replay of all 14 fixtures against the real models (`scripts/live_replay.py`, `docs/live-transcripts.md`): 14/14 hard and wording checks; Writer no-retraction rule; pass^k judge still todo; PR stacked on #14 |
 | S03 | Hosted demo behind DEMO_ACCESS_TOKEN | Opus 5.5 | T12 | config ready (fly.toml in #18), not deployed: needs the user's Fly.io account | #18 | |
 | S04 | Abuse handling policy | Opus 5.5 | T07 | ready to merge | #14 | plan `docs/superpowers/plans/2026-10-08-s04-abuse-policy.md`; branch task/S04-abuse-policy stacked on task/S01-representative, merge after #13 |
 | S05 | OpenAI provider adapter | Opus 5.5 | T04 | todo | | |
@@ -56,6 +56,7 @@ Merge order for the reviewer: #1, #2, #3, then the wave-3 PRs #4 to #8, then #9,
 
 ## Log
 
+- 2026-10-08 (final): PR #18 approved on re-review. Full stack ready to merge in order: #1, #2, #3, #4-#8, #9, #10, #13, #14, #15, #16, #17, #18 (delete each head branch on merge so the next PR retargets). Final evidence: 245 offline tests; 18 live scenarios x 3 runs = 54/54 hard passes.
 - 2026-10-08 (night 2): PR #18 review found 8 important items (README curl line, Fly HA, pass^N semantics, a missing fixture check, the Appendix A contract, brief ordering, the checklist route, an attacks-row claim) and 8 minors; all fixed (15b9666..3a548f8); final live run 18 scenarios x 3 = 54/54; re-review dispatched.
 - 2026-10-08 (late): PR #18 complete and in review: README tour, diagrams, grader's map, attacks table, backend explainer, API section, hosted-demo config; UI redesign; Writer talking points; time-aware follow-ups and the no-upload line from manual testing; final live run 17 scenarios x 3 = 51/51 hard passes.
 - 2026-10-08 (evening): submission polish PR #18 opened (stacked on #17): README tour, diagrams, grader's map, attacks table, backend explainer, screenshot, hosted-demo commands; pass^3 reliability run 51/51; Writer talking points; self-correction made a hard replay check; final live run and review pending.
