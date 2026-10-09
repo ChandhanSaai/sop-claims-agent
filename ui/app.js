@@ -1,8 +1,18 @@
 const PHASES = ["VERIFY_ID", "RESOLVE_INTENT", "PROCESS_CASE", "POST_PROCESS"];
+const TOKEN_KEY = "sop-claims-agent.token";
+const EXAMPLES = [
+  "Hi, I'm Margaret Chen, policy POL-9921. My healthcare claim from January was denied and I want to know why.",
+  "I'm David Chen, calling for my mother Margaret Chen, policy POL-9921, about her denied healthcare claim.",
+  "What is reinforcement learning?",
+];
+const NEEDS_TOKEN = "This server needs an access token. Use the Access token button above to enter it.";
 const $ = (id) => document.getElementById(id);
 let sessionId = null;
+let token = "";
+let linkToken = "";  // a token that arrived in the link; used only after the person confirms it in the dialog
+let busy = false;
 
-// Every piece of model or server text is rendered with textContent, never parsed as HTML.
+// Every piece of model or server text is rendered through el() and textContent, never as HTML.
 function el(tag, className, text) {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -10,11 +20,49 @@ function el(tag, className, text) {
   return node;
 }
 
+// Tokens are printable ASCII; anything else (a zero-width space from a copy, a curly quote) is dropped so the
+// header value stays valid and a bad paste becomes a plain 401 rather than a failed request.
+function cleanToken(value) {
+  return (value || "").replace(/[^\x20-\x7E]/g, "").trim();
+}
+
+function loadToken() {
+  try { token = cleanToken(localStorage.getItem(TOKEN_KEY)); } catch (err) { token = ""; }
+  const m = location.hash.match(/[#&]token=([^&]*)/);
+  if (m) {
+    try { linkToken = cleanToken(decodeURIComponent(m[1])); } catch (err) { linkToken = ""; }
+    history.replaceState(null, "", location.pathname + location.search);  // the fragment leaves the address bar
+  }
+}
+
+function saveToken(value) {
+  token = cleanToken(value);
+  try {
+    if (token) localStorage.setItem(TOKEN_KEY, token); else localStorage.removeItem(TOKEN_KEY);
+  } catch (err) { /* storage unavailable: the token still works for this page */ }
+}
+
 function headers() {
   const h = { "Content-Type": "application/json" };
-  const t = $("token").value.trim();
-  if (t) h["X-Access-Token"] = t;
+  if (token) h["X-Access-Token"] = token;
   return h;
+}
+
+function showTokenState(required) {
+  const button = $("token-button");
+  button.hidden = !required;
+  button.textContent = token ? "Access token: set" : "Access token";
+}
+
+function showTokenDialog({ rejected = false, prefill = "" } = {}) {
+  $("token-error").hidden = !rejected;
+  if (rejected) $("token-input").setAttribute("aria-describedby", "token-error");
+  else $("token-input").removeAttribute("aria-describedby");
+  $("token-input").value = prefill || (rejected ? "" : token);
+  const dialog = $("token-dialog");
+  if (!dialog.open) dialog.showModal();
+  $("token-input").focus();
+  $("token-input").select();
 }
 
 function timestamp() {
@@ -30,6 +78,18 @@ function addMessage(role, text) {
   $("messages").appendChild(wrap);
   $("messages").scrollTop = $("messages").scrollHeight;
   return wrap;
+}
+
+function showExamples() {
+  const box = el("div", "examples");
+  box.appendChild(el("p", "examples-title", "Try one of these, or write your own message:"));
+  EXAMPLES.forEach((text) => {
+    const chip = el("button", "chip", text);
+    chip.type = "button";
+    chip.addEventListener("click", () => { if (!busy) { $("input").value = text; sendMessage(); } });
+    box.appendChild(chip);
+  });
+  $("messages").appendChild(box);
 }
 
 function pill(text, kind) {
@@ -191,7 +251,20 @@ function clearInspector() {
   $("trace").textContent = "";
 }
 
+function setBusy(on) {
+  busy = on;
+  ["send", "input", "new", "token-button"].forEach((id) => { $(id).disabled = on; });
+}
+
 async function newConversation() {
+  if (busy) return;
+  if (linkToken) {  // a token from the link is never used silently: the person confirms it first
+    const prefill = linkToken;
+    linkToken = "";
+    showTokenState(true);
+    showTokenDialog({ prefill });
+    return;
+  }
   sessionId = null; // a failed restart must not keep chatting into the old, now cleared, conversation
   $("messages").replaceChildren();
   clearInspector();
@@ -200,44 +273,83 @@ async function newConversation() {
     const r = await fetch("/api/session", {
       method: "POST", headers: headers(), body: JSON.stringify({ scenario: $("scenario").value }),
     });
-    if (r.status === 401) { addMessage("system", "This server needs an access token. Enter it above and start again."); return; }
+    if (r.status === 401) {
+      const rejected = Boolean(token);
+      if (rejected) saveToken("");
+      showTokenState(true);
+      addMessage("system", NEEDS_TOKEN);
+      showTokenDialog({ rejected });
+      return;
+    }
     if (!r.ok) { addMessage("system", `Could not start a conversation (${r.status}).`); return; }
     data = await r.json();
   } catch (err) {
     addMessage("system", `Network error: ${err.message}`); return;
   }
+  showTokenState(Boolean(token));
   sessionId = data.session_id;
   addMessage("assistant", data.greeting);
+  showExamples();
   renderState(data.state);
   await refreshOutbox();
   $("input").focus();
 }
 
-$("form").addEventListener("submit", async (ev) => {
-  ev.preventDefault();
+async function sendMessage() {
   const text = $("input").value.trim();
-  if (!text || !sessionId) return;
+  if (!text || !sessionId || busy) return;
   $("input").value = "";
+  $("input").style.height = "";
+  document.querySelector(".examples")?.remove();
   addMessage("user", text);
   const typing = addMessage("assistant typing", "");
+  setBusy(true);
   let data;
   try {
     const r = await fetch("/api/chat", {
       method: "POST", headers: headers(), body: JSON.stringify({ session_id: sessionId, message: text }),
     });
+    if (r.status === 401) { saveToken(""); showTokenState(true); showTokenDialog({ rejected: true }); return; }
     if (!r.ok) { addMessage("system", `The request failed (${r.status}).`); return; }
     data = await r.json();
   } catch (err) {
     addMessage("system", `Network error: ${err.message}`); return;
   } finally {
     typing.remove();
+    setBusy(false);
+    $("input").focus();
   }
   addMessage("assistant", data.reply);
   renderState(data.state);
   $("trace").textContent = JSON.stringify(data.trace, null, 1);
   await refreshOutbox();
-  $("input").focus();
-});
+}
 
+$("form").addEventListener("submit", (ev) => { ev.preventDefault(); sendMessage(); });
+$("input").addEventListener("keydown", (ev) => {
+  if (ev.key === "Enter" && !ev.shiftKey && !ev.isComposing) { ev.preventDefault(); sendMessage(); }
+});
+$("input").addEventListener("input", (ev) => {
+  const box = ev.target;
+  box.style.height = "";
+  box.style.height = `${Math.min(box.scrollHeight + box.offsetHeight - box.clientHeight, 160)}px`;
+});
+$("token-form").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  const entered = cleanToken($("token-input").value);
+  const changed = entered !== token;
+  saveToken(entered);
+  $("token-dialog").close();
+  showTokenState(true);
+  if (!sessionId || changed) newConversation();  // an unchanged token mid-conversation just closes the dialog
+});
+$("token-dialog").addEventListener("cancel", (ev) => {
+  if (!sessionId || !token) {  // nothing works without a token; keep the dialog up and explain if Escape gets through
+    ev.preventDefault();
+    if (!$("messages").textContent.includes(NEEDS_TOKEN)) addMessage("system", NEEDS_TOKEN);
+  }
+});
+$("token-button").addEventListener("click", () => showTokenDialog());
 $("new").addEventListener("click", newConversation);
+loadToken();
 newConversation();
