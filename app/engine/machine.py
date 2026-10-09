@@ -1,0 +1,55 @@
+from collections.abc import Callable
+from datetime import date
+
+from app.config import Settings
+from app.data.repos import Repos
+from app.engine.briefs import HandlerResult, merge_briefs
+from app.engine.context import resolve_pending
+from app.engine.memory import merge_analysis
+from app.engine.phases import HANDLERS
+from app.engine.policies import pass1, pass2
+from app.engine.state import PendingAsk, Session, Turn
+from app.llm.schemas import ReplyBrief, TurnAnalysis
+
+GREETING = (
+    "Hello, I'm an automated assistant for claims support. I can help with questions about your claims "
+    "once I've verified your identity. To start, please tell me your full name and policy number."
+)
+MAX_CHAIN = 4
+
+
+class Engine:
+    def __init__(self, repos: Repos, settings: Settings, today: Callable[[], date] = date.today):
+        self.repos = repos
+        self.settings = settings
+        self.today = today
+
+    def greeting(self, session: Session) -> str:
+        session.pending_ask = PendingAsk.IDENTITY_FIELDS
+        session.transcript.append(Turn(role="assistant", text=GREETING))
+        session.log("greeting")
+        return GREETING
+
+    def handle_turn(self, session: Session, analysis: TurnAnalysis, user_text: str) -> ReplyBrief:
+        session.turn += 1
+        session.transcript.append(Turn(role="user", text=user_text))
+        ctx = resolve_pending(session, analysis, user_text)
+        ctx.changed_slots = merge_analysis(session, analysis)
+        pass1(session, ctx, self.settings)
+        if ctx.policy_brief is not None:
+            brief = ctx.policy_brief
+        else:
+            results: list[HandlerResult] = []
+            for _ in range(MAX_CHAIN):
+                handler = HANDLERS.get(session.phase)
+                if handler is None:
+                    break
+                result = handler(session, ctx, self.repos, self.settings, self.today())
+                results.append(result)
+                if not (result.advanced and not result.needs_input):
+                    break
+            brief = (merge_briefs(results) if results
+                     else ReplyBrief(phase=session.phase.value, goal="Continue."))
+        brief = pass2(session, ctx, brief)
+        session.last_brief = brief
+        return brief
