@@ -12,6 +12,7 @@
 | document_checklist | 3 | 3/3 | 1.00 | none |
 | first_name_only | 2 | 3/3 | 1.00 | none |
 | human_request_then_continue | 2 | 3/3 | 1.00 | 1: T1 missing 'available'; 2: T1 missing 'available'; 3: T1 missing 'available' |
+| identity_question | 4 | 3/3 | 1.00 | none |
 | injection_attempt | 1 | 3/3 | 1.00 | none |
 | margaret_happy_path | 6 | 3/3 | 1.00 | none |
 | near_miss_phone_then_more | 2 | 3/3 | 1.00 | none |
@@ -27,4 +28,4 @@
 | reverify_then_own_handoff | 7 | 3/3 | 1.00 | none |
 | spanish_caller | 2 | 3/3 | 1.00 | none |
 
-Overall: 66/66 scenario runs passed every hard check (100%).
+Overall: 69/69 scenario runs passed every hard check (100%).

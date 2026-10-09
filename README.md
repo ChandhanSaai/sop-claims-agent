@@ -648,9 +648,9 @@ the real Reader and Writer (it needs `ANTHROPIC_API_KEY` in `.env` and costs API
 with hard passes and pass^N per scenario. State and leak expectations are hard checks, and so are a Reader
 or Writer failure and, on the turns where it once appeared, any retraction of or apology for an earlier reply;
 wording expectations are soft, because a live Writer paraphrases. Last run, with Sonnet 5.5 in both roles:
-22 of 22 scenarios passed every hard check over 79 turns, with one soft wording miss (Checks column),
-no guard regeneration and 2.7 to 5.3 seconds per model-call turn (the Secs column);
-across three repetitions, 66 of 66 scenario runs passed every hard check (100%). In an earlier
+23 of 23 scenarios passed every hard check over 83 turns, with one soft wording miss (Checks column),
+no guard regeneration and 3.0 to 10.4 seconds per model-call turn (the Secs column);
+across three repetitions, 69 of 69 scenario runs passed every hard check (100%). In an earlier
 run the first Reader call with a new output schema took about 35 seconds (the schema is compiled and cached
 server-side). Earlier live runs exposed one Writer habit the offline suite could not: when the state moved
 on (a goodbye brief without claim facts, a corrected date of birth resetting verification, a consent
@@ -658,7 +658,8 @@ timeout), the Writer "corrected" or apologized for replies that had been right w
 now hold it: the Writer prompt says earlier replies were grounded when written and are never retracted or
 commented on; every later brief without claim facts says the details given earlier stand; and the brief
 for a verification-reset or consent-timeout turn says to open with the news and take nothing back.
-The committed run has no retraction and no apology in any reply.
+The committed run has no retraction and no apology, but 1 reply still refers back to an earlier reply: 
+`off_topic_three_times` turn 3 ("Sorry").
 
 Live persona evaluations (simulated callers scored as pass^k with an LLM judge) remain stretch item S02.
 
