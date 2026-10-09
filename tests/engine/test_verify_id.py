@@ -239,3 +239,20 @@ def test_a_first_name_alone_asks_for_the_full_name_without_an_attempt(repos, set
     r2 = run(s, repos, settings, identity={"full_name": "Margaret Chen"})
     assert calls == [1] and s.verification.status == "verified" and s.verification.attempts == 0
     assert r2.advanced
+
+
+def test_an_accented_or_non_latin_single_word_name(repos, settings):
+    s = Session.new()
+    r = run(s, repos, settings, identity={"full_name": "Zoë", "dob": "1985-03-15", "id_last4": "4472"})
+    assert s.verification.attempts == 0 and FULL_NAME_NEEDED in r.brief.must_say  # a first name, no attempt
+    s = Session.new()
+    run(s, repos, settings, identity={"full_name": "马天", "dob": "1964-09-10", "id_last4": "6688"})
+    assert s.verification.attempts == 1  # a full name in another script: a real attempt, no match on file
+
+
+def test_a_one_word_name_in_a_spaced_script_is_a_first_name(repos, settings):
+    for name in ("Андрей", "Γιώργος",
+                 "محمد", "मीना"):
+        s = Session.new()
+        r = run(s, repos, settings, identity={"full_name": name, "dob": "1985-03-15", "id_last4": "4472"})
+        assert s.verification.attempts == 0 and FULL_NAME_NEEDED in r.brief.must_say, name

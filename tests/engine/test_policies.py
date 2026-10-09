@@ -265,18 +265,20 @@ def test_second_abusive_message_that_asks_for_a_human_still_closes(repos, settin
     assert s.closed and s.escalation.reason == "abusive caller"
 
 
-def test_a_correction_that_resets_verification_marks_the_turn_a_new_development(repos, settings):
+def test_a_switch_marks_the_turn_a_new_development(repos, settings):
     eng = Engine(repos, settings)
     s = Session.new()
     eng.greeting(s)
     eng.handle_turn(s, A(identity={"full_name": "Margaret Chen", "dob": "1985-03-15", "id_last4": "4472"},
-                         case_hints={"status": "denied", "case_type": "healthcare", "month": 1}),
-                    "Margaret Chen, DOB 1985-03-15, last four 4472, my denied January healthcare claim")
-    assert s.verification.status == "verified"
-    b = eng.handle_turn(s, A(corrections=[{"slot": "dob", "new_value": "1985-03-16"}]), "actually 1985-03-16")
-    assert s.verification.status == "unverified" and NEW_DEVELOPMENT in b.must_not
-    b2 = eng.handle_turn(s, A(identity={"dob": "1985-03-15"}), "sorry, 1985-03-15")
-    assert s.verification.status == "verified" and NEW_DEVELOPMENT not in b2.must_not
+                         case_hints={"case_id": "CL-2048"}, intent="denial_question"), "Margaret ...")
+    assert any(e.type == "answered" for e in s.events)
+    b = eng.handle_turn(s, A(corrections=[{"slot": "full_name", "new_value": "Ma Tian"}]), "this is Ma Tian")
+    assert s.verification.status == "verified" and NEW_DEVELOPMENT not in b.must_not  # a question first
+    b = eng.handle_turn(s, A(requests={"confirmation": "no"},
+                             identity={"full_name": "Ma Tian", "dob": "1964-09-10", "id_last4": "6688"}),
+                        "No. Ma Tian, born 1964-09-10, last four 6688.")
+    assert s.verification.party_id == "P12" and s.fence_turn == 3 and NEW_DEVELOPMENT in b.must_not
+    assert EARLIER_DETAILS_STAND not in b.must_not  # her answer is behind the fence, not something to uphold
 
 
 def test_consent_timeout_turn_is_a_new_development(repos, settings):
@@ -331,6 +333,10 @@ def test_earlier_details_and_the_email_offer_look_only_past_the_verification_fen
                                           {"slot": "dob", "new_value": "1990-08-21"},
                                           {"slot": "id_last4", "new_value": "9180"}]),
                         "Sorry, this is Ava Lopez, born 1990-08-21, last four 9180.")
+    assert s.pending_ask == PendingAsk.IDENTITY_CONFIRM  # the question comes first
+    b = eng.handle_turn(s, A(requests={"confirmation": "no"},
+                             identity={"full_name": "Ava Lopez", "dob": "1990-08-21", "id_last4": "9180"}),
+                        "No. Ava Lopez, born 1990-08-21, last four 9180.")
     assert s.verification.party_id == "P7" and b.must_say[-1] == NO_CLAIMS  # Ava has no claims
     assert EARLIER_DETAILS_STAND not in b.must_not  # Margaret's answer is behind the fence
     b2 = eng.handle_turn(s, A(requests={"confirmation": "no", "closing": True}), "No, that's all.")
@@ -350,6 +356,10 @@ def test_a_later_party_gets_its_own_hand_off_packet_and_reference(repos, setting
     eng.handle_turn(s, A(identity={"full_name": "Ma Tian", "dob": "1964-09-10", "id_last4": "6688"},
                          corrections=[{"slot": "full_name", "new_value": "Ma Tian"}]),
                     "Sorry, this is actually Ma Tian, born 1964-09-10, last four 6688.")
+    assert s.pending_ask == PendingAsk.IDENTITY_CONFIRM  # the question comes first
+    ma_tian = {"full_name": "Ma Tian", "dob": "1964-09-10", "id_last4": "6688"}
+    eng.handle_turn(s, A(requests={"confirmation": "no"}, identity=ma_tian),
+                    "No. Ma Tian, born 1964-09-10, last four 6688.")
     assert s.verification.party_id == "P12" and not s.escalation.requested
     b = eng.handle_turn(s, A(requests={"wants_human": True}), "I want a person too.")
     assert s.escalation.requested and s.escalation.reference == first + "-2"
@@ -359,7 +369,7 @@ def test_a_later_party_gets_its_own_hand_off_packet_and_reference(repos, setting
     assert [p["verified"] for p in packets] == ["verified", "verified"] and len(packets) == 2
 
 
-def test_a_same_party_re_verification_keeps_its_hand_off(repos, settings):
+def test_the_hand_off_survives_a_question_answered_yes_and_not_a_switch(repos, settings):
     eng = Engine(repos, settings)
     s = Session.new()
     eng.greeting(s)
@@ -367,13 +377,16 @@ def test_a_same_party_re_verification_keeps_its_hand_off(repos, settings):
                     "Margaret Chen, 1985-03-15, 4472.")
     eng.handle_turn(s, A(requests={"wants_human": True}), "I want a person.")
     ref = s.escalation.reference
-    eng.handle_turn(s, A(corrections=[{"slot": "dob", "new_value": "1985-03-15"}]),
-                    "Sorry, my date of birth is 15 March 1985.")  # re-verifies the same party
-    assert s.verification.party_id == "P9" and s.fence_turn == 3
-    assert s.escalation.requested and s.escalation.reference == ref
+    eng.handle_turn(s, A(identity={"full_name": "Mrs. Chen"}), "Mrs. Chen here")
+    assert s.pending_ask == PendingAsk.IDENTITY_CONFIRM and s.escalation.reference == ref
+    eng.handle_turn(s, A(requests={"confirmation": "yes"}), "yes")
+    assert s.verification.party_id == "P9" and s.escalation.requested and s.escalation.reference == ref
     assert len([e for e in s.events if e.type == "escalated"]) == 1
     b = eng.handle_turn(s, A(requests={"wants_human": True}), "Is someone going to call me?")
     assert s.escalation.reference == ref and any("already been asked" in m for m in b.must_say)
+    eng.handle_turn(s, A(identity={"full_name": "Ma Tian"}), "Ma Tian here")
+    eng.handle_turn(s, A(requests={"confirmation": "no"}), "no")
+    assert not s.escalation.requested  # the next caller has no hand-off of hers
 
 
 def test_the_hand_off_comes_back_after_another_party_in_between(repos, settings):
@@ -386,10 +399,16 @@ def test_the_hand_off_comes_back_after_another_party_in_between(repos, settings)
     ref = s.escalation.reference
     eng.handle_turn(s, A(identity={"full_name": "Ma Tian", "dob": "1964-09-10", "id_last4": "6688"},
                          corrections=[{"slot": "full_name", "new_value": "Ma Tian"}]), "This is Ma Tian ...")
+    assert s.pending_ask == PendingAsk.IDENTITY_CONFIRM  # the question comes first
+    ma_tian = {"full_name": "Ma Tian", "dob": "1964-09-10", "id_last4": "6688"}
+    eng.handle_turn(s, A(requests={"confirmation": "no"}, identity=ma_tian),
+                    "No. Ma Tian, born 1964-09-10, last four 6688.")
     assert s.verification.party_id == "P12" and not s.escalation.requested
     eng.handle_turn(s, A(identity=margaret,
                          corrections=[{"slot": "full_name", "new_value": "Margaret Chen"}]),
                     "Sorry, it is Margaret again, 1985-03-15, 4472.")
+    assert s.pending_ask == PendingAsk.IDENTITY_CONFIRM
+    eng.handle_turn(s, A(requests={"confirmation": "no"}, identity=margaret), "No. Margaret Chen, 4472.")
     assert s.verification.party_id == "P9" and s.escalation.requested and s.escalation.reference == ref
 
 

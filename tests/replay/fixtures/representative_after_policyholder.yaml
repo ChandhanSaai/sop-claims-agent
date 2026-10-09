@@ -23,6 +23,20 @@ turns:
       corrections:
         - {slot: full_name, new_value: "David Chen"}
     expect:
+      phase: PROCESS_CASE
+      verified: true
+      party_id: P12
+      pending_ask: identity_confirm
+      reply_contains: ["Ma Tian"]
+      reply_not_contains: ["CL-3001", "CL-2048", "consent", "POL-9921"]
+      guard_ok: true
+  - user: "No. This is David Chen, Margaret Chen's son, calling for her. Policy POL-9921."
+    analysis:
+      requests: {confirmation: "no"}
+      caller_role: representative
+      representative: {name: "David Chen", relationship: "son", policyholder_name: "Margaret Chen"}
+      identity: {policy_number: "POL-9921"}
+    expect:
       phase: VERIFY_ID
       verified: false
       pending_ask: consent_wait
@@ -32,6 +46,7 @@ turns:
   - user: "Has she approved it yet?"
     analysis:
       scope: in_scope
+      caller_role: representative
     expect:
       phase: VERIFY_ID
       verified: false

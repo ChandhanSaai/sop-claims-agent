@@ -74,6 +74,11 @@ CONSENT_FACT = (
 MEANWHILE_ASK = "Is there a general question I can help with in the meantime?"
 
 
+def _unspaced_script(name: str) -> bool:
+    return any("\u4e00" <= c <= "\u9fff" or "\u3040" <= c <= "\u30ff" or "\uac00" <= c <= "\ud7af"
+               for c in name)
+
+
 def _claims_poa(relationship: str | None) -> bool:
     """Spec 7: a claimed power of attorney goes to a person for document review."""
     r = normalize_name(relationship or "")
@@ -261,8 +266,11 @@ def _handle(
         return _representative(session, ctx, repos, settings, hints_noted)
 
     provided = {n: val for n in IDENTIFIERS if (val := session.memory.value(n))}
-    # a single word is a first name: incomplete rather than wrong, so it costs no attempt
-    first_name_only = "full_name" in provided and len(normalize_name(provided["full_name"]).split()) < 2
+    # a single Latin word is a first name: incomplete rather than wrong, so it costs no attempt (a name in
+    # another script has no word boundaries to count)
+    # one word is a first name, except in scripts that write a whole name without spaces (CJK, kana, Hangul)
+    first_name_only = ("full_name" in provided and len(normalize_name(provided["full_name"]).split()) < 2
+                       and not _unspaced_script(provided["full_name"]))
     if first_name_only:
         provided.pop("full_name")
     if "dob" in provided:

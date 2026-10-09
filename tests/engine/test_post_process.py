@@ -212,7 +212,12 @@ def test_a_reset_turn_never_sends_the_earlier_party_s_draft(repos, settings):
                    {"slot": "dob", "new_value": ava.dob.isoformat()},
                    {"slot": "id_last4", "new_value": ava.id_last4}]
     analysis = A({"requests": {"confirmation": "yes", "closing": True}, "corrections": corrections})
-    b = eng.handle_turn(s, analysis, "Yes, send it. Actually this is Ava Lopez.")
+    eng.handle_turn(s, analysis, "Yes, send it. Actually this is Ava Lopez.")
+    assert s.pending_ask == PendingAsk.IDENTITY_CONFIRM and s.pending_draft and repos.outbox.list() == []
+    b = eng.handle_turn(s, A({"requests": {"confirmation": "no", "closing": True},
+                             "identity": {"full_name": ava.name, "dob": ava.dob.isoformat(),
+                                          "id_last4": ava.id_last4}}),
+                        "No. This is Ava Lopez. That is all.")
     assert s.verification.party_id == ava.party_id and s.pending_draft is None
     assert repos.outbox.list() == []  # nothing of Margaret's goes to Ava's address
     assert s.phase == Phase.POST_PROCESS and s.pending_ask == PendingAsk.NONE  # a goodbye, no offer

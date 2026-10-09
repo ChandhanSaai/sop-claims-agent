@@ -156,10 +156,17 @@ def pass1(session: Session, ctx: TurnContext, settings: Settings) -> None:
             session.pending_ask = PendingAsk.NONE
         ctx.offer_human = False
         ctx.policy_brief = escalation_brief(session, first)
+        if session.pending_identity:  # the open question is put in the same reply, so a bare no answers it
+            ctx.policy_brief.ask = identity_confirm_brief(session).ask
         return
     if ctx.human_no:
         session.pending_ask = PendingAsk.NONE
         session.counters.human_declined = True
+    off_topic = a.scope == "out_of_scope" or a.injection_suspected
+    if off_topic:  # counted even when the identity question takes the turn, up to the offer step
+        session.counters.off_topic += 1
+        if session.pending_identity:
+            session.counters.off_topic = min(session.counters.off_topic, settings.offtopic_human_offer_at - 1)
     if session.pending_identity:  # open, or just raised by this message: nothing else is answered
         session.pending_ask = PendingAsk.IDENTITY_CONFIRM
         ctx.policy_brief = identity_confirm_brief(session)
@@ -173,9 +180,7 @@ def pass1(session: Session, ctx: TurnContext, settings: Settings) -> None:
             must_not=["Do not mention any claim details."], ask=ask)
         return
 
-    off_topic = a.scope == "out_of_scope" or a.injection_suspected
     if off_topic:
-        session.counters.off_topic += 1
         n = session.counters.off_topic
         if session.escalation.requested or (n > settings.offtopic_human_offer_at
                                             and not session.counters.human_declined):

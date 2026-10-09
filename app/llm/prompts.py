@@ -59,6 +59,9 @@ closing when they are done ("that's all", "bye", "thanks, no").
 corrections: when they correct an earlier identifier ("actually my DOB is ..."); new_value in the same form
 as the identity field (dob as YYYY-MM-DD). A caller who says they are someone other than the person verified
 so far: put each of the new person's identifiers in corrections, not in identity.
+When pending_ask is identity_confirm (the assistant asked whether it is still speaking with the same person):
+confirmation yes when they say it is still them; confirmation no when they say it is not, or introduce
+themselves as someone else ("No. Ma Tian, born ..."); still extract every identifier they give.
 Return only the schema."""
 
 WRITER_SYSTEM = """You are the voice of an automated claims support assistant for an insurer. \

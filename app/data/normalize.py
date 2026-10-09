@@ -13,9 +13,26 @@ _DOB_FORMATS = (  # commas are stripped before matching; month names match in an
 )
 
 
-def normalize_name(s: str) -> str:
+def normalize_text(s: str) -> str:
+    """Latin text for matching documents and ordinals: accents folded, anything but ASCII letters, digits
+    and spaces dropped."""
     s = "".join(c for c in unicodedata.normalize("NFKD", s) if not unicodedata.combining(c))  # é -> e
     return _WS.sub(" ", _NON_ALNUM.sub(" ", s.casefold())).strip()
+
+
+def normalize_name(s: str) -> str:
+    """A person's name in any script: case folded, Latin accents folded (\"Margarét\" is Margaret), marks
+    that make other scripts' letters kept (Indic vowel signs, kana voicing, Cyrillic breves), punctuation
+    and underscores dropped, spaces collapsed."""
+    chars: list[str] = []
+    for c in unicodedata.normalize("NFKD", s):
+        if unicodedata.combining(c) and chars and chars[-1].isascii():
+            continue  # an accent on a Latin letter folds away
+        chars.append(c)
+    s = unicodedata.normalize("NFC", "".join(chars)).casefold()
+    s = "".join(c if (c.isalnum() or unicodedata.category(c).startswith("M")) and c != "_" else " "
+                for c in s)
+    return _WS.sub(" ", s).strip()
 
 
 def normalize_phone(s: str) -> str | None:
@@ -74,7 +91,7 @@ def fmt_date(d: date) -> str:
 
 def doc_tokens(s: str) -> set[str]:
     out = set()
-    for t in normalize_name(s).split():
+    for t in normalize_text(s).split():
         if t in _STOP:
             continue
         if t.endswith("s") and len(t) > 3:
@@ -89,7 +106,7 @@ def docs_match(a: str, b: str) -> bool:
 
 
 def parse_ordinal(text: str) -> int | None:
-    words = normalize_name(text).split()
+    words = normalize_text(text).split()
     for w in words:
         if w.isdigit():
             return int(w)

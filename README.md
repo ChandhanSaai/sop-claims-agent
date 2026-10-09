@@ -20,10 +20,10 @@ owns the SOP; the model reads and phrases:** one LLM call reads each message int
 - **Golden transcripts:** both transcripts from the spec (Margaret in one turn, the angry caller) and the
   representative approve and timeout paths are in [Golden transcripts](#golden-transcripts), with the state
   after each turn and what each reply must and must not say.
-- **Live transcripts:** [docs/live-transcripts.md](docs/live-transcripts.md) replays all 23 live scenarios against
+- **Live transcripts:** [docs/live-transcripts.md](docs/live-transcripts.md) replays all 24 live scenarios against
   the real Reader and Writer (Sonnet 5.5) and shows each reply with its state, guard verdict, latency and
   checks, and [docs/live-reliability.md](docs/live-reliability.md) repeats every scenario and reports pass^N.
-- **Replay suite:** `pytest -q` runs 331 tests offline with no key or network (eight leak checks skip when every turn of a scenario ends verified with no identity question open), including the 24 scenarios turn
+- **Replay suite:** `pytest -q` runs 325 tests offline with no key or network (six leak checks skip when every turn of a scenario ends verified with no identity question open), including the 25 scenarios turn
   by turn and a leak check on every reply that ends unverified.
 - **Where each requirement and attack lives:** the [Grader's map](#graders-map) names the code, the test that
   pins each requirement and the live turn that shows it, and [Attacks we tried](#attacks-we-tried) pairs each
@@ -600,13 +600,14 @@ CI (`.github/workflows/ci.yml`) runs `ruff check .`, then `pytest -q --ignore=te
 - **API** (`tests/api`): the health check, the session, chat, outbox and trace routes, 404 and 422 handling,
   the access-token gate, session expiry, per-session locking under concurrent chats, the UI being served with
   a text-only script, and Margaret's first turn over HTTP end to end.
-- **Replay** (`tests/replay/test_replay.py`): twenty-four scenarios run turn by turn through the full
+- **Replay** (`tests/replay/test_replay.py`): twenty-five scenarios run turn by turn through the full
   `ConversationService`: `margaret_happy_path`, `angry_caller`, `refusing_caller`, `decoy_disambiguation`,
   `dob_correction`, `human_request_then_continue`, `injection_attempt`, `off_topic_three_times`,
   `question_after_goodbye`, `near_miss_phone_then_more`, `representative_declared`, `representative_approved`,
   `representative_timeout`, `abusive_caller`, `casual_identity_phrasing`, `spanish_caller`,
   `first_name_only`, `document_checklist`, `no_claims_on_file`, `reverify_as_another_party`,
-  `reverify_then_own_handoff`, `representative_after_policyholder` and `identity_question`, plus
+  `reverify_then_own_handoff`, `representative_after_policyholder`, `identity_question` and
+  `unicode_name_after_verification`, plus
   `guard_catches_a_leaking_writer`, an offline-only scenario whose Writer is scripted to leak a claim id,
   a date of birth and an invented date so the guard's reject, regenerate and template paths run in a test
   that can fail. Each turn
@@ -648,9 +649,9 @@ the real Reader and Writer (it needs `ANTHROPIC_API_KEY` in `.env` and costs API
 with hard passes and pass^N per scenario. State and leak expectations are hard checks, and so are a Reader
 or Writer failure and, on the turns where it once appeared, any retraction of or apology for an earlier reply;
 wording expectations are soft, because a live Writer paraphrases. Last run, with Sonnet 5.5 in both roles:
-23 of 23 scenarios passed every hard check over 83 turns, with one soft wording miss (Checks column),
-no guard regeneration and 3.0 to 10.4 seconds per model-call turn (the Secs column);
-across three repetitions, 69 of 69 scenario runs passed every hard check (100%). In an earlier
+24 of 24 scenarios passed every hard check over 89 turns, with two soft wording misses (Checks column),
+no guard regeneration and 2.9 to 8.1 seconds per model-call turn (the Secs column);
+across three repetitions, 72 of 72 scenario runs passed every hard check (100%). In an earlier
 run the first Reader call with a new output schema took about 35 seconds (the schema is compiled and cached
 server-side). Earlier live runs exposed one Writer habit the offline suite could not: when the state moved
 on (a goodbye brief without claim facts, a corrected date of birth resetting verification, a consent
@@ -658,8 +659,7 @@ timeout), the Writer "corrected" or apologized for replies that had been right w
 now hold it: the Writer prompt says earlier replies were grounded when written and are never retracted or
 commented on; every later brief without claim facts says the details given earlier stand; and the brief
 for a verification-reset or consent-timeout turn says to open with the news and take nothing back.
-The committed run has no retraction and no apology, but 1 reply still refers back to an earlier reply: 
-`off_topic_three_times` turn 3 ("Sorry").
+The committed run has no retraction and no apology in any reply.
 
 Live persona evaluations (simulated callers scored as pass^k with an LLM judge) remain stretch item S02.
 
@@ -727,24 +727,28 @@ Live persona evaluations (simulated callers scored as pass^k with an LLM judge) 
   Spanish, French, German, Portuguese and Italian and day-first forms (an English-spelled month in a German
   day-first date needs a year or one of am, vom, bis, zum, den, der before the day); a date written in another
   language would not be caught.
-- A switch to another person reaches the engine through corrections, which reset verification and fence off
-  the earlier party (claims, hints, hand-off, declined offer, summary, identifiers, and the inspector's
-  events, outbox and traces). A name that is partly the verified caller's (a title, an initial, a nickname,
-  a first name alone) opens the question "is this still X?", and nothing about any claim is said until it
-  is answered; a name with nothing in common is someone else, and so is any caller who says they are a
-  representative. On a representative call the same question covers a changed name while consent is
-  pending or approved; consent is requested once per session, so a different representative is offered a
-  person rather than a second request, and the representative flag itself stays for the session. A
-  verified policyholder who asks about someone else's claim is handled as a representative call from then
-  on; their own claims need a new conversation. Off-topic, frustration and abuse counts belong to the
-  conversation and survive the switch.
+- After verification there is one rule for whoever the Reader says is speaking, and no guessing. A name
+  (identity field, labelled correction or representative name) that exactly matches a name the caller is
+  known by (the record name and its aliases, in any script, plus the name they gave) is a restatement, and
+  so is a date of birth or ID that reads as the one given before. Any other name, any representative
+  detail (a helper mention included), a caller who says they are a representative, or a date of birth or
+  ID that does not read the same opens the question
+  "is this still Margaret Chen?", and nothing about any claim is said until it is answered: yes continues
+  (and puts the displaced question again), no switches, anything else asks again. A switch resets
+  verification, wipes identity and representative details together, carries the attempt count, fences off
+  the earlier party (claims, hints, hand-off, declined offer, summary, and the inspector's events, outbox
+  and traces) and drops a representative's consent; consent is requested once per session, so a different
+  representative is offered a person. The representative flag stays for the session. A policyholder who
+  mentions a helper is asked once and continues on yes. Off-topic, frustration and abuse counts belong to
+  the conversation and survive the switch.
 - A one-word name is treated as a first name: the assistant asks for the full name as it appears on the
   policy instead of spending a verification attempt. A policyholder whose legal name is one word cannot use
   it as an identifier and has to verify with three of the other four.
 - Emotion detection is text-only and coarse (0..3 scales plus booleans).
 
 Not in this build: live persona evaluations with an LLM judge and the OpenAI adapter are stretch items
-(below). Spelled-out numbers ("fourteen hundred") are not checked by the grounding guard.
+(below). Spelled-out numbers and dates ("fourteen hundred", "March fifteenth") are not checked by
+the grounding guard; spaced digits ("4 4 7 2") and "at" or "dot" email phrasing are.
 
 ## Stretch roadmap
 
