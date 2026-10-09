@@ -412,7 +412,8 @@ def test_leftover_helper_details_never_complete_a_later_representative(repos, se
     eng.handle_turn(s, analysis(caller_role="policyholder",
                                 representative={"name": "David Chen", "relationship": "son"}),
                     "my son David Chen helps me")
-    assert s.memory.value("rep_name") == "David Chen"
+    eng.handle_turn(s, analysis(requests={"confirmation": "yes"}), "yes it's me")
+    assert s.memory.value("rep_name") is None  # a helper mention is held, never stored
     eng.handle_turn(s, analysis(caller_role="representative",
                                 representative={"policyholder_name": "Margaret Chen"}),
                     "on behalf of Margaret Chen")
@@ -440,3 +441,16 @@ def test_a_declared_representative_restating_the_role_is_not_questioned(repos, s
                     "David Chen")
     assert s.pending_identity is None and s.verification.role == "representative"
 
+
+def test_on_a_representative_call_a_changed_relationship_or_a_policyholder_claim_asks(repos, settings,
+                                                                                     no_policyholder_lookup):
+    eng, s = declared(repos, settings)
+    eng.handle_turn(s, analysis(caller_role="representative", representative={"relationship": "husband"}),
+                    "This is her husband now")
+    assert s.pending_ask == PendingAsk.IDENTITY_CONFIRM and s.memory.value("rep_relationship") == "son"
+    eng.handle_turn(s, analysis(requests={"confirmation": "no"}), "no")
+    assert s.consent.status == "none" and s.memory.value("rep_relationship") is None
+    eng, s = declared(repos, settings)
+    eng.handle_turn(s, analysis(caller_role="policyholder", identity={"full_name": "Margaret Chen"}),
+                    "This is Margaret Chen herself")
+    assert s.pending_ask == PendingAsk.IDENTITY_CONFIRM and s.consent.status == "pending"

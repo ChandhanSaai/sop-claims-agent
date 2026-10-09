@@ -730,16 +730,18 @@ Live persona evaluations (simulated callers scored as pass^k with an LLM judge) 
   language would not be caught.
 - After verification there is one rule for whoever the Reader says is speaking, and no guessing. A name
   (identity field, labelled correction or representative name) that exactly matches a name the caller is
-  known by (the record name and its aliases, in any script, plus the name they gave) is a restatement. Any
-  other name, any representative detail, or a caller who says they are a representative opens the question
+  known by (the record name and its aliases, in any script, plus the name they gave) is a restatement, and
+  so is a date of birth or ID that reads as the one given before. Any other name, any representative
+  detail (a helper mention included), a caller who says they are a representative, or a date of birth or
+  ID that does not read the same opens the question
   "is this still Margaret Chen?", and nothing about any claim is said until it is answered: yes continues
   (and puts the displaced question again), no switches, anything else asks again. A switch resets
   verification, wipes identity and representative details together, carries the attempt count, fences off
   the earlier party (claims, hints, hand-off, declined offer, summary, and the inspector's events, outbox
   and traces) and drops a representative's consent; consent is requested once per session, so a different
   representative is offered a person. The representative flag stays for the session. A policyholder who
-  mentions a helper keeps their path. Off-topic, frustration and abuse counts belong to the conversation and
-  survive the switch.
+  mentions a helper is asked once and continues on yes. Off-topic, frustration and abuse counts belong to
+  the conversation and survive the switch.
 - A one-word name is treated as a first name: the assistant asks for the full name as it appears on the
   policy instead of spending a verification attempt. A policyholder whose legal name is one word cannot use
   it as an identifier and has to verify with three of the other four.

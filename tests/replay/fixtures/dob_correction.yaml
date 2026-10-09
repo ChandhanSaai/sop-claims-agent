@@ -11,18 +11,21 @@ turns:
     analysis:
       corrections: [{slot: dob, new_value: "1985-03-16"}]
     expect:
-      phase: VERIFY_ID
-      verified: false
-      attempts: 1
-      pending_ask: identity_fields
-      reply_not_contains: ["CL-2048", "pathology", "1985-03-16", "I need to correct", "shouldn't have", "sorry",
-                           "apolog"]
+      phase: PROCESS_CASE
+      verified: true
+      attempts: 0
+      pending_ask: identity_confirm
+      reply_contains: ["Margaret Chen"]
+      reply_not_contains: ["CL-2048", "pathology", "1985-03-16", "1985-03-15", "I need to correct",
+                           "shouldn't have", "apolog"]
       guard_ok: true
-  - user: "Sorry, I meant 1985-03-15."
+  - user: "Sorry, I meant 1985-03-15. Yes, it's me."
     analysis:
+      requests: {confirmation: "yes"}
       corrections: [{slot: dob, new_value: "1985-03-15"}]
     expect:
       phase: PROCESS_CASE
       verified: true
-      reply_contains: ["CL-2048"]
+      attempts: 0
+      reply_not_contains: ["1985-03-15", "Is this still"]
       guard_ok: true

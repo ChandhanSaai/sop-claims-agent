@@ -315,3 +315,13 @@ def test_spaced_digits_and_spoken_email_phrasing_are_identifiers_too(store):
     assert "identifier:id_last4" in g.check("Thanks, 4 4 7 2 noted.", s, pre).violations
     assert "identifier:id_last4" in g.check("Thanks, 4-4-7-2 noted.", s, pre).violations
     assert "identifier:email" in g.check("I have margaret at email dot com on file.", s, pre).violations
+
+
+def test_claim_vocabulary_next_to_cjk_characters_is_still_caught(store):
+    g = OutputGuard(store)
+    pre = ReplyBrief(phase="VERIFY_ID", goal="g")
+    s = unverified(store)
+    s.memory.set("id_last4", "4472", 1)
+    assert "claim_id_before_verification" in g.check("理赔编号CL-2048已被拒绝", s, pre).violations
+    assert "identifier:id_last4" in g.check("尾号4472已记录", s, pre).violations
+    assert "phrase_before_verification" in g.check("请提供pathology report。", s, pre).violations

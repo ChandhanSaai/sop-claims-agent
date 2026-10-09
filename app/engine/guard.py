@@ -4,12 +4,12 @@ from datetime import date
 
 from pydantic import BaseModel, Field
 
-from app.data.normalize import doc_tokens, fmt_date, normalize_name, normalize_phone, parse_dob
+from app.data.normalize import doc_tokens, fmt_date, normalize_phone, normalize_text, parse_dob
 from app.data.store import FixtureStore
 from app.engine.state import Session
 from app.llm.schemas import ReplyBrief
 
-CLAIM_ID = re.compile(r"\bCL-\d+\b", re.IGNORECASE)
+CLAIM_ID = re.compile(r"(?<![A-Za-z0-9])CL-\d+(?![A-Za-z0-9])", re.IGNORECASE)  # next to CJK too
 TAG = re.compile(r"<[^>]+>")
 NUMBER = re.compile(r"\d[\d,]*\.\d+|\d{3,}")  # bare numbers under 100 ("the 2 documents") stay unguarded
 THOUSANDS = re.compile(r"(?<=\d),(?=\d{3}(?!\d))")  # "$1,450.00" -> "$1450.00", not "March 18,2026"
@@ -82,7 +82,9 @@ def names_date(ms: list[tuple[int, int, int | None]], d: date) -> bool:
 def contains_token(haystack: str, needle: str) -> bool:
     """Case-insensitive match on word boundaries,
     so 'March 1' does not match inside 'March 18' or 'March 1985'."""
-    return re.search(rf"(?<![\w]){re.escape(needle)}(?![\w])", haystack, re.IGNORECASE) is not None
+    # ASCII boundaries, so a token is found next to a CJK character as well as next to a space
+    pattern = rf"(?<![A-Za-z0-9_]){re.escape(needle)}(?![A-Za-z0-9_])"
+    return re.search(pattern, haystack, re.IGNORECASE) is not None
 
 
 def _suffix(day: int) -> str:
@@ -105,7 +107,7 @@ def date_variants(d: date) -> list[str]:
 
 def _token_run(s: str) -> str:
     """doc_tokens in reading order, space-padded, so a phrase matches only as a contiguous run of tokens."""
-    return f" {' '.join(t for w in normalize_name(s).split() for t in doc_tokens(w))} "
+    return f" {' '.join(t for w in normalize_text(s).split() for t in doc_tokens(w))} "
 
 
 class GuardResult(BaseModel):
@@ -145,7 +147,7 @@ class OutputGuard:
             out.append("phone")
         if (em := m.value("email")) and (em.lower() in low or em.lower() in low_mail):
             out.append("email")
-        if (id4 := m.value("id_last4")) and re.search(rf"\b{re.escape(id4)}\b", tight):
+        if (id4 := m.value("id_last4")) and re.search(rf"(?<![0-9]){re.escape(id4)}(?![0-9])", tight):
             out.append("id_last4")
         if pn := m.value("policy_number"):
             digits_pn = re.sub(r"\D", "", pn)

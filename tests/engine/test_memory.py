@@ -3,6 +3,7 @@ from app.engine.machine import Engine
 from app.engine.memory import merge_analysis
 from app.engine.state import (
     CaseState,
+    Consent,
     Counters,
     Escalation,
     PendingAsk,
@@ -44,32 +45,39 @@ def test_verified_slot_is_not_overwritten_by_a_restated_value():
     assert s.memory.value("dob") == "1985-03-15"
 
 
-def test_correction_to_verified_identity_resets_verification():
+def test_a_corrected_identifier_after_verification_is_a_question_and_no_is_a_reset():
     s = Session.new()
     s.turn = 1
     merge_analysis(s, analysis(identity={"dob": "1985-03-15", "full_name": "Margaret Chen"}))
     s.memory.mark_verified(["dob", "full_name"])
-    s.verification = Verification(status="verified", party_id="P9", role="policyholder")
+    s.verification = Verification(status="verified", party_id="P9", role="policyholder",
+                                  names=["Margaret Chen"])
     s.phase = Phase.PROCESS_CASE
     s.case = CaseState(candidates=["CL-2048"], selected_case_id="CL-2048", intent="denial_question")
     s.turn = 2
     changed = merge_analysis(s, analysis(corrections=[{"slot": "dob", "new_value": "1985-03-16"}]))
-    assert changed == ["dob"]
-    assert s.memory.value("dob") == "1985-03-16"
-    assert s.memory.get("dob").status == SlotStatus.PROVISIONAL
+    assert changed == [] and s.pending_ask == PendingAsk.IDENTITY_CONFIRM  # asked, nothing stored
+    assert s.memory.value("dob") == "1985-03-15" and s.verification.status == "verified"
+    s.turn = 3
+    merge_analysis(s, analysis(requests={"confirmation": "no"}, identity={"dob": "1985-03-16"}))
+    assert s.memory.value("dob") == "1985-03-16" and s.memory.value("full_name") is None  # wiped
     assert s.verification.status == "unverified" and s.verification.party_id is None
     assert s.phase == Phase.VERIFY_ID and s.case == CaseState()  # whoever verifies next re-resolves
     assert s.events[-1].type == "verification_reset"
 
 
-def test_verification_reset_keeps_the_representative_flag():
+def test_a_switch_keeps_the_representative_flag():
     s = Session.new()
-    s.memory.set("dob", "1985-03-15", 1)
-    s.memory.slots["dob"].status = SlotStatus.VERIFIED
-    s.verification = Verification(status="verified", party_id="P9", role="policyholder",
+    s.memory.set("rep_name", "David Chen", 1)
+    s.verification = Verification(status="verified", party_id="P9", role="representative",
                                   declared_representative=True)
-    merge_analysis(s, analysis(corrections=[{"slot": "dob", "new_value": "1986-03-15"}]))
+    s.consent = Consent(status="approved", representative_name="David Chen",
+                        policyholder_name="Margaret Chen")
+    merge_analysis(s, analysis(identity={"full_name": "Ma Tian"}))
+    assert s.pending_ask == PendingAsk.IDENTITY_CONFIRM
+    merge_analysis(s, analysis(requests={"confirmation": "no"}))
     assert s.verification.status == "unverified" and s.verification.declared_representative
+    assert s.consent.status == "none" and s.memory.value("rep_name") is None
 
 
 def test_identity_values_given_with_a_correction_replace_the_reset_slots():
@@ -98,19 +106,22 @@ def test_identity_values_given_with_a_correction_replace_the_reset_slots():
     assert s.verification.status == "unverified" and s.phase == Phase.VERIFY_ID
 
 
-def test_verification_reset_drops_the_hand_off_and_the_declined_offer_but_keeps_conduct_counters():
+def test_a_switch_drops_the_hand_off_and_the_declined_offer_but_keeps_conduct_counters():
     """A hand-off reference and a declined human offer belong to the party that gave them; off-topic,
-    frustration and abuse counts are the conversation's, so a change of name is not a way round them."""
+    frustration and abuse counts are the conversation's, so a change of name is not a way round them; the
+    attempt count carries, so one credential set buys no further guesses."""
     s = Session.new()
     s.memory.set("dob", "1985-03-15", 1)
     s.memory.slots["dob"].status = SlotStatus.VERIFIED
-    s.verification = Verification(status="verified", party_id="P9", role="policyholder")
+    s.verification = Verification(status="verified", party_id="P9", role="policyholder", attempts=2)
     s.escalation = Escalation(requested=True, reference="ESC-TEST01", reason="caller asked")
     s.counters = Counters(off_topic=2, frustration_streak=1, gate_explanations=1, abusive=1,
                           human_declined=True, email_offered=True)
     s.turn = 2
     merge_analysis(s, analysis(corrections=[{"slot": "dob", "new_value": "1964-09-10"}]))
-    assert s.escalation == Escalation() and not s.counters.human_declined
+    s.turn = 3
+    merge_analysis(s, analysis(requests={"confirmation": "no"}))
+    assert s.escalation == Escalation() and not s.counters.human_declined and s.verification.attempts == 2
     assert (s.counters.off_topic, s.counters.frustration_streak, s.counters.abusive) == (2, 1, 1)
     assert s.counters.gate_explanations == 1 and s.counters.email_offered  # cleared only by another party
 
@@ -174,51 +185,58 @@ def test_a_representative_role_or_detail_after_verification_asks_whatever_the_la
                                  "policyholder_name": "Margaret Chen"}},
              {"caller_role": "unknown", "representative": {"name": "Chen", "relationship": "son"}},
              {"caller_role": "unknown", "representative": {"relationship": "wife"}},
-             {"caller_role": "unknown", "representative": {"policyholder_name": "Margaret Chen"}}]
+             {"caller_role": "unknown", "representative": {"policyholder_name": "Margaret Chen"}},
+             {"caller_role": "policyholder", "representative": {"name": "David Chen", "relationship": "son"}},
+             {"caller_role": "policyholder", "representative": {"policyholder_name": "Ma Tian"}}]
     for fields in cases:
         eng, s = verified(repos, settings)
         b = eng.handle_turn(s, analysis(intent="next_steps", **fields), "on behalf of her, the deadline?")
         assert s.pending_ask == PendingAsk.IDENTITY_CONFIRM and "CL-2048" not in render_brief(b), fields
         assert all(s.memory.value(n) is None
-                   for n in ("rep_name", "rep_relationship", "rep_policyholder_name"))
-    eng, s = verified(repos, settings)  # a helper mentioned by the policyholder herself
-    b = eng.handle_turn(s, analysis(caller_role="policyholder", intent="next_steps",
-                                    representative={"name": "David Chen", "relationship": "son"}),
-                        "my son David Chen helps me; the deadline?")
+                   for n in ("rep_name", "rep_relationship", "rep_policyholder_name")), fields
+    eng, s = verified(repos, settings)  # a genuine helper mention costs one yes
+    eng.handle_turn(s, analysis(caller_role="policyholder",
+                                representative={"name": "David Chen", "relationship": "son"}),
+                    "my son David Chen helps me")
+    b = eng.handle_turn(s, analysis(requests={"confirmation": "yes"}, intent="next_steps"), "yes, deadline?")
     assert s.pending_identity is None and "CL-2048" in render_brief(b)
 
 
 def test_the_answer_yes_continues_no_switches_and_anything_else_asks_again(repos, settings):
     eng, s = verified(repos, settings)
     eng.handle_turn(s, analysis(identity={"full_name": "Tom Chen"}, intent="next_steps"), "Tom Chen here")
-    b = eng.handle_turn(s, analysis(identity={"full_name": "Tom Chen"}, intent="next_steps"),
-                        "I said Tom Chen. The deadline?")
-    assert s.pending_ask == PendingAsk.IDENTITY_CONFIRM and "CL-2048" not in render_brief(b)  # asked again
-    assert s.memory.value("full_name") == "Margaret Chen"
-    eng.handle_turn(s, analysis(requests={"confirmation": "yes"}, identity={"full_name": "Tom Chen"}),
-                    "Yes, Tom Chen, that's me")
+    for again in (analysis(identity={"full_name": "Tom Chen"}, intent="next_steps"),  # the same stranger
+                  analysis(requests={"confirmation": "yes"}, identity={"full_name": "Tom Chen"}),  # yes plus
+                  analysis(requests={"confirmation": "yes"}, caller_role="representative"),
+                  analysis(requests={"confirmation": "yes"}, identity={"dob": "1964-09-10"}),
+                  analysis(scope="out_of_scope"), analysis(requests={"wants_human": True})):
+        b = eng.handle_turn(s, again, "...")
+        assert s.pending_ask == PendingAsk.IDENTITY_CONFIRM and "CL-2048" not in render_brief(b)
+        assert s.memory.value("full_name") == "Margaret Chen" and s.verification.party_id == "P9"
+    eng.handle_turn(s, analysis(requests={"confirmation": "yes"}), "Yes, it's me")
     assert s.pending_identity is None and s.verification.party_id == "P9"
-    assert s.memory.value("full_name") == "Margaret Chen"  # a yes stores no name
-    eng.handle_turn(s, analysis(identity={"full_name": "Tom Chen"}), "Tom Chen again")  # and binds none
+    eng.handle_turn(s, analysis(identity={"full_name": "Tom Chen"}), "Tom Chen again")  # nothing was bound
     assert s.pending_ask == PendingAsk.IDENTITY_CONFIRM
-    eng, s = verified(repos, settings)  # the caller's own exact name answers yes
+    eng, s = verified(repos, settings)  # the caller's own exact name or identifier answers yes
     eng.handle_turn(s, analysis(identity={"full_name": "Mrs. Chen"}), "Mrs. Chen here")
     b = eng.handle_turn(s, analysis(identity={"full_name": "Margaret Chen"}, intent="next_steps"),
                         "Margaret Chen. The deadline?")
     assert s.pending_identity is None and "CL-2048" in render_brief(b)
+    eng.handle_turn(s, analysis(corrections=[{"slot": "dob", "new_value": "1985-03-16"}]), "born 03-16")
+    assert s.pending_ask == PendingAsk.IDENTITY_CONFIRM
+    eng.handle_turn(s, analysis(identity={"dob": "March 15, 1985"}), "I meant March 15, 1985")
+    assert s.pending_identity is None and s.memory.value("dob") == "1985-03-15"
     # no: a switch that wipes identity and representative details together and carries the attempt count
     eng, s = verified(repos, settings, identity={**MARGARET, "phone": "650-521-2836",
                                                 "email": "margaret@email.com"})
-    eng.handle_turn(s, analysis(caller_role="policyholder",
-                                representative={"name": "David Chen", "relationship": "son"}),
-                    "my son David Chen helps me")
+    s.memory.set("rep_name", "David Chen", 1)
     s.verification.attempts = 1
     eng.handle_turn(s, analysis(identity={"full_name": "Ma Tian"}), "I'm Ma Tian")
     ma_tian = {"full_name": "Ma Tian", "dob": "1964-09-10", "id_last4": "6688"}
     b = eng.handle_turn(s, analysis(requests={"confirmation": "no"}, identity=ma_tian),
                         "No. Ma Tian, born 1964-09-10, last four 6688.")
-    assert s.verification.party_id == "P12" and s.fence_turn == 4 and "CL-2048" not in render_brief(b)
-    assert all(s.memory.value(n) is None for n in ("phone", "email", "rep_name", "rep_relationship"))
+    assert s.verification.party_id == "P12" and s.fence_turn == 3 and "CL-2048" not in render_brief(b)
+    assert all(s.memory.value(n) is None for n in ("phone", "email", "rep_name"))
     assert s.verification.attempts == 1
 
 
@@ -235,17 +253,23 @@ def test_a_flagged_turn_with_a_name_or_role_asks_and_stores_nothing(repos, setti
     assert s.pending_identity is None and s.verification.party_id == "P9"
 
 
-def test_the_question_survives_a_hand_off_and_an_identifier_contradiction_switches(repos, settings):
+def test_the_question_survives_a_hand_off_and_identifiers_are_signals_too(repos, settings):
     eng, s = verified(repos, settings)
     eng.handle_turn(s, analysis(identity={"full_name": "Tom Chen"}), "Tom Chen here")
     eng.handle_turn(s, analysis(requests={"wants_human": True}), "I want a person")
     assert s.escalation.requested and s.pending_ask == PendingAsk.IDENTITY_CONFIRM
     b = eng.handle_turn(s, analysis(intent="next_steps"), "so, the deadline?")
     assert "Is this still" in b.ask and "CL-2048" not in render_brief(b)
-    eng, s = verified(repos, settings, identity={**MARGARET, "phone": "650-521-2836"})
-    b = eng.handle_turn(s, analysis(identity={"dob": "1964-09-10"}), "born 1964-09-10")
-    assert s.verification.status == "unverified" and s.memory.value("phone") is None
-    assert s.memory.value("dob") == "1964-09-10" and "CL-2048" not in render_brief(b)
+    for given in ({"dob": "1964-09-10"}, {"dob": "10/09/1964"}, {"dob": "September 1964"}, {"dob": "soon"},
+                  {"id_last4": "6688"}, {"id_last4": "44721"}):
+        eng, s = verified(repos, settings, identity={**MARGARET, "phone": "650-521-2836"})
+        b = eng.handle_turn(s, analysis(identity=given), "born ...")
+        assert s.pending_ask == PendingAsk.IDENTITY_CONFIRM and "CL-2048" not in render_brief(b), given
+        assert s.memory.value("dob") == "1985-03-15" and s.verification.status == "verified", given
+    for same in ({"dob": "March 15, 1985"}, {"dob": "15/03/1985"}, {"id_last4": "4472"}):
+        eng, s = verified(repos, settings)
+        eng.handle_turn(s, analysis(identity=same), "born ...")
+        assert s.pending_identity is None, same
 
 
 def test_a_yes_puts_the_displaced_question_again_and_a_hand_off_keeps_it_answerable(repos, settings):
@@ -275,3 +299,22 @@ def test_a_declined_human_offer_is_not_put_again_after_the_question(repos, setti
     assert s.pending_identity.resume == PendingAsk.NONE and s.counters.human_declined
     b = eng.handle_turn(s, analysis(requests={"confirmation": "yes"}), "Yes, it's me.")
     assert not b.offer_human and s.pending_ask != PendingAsk.HUMAN_OFFER
+
+
+def test_restating_a_declaration_is_no_answer_and_a_different_script_is_a_different_name(repos, settings):
+    eng, s = verified(repos, settings)
+    rep = {"relationship": "son", "policyholder_name": "Margaret Chen"}
+    eng.handle_turn(s, analysis(caller_role="unknown", representative=rep), "Her son, for Margaret Chen")
+    assert s.pending_ask == PendingAsk.IDENTITY_CONFIRM
+    b = eng.handle_turn(s, analysis(caller_role="unknown", representative=rep, intent="denial_question"),
+                        "Her son, for Margaret Chen. Why was it denied?")
+    assert s.pending_ask == PendingAsk.IDENTITY_CONFIRM and "CL-2048" not in render_brief(b)
+    eng = Engine(repos, settings)  # Indic vowel signs, kana voicing and Cyrillic breves are letters
+    s = Session.new()
+    eng.greeting(s)
+    eng.handle_turn(s, analysis(identity={"full_name": "मीना शर्मा",
+                                          "dob": "1985-03-15", "id_last4": "4472", "phone": "650-521-2836"}),
+                    "...")
+    assert s.verification.party_id == "P9"
+    eng.handle_turn(s, analysis(identity={"full_name": "मोना शर्मा"}), "...")
+    assert s.pending_ask == PendingAsk.IDENTITY_CONFIRM

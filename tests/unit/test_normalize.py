@@ -83,3 +83,17 @@ def test_names_in_any_script_keep_their_letters():
     assert normalize_name("马天") == "马天"
     assert normalize_name("Маргарита Чен") == "маргарита чен"
     assert normalize_name("Margaret, Chen!") == "margaret chen"
+
+
+def test_name_and_text_normalizers_keep_their_own_scripts():
+    from app.data.normalize import doc_tokens, normalize_name, normalize_text, parse_ordinal
+
+    meena, mona = "मीना शर्मा", "मोना शर्मा"
+    assert normalize_name(meena) != normalize_name(mona)
+    assert normalize_name("さとう") != normalize_name("さどう")  # satou / sadou
+    assert normalize_name("Андрей") != normalize_name("Андреи")
+    assert normalize_name("Margarét Chen") == normalize_name("Margaret_Chen") == "margaret chen"
+    assert normalize_name("Zoë").isascii() and normalize_name("马天") == "马天"
+    assert parse_ordinal("第2个") == 2 and parse_ordinal("the second one") == 2
+    assert doc_tokens("请提供pathology report。") == {"pathology", "report"}
+    assert normalize_text("Zoë, 2nd") == "zoe 2nd"

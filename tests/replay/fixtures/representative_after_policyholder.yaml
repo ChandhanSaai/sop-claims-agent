@@ -46,6 +46,7 @@ turns:
   - user: "Has she approved it yet?"
     analysis:
       scope: in_scope
+      caller_role: representative
     expect:
       phase: VERIFY_ID
       verified: false

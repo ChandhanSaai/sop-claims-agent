@@ -1,3 +1,5 @@
+from datetime import date
+
 from app.data.normalize import normalize_id4, normalize_name, parse_dob
 from app.engine.state import (
     IDENTITY_SLOTS,
@@ -9,10 +11,9 @@ from app.engine.state import (
     PendingAsk,
     Phase,
     Session,
-    SlotStatus,
     Verification,
 )
-from app.llm.schemas import Correction, IdentityFields, RepresentativeInfo, TurnAnalysis
+from app.llm.schemas import IdentityFields, RepresentativeInfo, TurnAnalysis
 
 
 def merge_analysis(session: Session, analysis: TurnAnalysis) -> list[str]:
@@ -25,9 +26,9 @@ def merge_analysis(session: Session, analysis: TurnAnalysis) -> list[str]:
         _confirm_answer(session, analysis)
     else:
         identity_gate(session, analysis)
-    # corrections first: one that resets verification makes the other identifiers in the same message the
-    # new party's values, which the identity loop would otherwise refuse as restatements of verified slots
-    _apply_corrections(session, analysis, changed)
+    for c in analysis.corrections:  # corrections first: the rest of the message is the corrected person's
+        if session.memory.set(c.slot, c.new_value.strip(), t, overwrite_verified=True):
+            changed.append(c.slot)
     ident = analysis.identity
     for name in IDENTITY_SLOTS:
         val = getattr(ident, name)
@@ -51,7 +52,7 @@ def merge_analysis(session: Session, analysis: TurnAnalysis) -> list[str]:
 
 
 def exact(given: str, names: list[str]) -> bool:
-    """The same name, normalized (case, accents, punctuation; any script)."""
+    """The same name, normalized (case, Latin accents, punctuation; any script)."""
     g = normalize_name(given)
     return bool(g) and any(g == normalize_name(k) for k in names if k)
 
@@ -82,13 +83,67 @@ def _holder_names(session: Session) -> list[str]:
     return [n for n in (c.policyholder_name, session.memory.value("rep_policyholder_name")) if n]
 
 
-def _names_given(analysis: TurnAnalysis, *, with_rep: bool) -> list[str]:
-    names = [c.new_value for c in analysis.corrections if c.slot == "full_name"]
-    if analysis.identity.full_name:
-        names.append(analysis.identity.full_name)
-    if with_rep:
-        names += [n for n in (analysis.representative.name, analysis.representative.policyholder_name) if n]
-    return names
+def _dob_readings(value: str) -> set[date]:
+    """Every date a written date of birth can mean: both orders when day and month could swap."""
+    d, ambiguous = parse_dob(value)
+    if d is None:
+        return set()
+    out = {d}
+    if ambiguous:
+        try:
+            out.add(d.replace(month=d.day, day=d.month))
+        except ValueError:
+            pass
+    return out
+
+
+def _same_value(slot: str, stored: str | None, given: str) -> bool:
+    """A date of birth or ID that reads as the stored value; an unreadable or ambiguous one that does not is a
+    question, never the same person by default."""
+    if not stored:
+        return False
+    if slot == "dob":
+        return bool(_dob_readings(stored) & _dob_readings(given))
+    return normalize_id4(given) is not None and normalize_id4(given) == normalize_id4(stored)
+
+
+def signals(session: Session, analysis: TurnAnalysis) -> list[str]:
+    """Everything the Reader says about who is speaking that is not an exact restatement of what is known.
+    On a policyholder session: a name other than the caller's, any representative detail, or a caller who
+    says they are a representative (a helper mention is a representative detail too). On a representative
+    session: a name other than the representative's or the policyholder's, a changed relationship, a caller
+    who now says they are the policyholder. On a policyholder session also a date of birth or ID that does
+    not read as the one given before. Each item is the text that raised it."""
+    v, rep, ident = session.verification, analysis.representative, analysis.identity
+    known, holder = known_names(session), _holder_names(session)
+    out: list[str] = []
+    names = [ident.full_name, *[c.new_value for c in analysis.corrections if c.slot == "full_name"]]
+    out += [n for n in names if n and not exact(n, known) and not exact(n, holder)]
+    if v.declared_representative:
+        if rep.name and not exact(rep.name, known):
+            out.append(rep.name)
+        if rep.policyholder_name and not exact(rep.policyholder_name, holder):
+            out.append(rep.policyholder_name)
+        if rep.relationship and not exact(rep.relationship, [session.memory.value("rep_relationship") or ""]):
+            out.append(rep.relationship)
+        if analysis.caller_role == "policyholder":
+            out.append("the policyholder")
+    elif rep.name or rep.relationship or rep.policyholder_name or analysis.caller_role == "representative":
+        out.append(rep.name or rep.policyholder_name or "a representative")
+    if v.declared_representative:  # a representative gives the policyholder's identifiers, never their own
+        return out
+    for slot in ("dob", "id_last4"):
+        given = getattr(ident, slot) or next((c.new_value for c in analysis.corrections if c.slot == slot),
+                                             None)
+        if given and not _same_value(slot, session.memory.value(slot), str(given)):
+            out.append(str(given))
+    return out
+
+
+def _restates_identity(analysis: TurnAnalysis) -> bool:
+    """The message carries identity content (all of it restated exactly when `signals` is empty)."""
+    rep, ident = analysis.representative, analysis.identity
+    return bool(ident.full_name or ident.dob or ident.id_last4 or analysis.corrections or rep.name)
 
 
 def _hold_identity(analysis: TurnAnalysis) -> None:
@@ -113,79 +168,45 @@ def _ask_identity(session: Session, analysis: TurnAnalysis, candidate: str) -> N
     _hold_identity(analysis)
 
 
-def identity_gate(session: Session, analysis: TurnAnalysis, *, flagged: bool = False) -> None:
-    """After verification, one rule for anything the Reader says about who is speaking. A name (identity
-    field, labelled correction, representative name) that exactly matches a name the caller is known by is a
-    restatement. Any other name, any representative detail, or a caller_role of representative opens the
-    question "is this still X?", which holds every claim detail until it is answered; nothing is guessed from
-    titles, initials, surnames or nicknames. A policyholder who mentions a helper (caller_role policyholder)
-    keeps their path. A different date of birth or ID for a verified slot is someone else outright. A flagged
-    (injection) turn can only raise the question."""
+def identity_gate(session: Session, analysis: TurnAnalysis) -> None:
+    """After verification, one rule for whoever the Reader says is speaking: an exact restatement of what is
+    known continues; anything else (see `signals`) opens the question "is this still X?", which holds every
+    claim detail until it is answered. Nothing is guessed from titles, initials, surnames, nicknames, roles
+    or the labelling of a correction, and a flagged (injection) turn can only ask."""
     if not _speaking_verified(session):
         return
-    v, rep = session.verification, analysis.representative
-    helper = analysis.caller_role == "policyholder" and not v.declared_representative
-    names = [n for n in _names_given(analysis, with_rep=not helper) if not exact(n, _holder_names(session))]
-    strange = [n for n in names if not exact(n, known_names(session))]
-    # a declaration counts on a policyholder session; a declared representative restating the role, a
-    # relationship or the policyholder is who they said they were, and only a new name changes that
-    details = bool(rep.name or rep.relationship or rep.policyholder_name)
-    declares = not v.declared_representative and (analysis.caller_role == "representative"
-                                                 or (not helper and details))
-    if strange or declares:
-        _ask_identity(session, analysis, strange[0] if strange else (rep.name or rep.policyholder_name or ""))
-        return
-    analysis.corrections = [c for c in analysis.corrections if c.slot != "full_name"]  # exact: restated
-    if flagged or v.role != "policyholder":
-        return
-    labelled = {c.slot for c in analysis.corrections}
-    for slot in ("dob", "id_last4"):
-        given, cur = getattr(analysis.identity, slot), session.memory.get(slot)
-        if given and slot not in labelled and cur is not None and cur.status == SlotStatus.VERIFIED:
-            if not _same_person(slot, cur.value, str(given)):
-                switch(session)
-                analysis.corrections.append(Correction(slot=slot, new_value=str(given).strip()))
-                return
+    found = signals(session, analysis)
+    if found:
+        _ask_identity(session, analysis, found[0])
+    else:
+        analysis.corrections = []  # exact restatements: nothing to store
 
 
 def flagged_identity_check(session: Session, analysis: TurnAnalysis) -> None:
-    """A turn the Reader flagged as an injection stores nothing and answers no question, but a name or role in
-    it can still lower trust: the question is raised and holds every claim detail until it is answered."""
+    """A turn the Reader flagged as an injection stores nothing and answers no question, but what it says
+    about who is speaking can still lower trust: the question is raised wherever a plain turn would be."""
     if session.pending_identity is None:
-        identity_gate(session, analysis, flagged=True)
-
-
-def _same_person(slot: str, verified: str, given: str) -> bool:
-    """A date of birth or ID restated in another form is not a correction; an unreadable or ambiguous date is
-    re-asked by the phase, not reset."""
-    if slot == "dob":
-        d, ambiguous = parse_dob(given)
-        return d is None or ambiguous or d == parse_dob(verified)[0]
-    return normalize_id4(given) in (None, normalize_id4(verified))
+        identity_gate(session, analysis)
 
 
 def _confirm_answer(session: Session, analysis: TurnAnalysis) -> None:
-    """The answer to "is this still X?": yes, or the caller's own exact name, keeps the session and puts the
-    displaced question again; no is someone else; anything else leaves the question open. No name from the
-    answer is stored as the caller's."""
+    """The answer to "is this still X?": no is someone else; an answer that would itself open the question is
+    no answer and is asked again; yes, or an exact restatement of the caller's own name or identifier, keeps
+    the session and puts the displaced question again. No name from an answer is stored or bound."""
     q = session.pending_identity
     assert q is not None
-    r = analysis.requests
-    names = [n for n in _names_given(analysis, with_rep=True) if not exact(n, _holder_names(session))]
-    exact_all = bool(names) and all(exact(n, known_names(session)) for n in names)
-    no = r.confirmation == "no"
-    if (r.confirmation == "yes" or exact_all) and not no:
-        session.pending_identity, session.pending_ask = None, q.resume
-        # the displaced question is put again in fixed words, through the Writer and the guard
-        if q.resume in (PendingAsk.EMAIL_OFFER, PendingAsk.EMAIL_CONFIRM, PendingAsk.HUMAN_OFFER):
-            session.reask = q.resume
-        _hold_identity(analysis)
-        return
-    if no:
+    if analysis.requests.confirmation == "no":
         session.pending_identity = None
-        switch(session)  # the message's own identity and representative details then belong to the new caller
+        switch(session)  # the message's own identity and representative details are the new caller's
         return
-    _hold_identity(analysis)  # neither: the question stays open and is asked again
+    if signals(session, analysis):
+        _hold_identity(analysis)  # evidence of someone else beside a yes: asked again
+        return
+    if analysis.requests.confirmation == "yes" or _restates_identity(analysis):
+        session.pending_identity, session.pending_ask = None, q.resume
+        if q.resume in (PendingAsk.EMAIL_OFFER, PendingAsk.EMAIL_CONFIRM, PendingAsk.HUMAN_OFFER):
+            session.reask = q.resume  # put again in fixed words, through the Writer and the guard
+    _hold_identity(analysis)
 
 
 def switch(session: Session) -> None:
@@ -193,7 +214,7 @@ def switch(session: Session) -> None:
     attempt count carries (one credential set never buys more guesses), and a representative's consent is
     dropped (the match cap and the one request per session carry too)."""
     v, c = session.verification, session.consent
-    _reset_verification(session, slot="identity", party_id=v.party_id or c.party_id, wipe=True)
+    _reset_verification(session, party_id=v.party_id or c.party_id)
     if v.declared_representative:
         session.consent = Consent(match_attempts=c.match_attempts, requests=c.requests)
 
@@ -206,29 +227,25 @@ def caller_key(session: Session) -> str:
     return f"policyholder:{v.party_id}"
 
 
-def _reset_verification(session: Session, *, slot: str, party_id: str | None, wipe: bool = False) -> None:
-    """Whoever verifies next starts clean: claims, identity status, the pending question and draft, the
-    hand-off and the declined human offer; the fences keep the earlier party's events and replies out of
-    reach. When someone else is speaking (wipe) the earlier party's identifiers and representative details go
-    too, so they can never verify the next caller as that party; a typo correction keeps them, provisional,
-    for the same caller to re-verify with. The attempt count carries. The hand-off and the declined offer
-    travel on the reset event, so the same caller gets them back. The conduct counters (off-topic,
-    frustration, abuse) stay: a change of name is not a way round those rules."""
+def _reset_verification(session: Session, *, party_id: str | None) -> None:
+    """Whoever verifies next starts clean: claims, identifiers and representative details (wiped, so they can
+    never verify the next caller as the earlier party), the pending question and draft, the hand-off and the
+    declined human offer; the fences keep the earlier party's events and replies out of reach. The attempt
+    count carries. The hand-off and the declined offer travel on the reset event, so the same caller gets
+    them back. The conduct counters (off-topic, frustration, abuse) stay: a change of name is not a way
+    round those rules."""
     old = session.verification
-    session.log("verification_reset", slot=slot, party_id=party_id, caller=caller_key(session),
+    session.log("verification_reset", slot="identity", party_id=party_id, caller=caller_key(session),
                 escalation=session.escalation.model_dump(), human_declined=session.counters.human_declined)
     # the representative flag is sticky for the session; everything else about verification resets
     session.verification = Verification(declared_representative=old.declared_representative,
                                         attempts=old.attempts)
     session.case = CaseState()  # a different party may verify next; its claims are re-resolved
-    if wipe:
-        for n in (*IDENTITY_SLOTS, *REP_SLOTS):
-            session.memory.slots.pop(n, None)
-    else:
-        session.memory.reset_identity()
+    for n in (*IDENTITY_SLOTS, *REP_SLOTS):
+        session.memory.slots.pop(n, None)
     # the earlier party's answers and replies are not the next party's: the summary, the earlier-details
     # rule, the email offer and the Writer's window look only past these fences; the fence sits before the
-    # correction message itself, so the Writer still sees what was just said
+    # answer itself, so the Writer still sees what was just said
     session.fence_turn, session.transcript_fence = session.turn, len(session.transcript) - 1
     session.phase = Phase.VERIFY_ID
     session.pending_ask = PendingAsk.NONE
@@ -237,14 +254,3 @@ def _reset_verification(session: Session, *, slot: str, party_id: str | None, wi
     session.pending_draft = None  # a draft written for the earlier party is never sent to the next
     session.escalation = Escalation()
     session.counters.human_declined = False
-
-
-def _apply_corrections(session: Session, analysis: TurnAnalysis, changed: list[str]) -> None:
-    t = session.turn
-    for c in analysis.corrections:
-        cur = session.memory.get(c.slot)
-        was_verified = cur is not None and cur.status == SlotStatus.VERIFIED
-        if session.memory.set(c.slot, c.new_value.strip(), t, overwrite_verified=True):
-            changed.append(c.slot)
-        if was_verified and session.verification.status == "verified":
-            _reset_verification(session, slot=c.slot, party_id=session.verification.party_id)

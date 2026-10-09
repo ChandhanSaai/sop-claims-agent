@@ -224,7 +224,7 @@ def test_a_confirmed_identity_puts_the_displaced_question_again(settings):
                "case_hints": {"case_id": "CL-2048"}, "intent": "denial_question"},
               {"requests": {"confirmation": "no", "closing": True}},
               {"identity": {"full_name": "Maggie Chen"}},
-              {"requests": {"confirmation": "yes"}, "identity": {"full_name": "Maggie Chen"}},
+              {"requests": {"confirmation": "yes"}},
               {"requests": {"confirmation": "yes", "email_summary": "yes"}}):
         llm.queue(TurnAnalysis.model_validate(a))
     svc = build_service(settings, llm=llm)
@@ -233,7 +233,7 @@ def test_a_confirmed_identity_puts_the_displaced_question_again(settings):
         svc.chat(session, text)
     assert session.pending_ask.value == "identity_confirm"
     assert "Is this still Margaret Chen?" in session.transcript[-1].text
-    res = svc.chat(session, "Yes, Maggie Chen, that's me")
+    res = svc.chat(session, "Yes, that's me")
     assert "send that summary" in res.reply and session.pending_ask.value == "email_offer"
     assert "CL-2048" not in res.reply and session.last_guard["ok"]
     svc.chat(session, "yes please")

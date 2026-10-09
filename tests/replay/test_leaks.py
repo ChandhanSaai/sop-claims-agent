@@ -2,7 +2,7 @@ import re
 
 import pytest
 
-from app.data.normalize import doc_tokens, normalize_name
+from app.data.normalize import doc_tokens, normalize_text
 from app.data.store import FixtureStore
 from app.engine.guard import OutputGuard, contains_token, date_variants
 from tests.replay.runner import load, run_scenario, scenario_names
@@ -10,7 +10,7 @@ from tests.replay.runner import load, run_scenario, scenario_names
 
 def _token_run(s: str) -> str:
     """Tokens in reading order, space-padded: a phrase leaks only as a contiguous run (the guard's rule)."""
-    return f" {' '.join(t for w in normalize_name(s).split() for t in doc_tokens(w))} "
+    return f" {' '.join(t for w in normalize_text(s).split() for t in doc_tokens(w))} "
 
 
 @pytest.mark.parametrize("name", scenario_names())

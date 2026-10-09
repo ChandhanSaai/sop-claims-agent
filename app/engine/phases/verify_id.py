@@ -263,7 +263,7 @@ def _handle(
     provided = {n: val for n in IDENTIFIERS if (val := session.memory.value(n))}
     # a single Latin word is a first name: incomplete rather than wrong, so it costs no attempt (a name in
     # another script has no word boundaries to count)
-    first_name_only = ("full_name" in provided and provided["full_name"].isascii()
+    first_name_only = ("full_name" in provided and normalize_name(provided["full_name"]).isascii()
                        and len(normalize_name(provided["full_name"]).split()) < 2)
     if first_name_only:
         provided.pop("full_name")
