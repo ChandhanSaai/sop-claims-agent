@@ -19,6 +19,7 @@ BOUNDARY_LINE = ("I'm glad to keep helping with your claim, and I need this conv
                  "so that I can.")
 CLOSE_LINE = "This conversation hasn't stayed respectful, so I'm ending it here."
 ABUSE_CLOSE_AT = 2  # the spec: one boundary statement, then the conversation ends
+IDENTITY_CHECK = "Before I go on, I want to be sure who I'm speaking with."
 
 
 def _acknowledgment_seed(session: Session) -> str:
@@ -52,6 +53,17 @@ def escalation_brief(session: Session, first: bool, lead: list[str] | None = Non
     return ReplyBrief(phase=session.phase.value, goal="Confirm the hand-off and give the reference.",
                       allowed_facts={"handoff_reference": session.escalation.reference}, must_say=must_say,
                       must_not=["Do not disclose any claim details beyond what was already allowed."])
+
+
+def identity_confirm_brief(session: Session) -> ReplyBrief:
+    """A name that is partly the verified caller's: ask, never guess, and say nothing about claims meanwhile.
+    The question names what the caller gave, never the record."""
+    slot = "rep_name" if session.verification.declared_representative else "full_name"
+    who = session.memory.value(slot) or "the person verified earlier"
+    return ReplyBrief(phase=session.phase.value, goal="Confirm who is speaking before anything else.",
+                      must_say=[IDENTITY_CHECK],
+                      must_not=["Do not mention any claim details.", "Do not repeat identifiers."],
+                      ask=f"Is this still {who}? If not, please tell me your full name.")
 
 
 def closing_brief(session: Session, first: bool) -> ReplyBrief:
@@ -132,6 +144,9 @@ def pass1(session: Session, ctx: TurnContext, settings: Settings) -> None:
     if ctx.human_no:
         session.pending_ask = PendingAsk.NONE
         session.counters.human_declined = True
+    if session.pending_ask == PendingAsk.IDENTITY_CONFIRM:  # open, or just raised by this message
+        ctx.policy_brief = identity_confirm_brief(session)
+        return
 
     off_topic = a.scope == "out_of_scope" or a.injection_suspected
     if off_topic:

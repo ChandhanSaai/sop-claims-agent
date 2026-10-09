@@ -1,6 +1,16 @@
+from app.engine.briefs import render_brief
 from app.engine.machine import Engine
 from app.engine.memory import merge_analysis
-from app.engine.state import CaseState, Counters, Escalation, Phase, Session, SlotStatus, Verification
+from app.engine.state import (
+    CaseState,
+    Counters,
+    Escalation,
+    PendingAsk,
+    Phase,
+    Session,
+    SlotStatus,
+    Verification,
+)
 from app.llm.schemas import TurnAnalysis
 
 
@@ -100,35 +110,47 @@ def test_verification_reset_drops_the_hand_off_and_the_declined_offer_but_keeps_
     assert s.counters.gate_explanations == 1 and s.counters.email_offered  # cleared only by another party
 
 
-def test_a_different_person_in_the_identity_fields_is_a_correction_even_when_unlabelled():
+def test_a_different_person_in_the_identity_fields_resets_and_a_near_name_is_a_question():
     """The live Reader sometimes reads "this is actually Ma Tian, born ..." as identity fields with no
-    correction; a different name, birth date or ID for a verified slot resets verification all the same.
-    A restatement in another form, a first name alone, or an unreadable date does not."""
+    correction: a name with nothing in common with the names on file resets verification all the same. A name
+    partly the same (a first name, a title, an initial, a nickname) is a question, not a guess; an exact
+    restatement, a date in another form, an unreadable date, a different phone or email are nothing."""
     def verified_margaret():
         s = Session.new()
         s.turn = 1
         merge_analysis(s, analysis(identity={"full_name": "Margaret Chen", "dob": "1985-03-15",
                                              "id_last4": "4472"}))
         s.memory.mark_verified(["full_name", "dob", "id_last4"])
-        s.verification = Verification(status="verified", party_id="P9", role="policyholder")
+        s.verification = Verification(status="verified", party_id="P9", role="policyholder",
+                                      names=["Margaret Chen"])
         s.turn = 2
         return s
 
     s = verified_margaret()
     a = analysis(identity={"full_name": "Ma Tian", "dob": "1964-09-10", "id_last4": "6688"})
     changed = merge_analysis(s, a)
-    assert [c.slot for c in a.corrections] == ["full_name", "dob", "id_last4"]  # visible in the trace
-    assert s.verification.status == "unverified" and s.events[-1].type == "verification_reset"
+    assert [c.slot for c in a.corrections] == ["full_name"]  # the switch, visible in the trace
+    assert s.verification.status == "unverified" and any(e.type == "verification_reset" for e in s.events)
     assert set(changed) == {"full_name", "dob", "id_last4"} and s.memory.value("full_name") == "Ma Tian"
-    for same in ({"full_name": "margaret chen"}, {"full_name": "Margaret"}, {"full_name": "Mrs. Chen"},
-                 {"full_name": "Margaret A. Chen"}, {"full_name": "Margaret Ann Chen"},
-                 {"full_name": "Margaret C."}, {"full_name": "M. Chen"},
-                 {"dob": "March 15, 1985"}, {"dob": "not sure"}, {"dob": "10/09/1985"},  # ambiguous: re-asked
-                 {"id_last4": "4472"}, {"phone": "650-000-0000"}, {"email": "other@example.com"}):
+    for same in ({"full_name": "margaret chen"}, {"dob": "March 15, 1985"}, {"dob": "not sure"},
+                 {"dob": "10/09/1985"}, {"id_last4": "4472"}, {"phone": "650-000-0000"},  # ambiguous date
+                 {"email": "other@example.com"}):
         s = verified_margaret()
         a = analysis(identity=same)
         merge_analysis(s, a)
         assert a.corrections == [] and s.verification.status == "verified", same
+        assert s.pending_ask == PendingAsk.NONE, same
+    for near in ("Margaret", "Mrs. Chen", "Doctor Chen", "Margaret A. Chen", "Maggie Chen", "Margaret C.",
+                 "M. Chen"):
+        s = verified_margaret()
+        a = analysis(identity={"full_name": near})
+        merge_analysis(s, a)
+        assert s.verification.status == "verified" and a.corrections == [], near
+        assert s.pending_ask == PendingAsk.IDENTITY_CONFIRM and s.pending_identity == near, near
+    s = verified_margaret()  # a different date of birth or ID for a verified slot is someone else
+    a = analysis(identity={"dob": "1964-09-10"})
+    merge_analysis(s, a)
+    assert [c.slot for c in a.corrections] == ["dob"] and s.verification.status == "unverified"
 
 
 def test_a_restated_hint_counts_as_given_now():
@@ -156,3 +178,45 @@ def test_the_next_party_restating_the_earlier_hints_keeps_them(repos, settings):
                     "January denied?")
     assert s.verification.party_id == "P9" and s.case.selected_case_id == "CL-2048"
     assert s.phase == Phase.PROCESS_CASE and s.case.intent == "denial_question"
+
+
+def test_the_identity_question_is_asked_until_answered_and_yes_keeps_the_session(repos, settings):
+    eng = Engine(repos, settings)
+    s = Session.new()
+    eng.greeting(s)
+    margaret = {"full_name": "Margaret Chen", "dob": "1985-03-15", "id_last4": "4472"}
+    eng.handle_turn(s, analysis(identity=margaret, case_hints={"case_id": "CL-2048"},
+                                intent="denial_question"), "Margaret Chen, 1985-03-15, 4472, about CL-2048")
+    assert s.phase == Phase.PROCESS_CASE
+    b = eng.handle_turn(s, analysis(identity={"full_name": "Maggie Chen"}, intent="next_steps"),
+                        "Maggie Chen here, what is the appeal deadline?")
+    assert s.pending_ask == PendingAsk.IDENTITY_CONFIRM and "Is this still Margaret Chen?" in b.ask
+    assert b.allowed_facts == {} and "CL-2048" not in render_brief(b) and s.verification.status == "verified"
+    b2 = eng.handle_turn(s, analysis(intent="next_steps"), "the deadline, please?")  # no answer: asked again
+    assert s.pending_ask == PendingAsk.IDENTITY_CONFIRM and "CL-2048" not in render_brief(b2)
+    eng.handle_turn(s, analysis(requests={"confirmation": "yes"}), "yes, it's me")
+    assert s.pending_ask != PendingAsk.IDENTITY_CONFIRM and s.pending_identity is None
+    assert s.verification.party_id == "P9" and s.phase == Phase.PROCESS_CASE and s.fence_turn == 0
+
+
+def test_the_identity_question_answered_no_or_by_another_name_switches(repos, settings):
+    margaret = {"full_name": "Margaret Chen", "dob": "1985-03-15", "id_last4": "4472"}
+    eng = Engine(repos, settings)
+    s = Session.new()
+    eng.greeting(s)
+    eng.handle_turn(s, analysis(identity=margaret, case_hints={"case_id": "CL-2048"}), "Margaret ...")
+    eng.handle_turn(s, analysis(identity={"full_name": "Mrs. Chen"}), "Mrs. Chen here")
+    assert s.pending_ask == PendingAsk.IDENTITY_CONFIRM
+    b = eng.handle_turn(s, analysis(requests={"confirmation": "no"}, identity={"full_name": "Tom Chen"}),
+                        "No, this is Tom Chen")
+    assert s.verification.status == "unverified" and s.phase == Phase.VERIFY_ID and s.fence_turn == 3
+    assert s.memory.value("full_name") == "Tom Chen" and "CL-2048" not in render_brief(b)
+    eng = Engine(repos, settings)  # a name with nothing in common answers the question by itself
+    s = Session.new()
+    eng.greeting(s)
+    eng.handle_turn(s, analysis(identity=margaret, case_hints={"case_id": "CL-2048"}), "Margaret ...")
+    eng.handle_turn(s, analysis(identity={"full_name": "Maggie"}), "Maggie here")
+    assert s.pending_ask == PendingAsk.IDENTITY_CONFIRM
+    eng.handle_turn(s, analysis(identity={"full_name": "Ma Tian", "dob": "1964-09-10", "id_last4": "6688"}),
+                    "I'm Ma Tian, born 1964-09-10, last four 6688")
+    assert s.verification.party_id == "P12" and s.fence_turn == 3 and s.pending_identity is None

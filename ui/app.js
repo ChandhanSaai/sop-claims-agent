@@ -220,12 +220,11 @@ function renderGuard(guard) {
   box.replaceChildren(frag);
 }
 
-function renderEvents(events, fence) {
+function renderEvents(events) {
   const recent = events.slice(-12);
   if (!recent.length) { $("events").replaceChildren(el("li", "empty", "No events yet.")); return; }
   $("events").replaceChildren(...recent.map((e) => {
-    const li = el("li", e.turn < fence ? "fenced" : "");
-    if (e.turn < fence) li.title = "Before the verification reset: not reused for the party verified since.";
+    const li = el("li");
     li.appendChild(el("span", "turn", `t${e.turn}`));
     li.appendChild(document.createTextNode(e.type));
     return li;
@@ -238,7 +237,7 @@ function renderState(state) {
   renderMemory(state.memory);
   renderBrief(state.last_brief);
   renderGuard(state.last_guard);
-  renderEvents(state.events, state.fence_turn);
+  renderEvents(state.events);
 }
 
 async function refreshOutbox() {

@@ -190,3 +190,24 @@ def test_writer_error_fallback_is_checked_by_the_guard(settings):
     res = svc.chat(session, "hi")
     assert checked == [res.reply] and res.reply == render_brief(session.last_brief)
     assert session.last_guard == {"ok": True, "violations": [], "fallback": "llm_error"}
+
+
+def test_the_outbox_stays_behind_the_fence(settings):
+    llm = ScriptedWriter([])
+    for a in ({"identity": {"full_name": "Margaret Chen", "dob": "1985-03-15", "id_last4": "4472"},
+               "case_hints": {"case_id": "CL-2048"}, "intent": "denial_question"},
+              {"requests": {"confirmation": "no", "closing": True}},
+              {"requests": {"confirmation": "yes", "email_summary": "yes"}},
+              {"requests": {"confirmation": "yes"}},
+              {"identity": {"full_name": "Ma Tian", "dob": "1964-09-10", "id_last4": "6688"},
+               "corrections": [{"slot": "full_name", "new_value": "Ma Tian"}]}):
+        llm.queue(TurnAnalysis.model_validate(a))
+    svc = build_service(settings, llm=llm)
+    session = svc.start()
+    for text in ("Margaret Chen, 1985-03-15, 4472, about CL-2048", "No, that's all.", "Yes please.",
+                 "Send it."):
+        svc.chat(session, text)
+    assert len(svc.outbox(session)) == 1
+    svc.chat(session, "Sorry, this is actually Ma Tian, born 1964-09-10, last four 6688.")
+    assert session.fence_turn == 5 and svc.outbox(session) == []
+    assert all(e["turn"] >= 5 for e in session.snapshot()["events"])

@@ -103,19 +103,20 @@ def _human_brief(session: Session, goal: str, must_say: list[str],
     return HandlerResult(brief=brief)
 
 
-def _new_party_cleanup(session: Session, party_id: str) -> None:
-    """After a verification reset: someone else verified, so the hints given before the reset are not theirs
-    and the summary offer is theirs to get; or the same party verified again, so their hand-off and declined
-    offer come back from the reset event unless a newer hand-off happened in between."""
+def _new_party_cleanup(session: Session, caller: str) -> None:
+    """After a verification reset: someone else verified (a representative of the same policyholder is someone
+    else), so the hints given before the reset are not theirs and the summary offer is theirs to get; or the
+    same caller verified again, so their hand-off and declined offer come back from the reset event unless a
+    newer hand-off happened in between."""
     resets = [e for e in session.events if e.type == "verification_reset"]
     if not resets:
         return
-    if resets[-1].data["party_id"] != party_id:
+    if resets[-1].data["caller"] != caller:
         for n in HINT_SLOTS:
             if (slot := session.memory.get(n)) and slot.source_turn < session.fence_turn:
                 del session.memory.slots[n]
         session.counters.email_offered = False
-    own = next((e for e in reversed(resets) if e.data["party_id"] == party_id), None)
+    own = next((e for e in reversed(resets) if e.data["caller"] == caller), None)
     if own is not None and not session.escalation.requested:  # back after someone else in between too
         session.escalation = Escalation(**own.data["escalation"])
         session.counters.human_declined = own.data["human_declined"]
@@ -123,7 +124,7 @@ def _new_party_cleanup(session: Session, party_id: str) -> None:
 
 def _approve(session: Session, repos: Repos) -> HandlerResult:
     v, c = session.verification, session.consent
-    _new_party_cleanup(session, c.party_id)
+    _new_party_cleanup(session, f"representative:{c.party_id}:{normalize_name(c.representative_name or '')}")
     rec = repos.policyholders.get(c.party_id)
     v.status, v.party_id, v.role = "verified", c.party_id, "representative"
     v.names = [rec.name, *rec.name_aliases]
@@ -196,7 +197,6 @@ def _representative(session: Session, ctx: TurnContext, repos: Repos, settings: 
             c.status, c.consent_id, c.party_id = "pending", cid, match.buyer_party_id
             c.requests += 1
             c.representative_name, c.policyholder_name = match.rep_name, match.buyer_name
-            c.relationship = match.relationship
             session.log("consent_requested", consent_id=cid, scenario=session.scenario)
             session.pending_ask = PendingAsk.CONSENT_WAIT
             brief = ReplyBrief(
@@ -312,7 +312,7 @@ def _handle(
     passes = [(r, res) for r, res in checks if res.passed]
     if len(passes) == 1:
         rec, result = passes[0]
-        _new_party_cleanup(session, rec.party_id)
+        _new_party_cleanup(session, f"policyholder:{rec.party_id}")
         v.status, v.party_id, v.role = "verified", rec.party_id, "policyholder"
         v.names = [rec.name, *rec.name_aliases]
         session.memory.mark_verified(result.matched)  # a wrong extra identifier stays provisional

@@ -24,3 +24,16 @@ def test_snapshot_carries_the_fence_turn():
     assert s.snapshot()["fence_turn"] == 0
     s.fence_turn = 3
     assert s.snapshot()["fence_turn"] == 3
+
+
+def test_snapshot_events_start_at_the_fence():
+    s = Session.new()
+    s.turn = 1
+    s.log("verified", party_id="P9")
+    s.turn = 2
+    s.log("verification_reset", party_id="P9")
+    s.fence_turn = 2
+    s.turn = 3
+    s.log("verified", party_id="P12")
+    events = [(e["turn"], e["type"]) for e in s.snapshot()["events"]]
+    assert events == [(2, "verification_reset"), (3, "verified")]

@@ -116,7 +116,7 @@ class ConversationService:
         return text, verdict
 
     def outbox(self, session: Session) -> list[dict[str, Any]]:
-        ids = {e.data.get("email_id") for e in session.events if e.type == "email_sent"}
+        ids = {e.data.get("email_id") for e in session.fenced_events() if e.type == "email_sent"}
         return [r.model_dump(exclude={"to"}) for r in self.repos.outbox.list() if r.id in ids]
 
 
