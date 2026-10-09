@@ -32,6 +32,7 @@ function renderState(state) {
     ["Pending ask", state.pending_ask], ["Selected claim", state.case.selected_case_id ?? "-"], ["Intent", state.case.intent ?? "-"],
     ...Object.entries(state.counters),
     ["Escalation", state.escalation.requested ? (state.escalation.reference ?? "-") : "no"], ["Consent", state.consent.status],
+    ["Closed", state.closed ? "yes" : "no"],
   ];
   $("status").replaceChildren(...rows.flatMap(([k, v]) => {
     const dt = document.createElement("dt"); dt.textContent = k;

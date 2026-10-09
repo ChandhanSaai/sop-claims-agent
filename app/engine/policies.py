@@ -10,6 +10,10 @@ MIXED_LINE = ("The caller also asked about something outside claims support; say
               "that you can't help with that part here.")
 SCOPE_LINE = ("This assistant handles questions about your claims with us: status, denials, documents, "
               "deadlines and next steps.")
+BOUNDARY_LINE = ("I'm glad to keep helping with your claim, and I need this conversation to stay respectful "
+                 "so that I can.")
+CLOSE_LINE = "This conversation hasn't stayed respectful, so I'm ending it here."
+ABUSE_CLOSE_AT = 2  # the spec: one boundary statement, then the conversation ends
 
 
 def _acknowledgment_seed(session: Session) -> str:
@@ -42,6 +46,19 @@ def escalation_brief(session: Session, first: bool, lead: list[str] | None = Non
     return ReplyBrief(phase=session.phase.value, goal="Confirm the hand-off and give the reference.",
                       allowed_facts={"handoff_reference": session.escalation.reference}, must_say=must_say,
                       must_not=["Do not disclose any claim details beyond what was already allowed."])
+
+
+def closing_brief(session: Session, first: bool) -> ReplyBrief:
+    """End the conversation after repeated abuse: calm, short, the human route, nothing else."""
+    followup = ("A representative will follow up on this conversation." if first
+                else "A representative has already been asked to follow up on this conversation.")
+    return ReplyBrief(phase=session.phase.value, goal="End the conversation calmly and give the human route.",
+                      tone="de_escalate",
+                      must_say=[CLOSE_LINE, followup, "Give the handoff_reference for that follow-up."],
+                      allowed_facts={"handoff_reference": session.escalation.reference},
+                      must_not=["Do not answer any question in this message.",
+                                "Do not lecture, moralize or apologize; two or three sentences.",
+                                "Do not disclose any claim details."])
 
 
 def _can_help_with(session: Session) -> str:
@@ -85,6 +102,20 @@ def pass1(session: Session, ctx: TurnContext, settings: Settings) -> None:
 
     if a.injection_suspected:
         session.log("injection_suspected")
+    if a.affect.abusive:
+        session.counters.abusive += 1
+        ctx.tone = "de_escalate"
+        if session.counters.abusive >= ABUSE_CLOSE_AT:
+            first = not session.escalation.requested
+            escalate(session, "abusive caller")
+            session.closed = True
+            session.pending_ask = PendingAsk.NONE
+            ctx.offer_human = False
+            ctx.acknowledge = None  # the closing reply never opens with the frustration acknowledgment
+            session.log("conversation_closed", reason="abuse", reference=session.escalation.reference)
+            ctx.policy_brief = closing_brief(session, first)
+            return
+        ctx.extra_must_say.append(BOUNDARY_LINE)
     if a.requests.wants_human or ctx.human_yes:
         first = not session.escalation.requested
         escalate(session, "caller asked for a representative")

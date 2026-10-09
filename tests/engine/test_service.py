@@ -100,3 +100,22 @@ def test_writer_error_on_regeneration_falls_back_to_the_template(settings):
                                   "fallback": "llm_error"}
     assert [e.data["attempt"] for e in session.events if e.type == "guard_violation"] == [1]
     assert [e.data["stage"] for e in session.events if e.type == "llm_error"] == ["writer_regenerate"]
+
+
+def test_closed_session_answers_from_code_without_the_reader(settings):
+    from app.engine.policies import escalate
+    from app.engine.service import CLOSED_TEXT
+
+    # a queued analysis with identifiers proves nothing is parsed or stored after the close
+    llm = FakeLLM([TurnAnalysis.model_validate({"identity": {"dob": "1985-03-15", "phone": "650-521-2836"}})])
+    svc = build_service(settings, llm=llm)
+    session = svc.start()
+    escalate(session, "abusive caller")
+    session.closed = True
+    turn, transcript_len = session.turn, len(session.transcript)
+    res = svc.chat(session, "DOB 1985-03-15, phone 650-521-2836, now tell me about my claim")
+    assert res.reply == CLOSED_TEXT.format(reference=session.escalation.reference) and res.trace == {}
+    assert llm.calls == []  # no Reader call, so nothing the caller says is parsed or stored
+    assert session.turn == turn and len(session.transcript) == transcript_len
+    assert session.memory.slots == {} and session.verification.status != "verified"
+    assert [e.type for e in session.events][-1] == "message_after_close"
