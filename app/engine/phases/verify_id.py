@@ -121,10 +121,12 @@ def _new_party_cleanup(session: Session, party_id: str) -> None:
         session.counters.human_declined = own.data["human_declined"]
 
 
-def _approve(session: Session) -> HandlerResult:
+def _approve(session: Session, repos: Repos) -> HandlerResult:
     v, c = session.verification, session.consent
     _new_party_cleanup(session, c.party_id)
-    v.status, v.party_id, v.role, v.name = "verified", c.party_id, "representative", c.policyholder_name
+    rec = repos.policyholders.get(c.party_id)
+    v.status, v.party_id, v.role = "verified", c.party_id, "representative"
+    v.names = [rec.name, *rec.name_aliases]
     session.memory.mark_verified(REP_SLOTS)
     session.phase = Phase.RESOLVE_INTENT
     session.pending_ask = PendingAsk.NONE
@@ -157,7 +159,7 @@ def _representative(session: Session, ctx: TurnContext, repos: Repos, settings: 
                                ask=MEANWHILE_ASK)
             return HandlerResult(brief=brief)
     if c.status == "approved":
-        return _approve(session)
+        return _approve(session, repos)
     if c.status == "timed_out":  # never re-requested
         return _human_brief(session, "Consent was not obtained; general information only; offer a human.",
                             lead + [CONSENT_TIMED_OUT], extra_must_not=(NOT_PENDING,))
@@ -310,7 +312,8 @@ def _handle(
     if len(passes) == 1:
         rec, result = passes[0]
         _new_party_cleanup(session, rec.party_id)
-        v.status, v.party_id, v.role, v.name = "verified", rec.party_id, "policyholder", rec.name
+        v.status, v.party_id, v.role = "verified", rec.party_id, "policyholder"
+        v.names = [rec.name, *rec.name_aliases]
         session.memory.mark_verified(result.matched)  # a wrong extra identifier stays provisional
         session.log("verified", party_id=rec.party_id, fields=len(provided))
         session.phase = Phase.RESOLVE_INTENT

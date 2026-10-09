@@ -89,14 +89,15 @@ def _declaration_switch(session: Session, analysis: TurnAnalysis) -> None:
     v, rep = session.verification, analysis.representative
     if v.status != "verified" or v.role != "policyholder" or analysis.caller_role == "policyholder":
         return
-    known = v.name or (session.memory.value("full_name") or "")  # the name on file, not a restated slot
+    # the names on file (record name and aliases), not a restated slot; none known: nothing counts as other
+    known = [n for n in (v.names or [session.memory.value("full_name")]) if n]
 
     def other(name: str | None) -> bool:
-        return bool(name) and bool(known) and not _same_person("full_name", known, name)
+        return bool(name) and bool(known) and not any(_same_person("full_name", k, name) for k in known)
 
     switch = other(rep.policyholder_name)
-    if analysis.caller_role == "representative":
-        switch = switch or not (rep.name and not other(rep.name))
+    if analysis.caller_role == "representative" and (rep.name or rep.relationship or rep.policyholder_name):
+        switch = switch or not (rep.name and not other(rep.name))  # a bare label alone never resets
     if switch:
         _reset_verification(session, slot="representative", party_id=v.party_id)
 
@@ -113,18 +114,26 @@ def _representative_switch(session: Session, analysis: TurnAnalysis) -> None:
     held = c.representative_name or session.memory.value("rep_name") or ""
     holder = c.policyholder_name or session.memory.value("rep_policyholder_name") or ""
     named = [x.new_value for x in analysis.corrections if x.slot == "full_name"]
-    # a one-word name ("Dave here") is never read as a new person: it cannot name one, and the consent is
-    # requested once per session; a full nickname still is, a documented limit
-    named += [n for n in (analysis.representative.name, analysis.identity.full_name)
-              if n and len(normalize_name(n).split()) > 1]
-    # the policyholder's own name in an identity field names the person consent is asked from, not a caller
-    named = [n for n in named if not (holder and _same_person("full_name", holder, n))]
+    named += [n for n in (analysis.representative.name, analysis.identity.full_name) if n]
+    # the policyholder's own name in an identity field names the person consent is asked from, not a caller;
+    # a one-word name that fits the representative's own ("Dave", "Chen") is not a new person either
+    named = [n for n in named if not (holder and _same_person("full_name", holder, n)) and not _fits(n, held)]
     if not named or all(_same_person("full_name", held, n) for n in named):
         return
     _reset_verification(session, slot="rep_name", party_id=c.party_id)
     session.consent = Consent(match_attempts=c.match_attempts, requests=c.requests)
     for n in REP_SLOTS:  # the new representative's details are captured from this message on
         session.memory.slots.pop(n, None)
+
+
+def _fits(given: str, held: str) -> bool:
+    """One word that fits a name on file: one of its words, an initial, or a short form sharing its first
+    three letters (Dave for David). Any other one-word name names someone else, like a full name does."""
+    words = normalize_name(given).split()
+    if len(words) != 1 or not held:
+        return False
+    w, on_file = words[0], normalize_name(held).split()
+    return _within({w}, set(on_file)) or (len(w) >= 3 and w[:3] == on_file[0][:3])
 
 
 def _reset_verification(session: Session, *, slot: str, party_id: str | None) -> None:

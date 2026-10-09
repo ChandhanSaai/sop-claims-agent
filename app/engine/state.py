@@ -83,7 +83,8 @@ class Memory(BaseModel):
 class Verification(BaseModel):
     status: Literal["unverified", "verified", "exhausted"] = "unverified"
     party_id: str | None = None
-    name: str | None = None  # the verified party's name on file, what a later name is compared with
+    # the verified party's names on file (record name, then aliases): what a later name is compared with
+    names: list[str] = Field(default_factory=list)
     attempts: int = 0
     role: Literal["policyholder", "representative"] | None = None
     # the caller said they are calling for someone else; sticks for the session, so a later claim to be

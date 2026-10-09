@@ -530,10 +530,59 @@ def test_naming_the_policy_owner_after_verifying_without_a_name_is_not_a_switch(
     eng.greeting(s)
     eng.handle_turn(s, analysis(identity={"dob": "1985-03-15", "id_last4": "4472", "phone": "650-521-2836"}),
                     "1985-03-15, 4472, 650-521-2836")
-    assert s.verification.party_id == "P9" and s.verification.name == "Margaret Chen"
+    assert s.verification.party_id == "P9" and s.verification.names == ["Margaret Chen"]
     assert s.memory.value("full_name") is None
     b = eng.handle_turn(s, analysis(caller_role="unknown",
                                     representative={"policyholder_name": "Margaret Chen"},
                                     case_hints={"case_type": "healthcare", "status": "denied", "month": 1}),
                         "The policy is in the name of Margaret Chen. Why was the January claim denied?")
     assert s.verification.party_id == "P9" and s.fence_turn == 0 and "CL-2048" in render_brief(b)
+
+
+def test_a_first_name_alone_from_a_different_person_is_a_switch(repos, settings, no_policyholder_lookup):
+    for approved in (False, True):
+        eng = Engine(repos, settings, lambda: TODAY)
+        s = Session.new()
+        eng.greeting(s)
+        eng.handle_turn(s, analysis(caller_role="representative", representative=DAVID,
+                                    identity={"policy_number": "POL-9921"}), "David Chen, for my mother")
+        if approved:
+            eng.handle_turn(s, analysis(), "Any news?")
+            eng.handle_turn(s, analysis(), "Anything now?")
+            assert s.consent.status == "approved"
+        b = eng.handle_turn(s, analysis(representative={"name": "Tom", "relationship": "husband"}),
+                            "Actually this is Tom, her husband. Why was her claim denied?")
+        assert s.consent.status == "none" and s.verification.status == "unverified", approved
+        assert "CL-2048" not in render_brief(b) and CONSENT_ONCE in b.must_say, approved
+    eng = Engine(repos, settings, lambda: TODAY)  # a labelled one-word correction follows the same rule
+    s = Session.new()
+    eng.greeting(s)
+    eng.handle_turn(s, analysis(caller_role="representative", representative=DAVID,
+                                identity={"policy_number": "POL-9921"}), "David Chen, for my mother")
+    eng.handle_turn(s, analysis(corrections=[{"slot": "full_name", "new_value": "Dave"}]), "It's Dave.")
+    assert s.consent.status == "pending" and s.fence_turn == 0
+    eng.handle_turn(s, analysis(corrections=[{"slot": "full_name", "new_value": "Tom"}]), "No, it's Tom.")
+    assert s.consent.status == "none" and s.fence_turn == 3
+
+
+def test_a_bare_representative_label_without_any_detail_does_not_reset(repos, settings):
+    eng = Engine(repos, settings, lambda: TODAY)
+    s = Session.new()
+    eng.greeting(s)
+    eng.handle_turn(s, analysis(identity={"full_name": "Ma Tian", "dob": "1964-09-10", "id_last4": "6688"},
+                                case_hints={"case_id": "CL-3001"}), "Ma Tian, CL-3001")
+    b = eng.handle_turn(s, analysis(caller_role="representative", intent="document_submission"),
+                        "What documents do I still need?")  # a Reader mislabel, nothing else said
+    assert s.verification.party_id == "P12" and s.fence_turn == 0 and "CL-3001" in render_brief(b)
+
+
+def test_an_alias_on_file_is_the_same_policyholder(repos, settings):
+    eng = Engine(repos, settings, lambda: TODAY)
+    s = Session.new()
+    eng.greeting(s)
+    eng.handle_turn(s, analysis(identity={"full_name": "Ya Wen Li", "dob": "1989-12-03", "id_last4": "5317"}),
+                    "Ya Wen Li, 1989-12-03, 5317")
+    assert s.verification.party_id == "P13" and s.verification.names == ["Ya Wen Li", "Yaven Li"]
+    eng.handle_turn(s, analysis(caller_role="unknown", representative={"policyholder_name": "Yaven Li"}),
+                    "The policy is in the name of Yaven Li.")
+    assert s.verification.party_id == "P13" and s.fence_turn == 0
