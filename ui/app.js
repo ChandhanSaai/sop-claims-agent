@@ -19,11 +19,15 @@ const TOUR = [
 ];
 // What code enforces in each phase, shown on the divider when the conversation enters it.
 const PHASE_RULES = {
-  VERIFY_ID: "Nothing about any claim is shared until the caller matches 3 of the 5 identifiers on file.",
-  RESOLVE_INTENT: "Code picks the claim and the intent from the record; the model only reports what was said.",
+  VERIFY_ID: "Nothing about any claim is shared until the caller matches 3 of the 5 identifiers on file, or the "
+    + "policyholder approves a representative.",
+  RESOLVE_INTENT: "Code picks the claim from the record using what the model read from the message; the model "
+    + "never chooses it.",
   PROCESS_CASE: "Every reply is limited to facts code pulled from the selected claim and the guideline.",
   POST_PROCESS: "A summary is offered once, drafted by code from the event log, and sent only on a yes.",
 };
+// A phase a turn passed through on its way further is named only when an event of that turn proves it ran.
+const RAN = { RESOLVE_INTENT: ["claim_selected", "no_claims"], PROCESS_CASE: ["answered"] };
 // Event fields the line under a reply may show: ids and counts, never an identifier.
 const CAPTION_KEYS = ["fields", "attempts", "case_id", "intent", "topic", "email_id", "reference", "reason"];
 const $ = (id) => document.getElementById(id);
@@ -102,10 +106,11 @@ function addMessage(role, text) {
 }
 
 // A divider in the chat each time the harness moves the conversation to another phase.
-function addPhaseDivider(before, after) {
+function addPhaseDivider(before, after, events) {
   const idx = PHASES.indexOf(after);
   const from = before ? PHASES.indexOf(before) : -1;
-  const crossed = from >= 0 && from < idx - 1 ? PHASES.slice(from + 1, idx) : [];
+  const between = from >= 0 && from < idx - 1 ? PHASES.slice(from + 1, idx) : [];
+  const crossed = between.filter((p) => events.some((e) => RAN[p]?.includes(e.type)));
   const div = el("div", "phase-divider");
   div.appendChild(el("span", "phase-label",
     `${from > idx ? "Back to phase" : "Phase"} ${idx + 1} · ${after.replace("_", " ")}`));
@@ -115,10 +120,14 @@ function addPhaseDivider(before, after) {
   $("messages").appendChild(div);
 }
 
+function turnEvents(st) {
+  return st.events.filter((e) => e.turn === st.turn);
+}
+
 // The line under a reply: what the harness did this turn, from the events, the pending ask and the guard.
-function addDecided(node, data) {
+function addDecided(node, data, events) {
   const st = data.state;
-  const parts = st.events.filter((e) => e.turn === st.turn).map((e) => {
+  const parts = events.map((e) => {
     const bits = CAPTION_KEYS.filter((k) => e.data?.[k] != null).map((k) => `${k}=${e.data[k]}`);
     return bits.length ? `${e.type} (${bits.join(", ")})` : e.type;
   });
@@ -133,6 +142,7 @@ function addDecided(node, data) {
   line.appendChild(el("span", "decided-label", "harness"));
   line.appendChild(document.createTextNode(parts.join(" · ")));
   node.appendChild(line);
+  $("messages").scrollTop = $("messages").scrollHeight;
 }
 
 function showExamples() {
@@ -314,8 +324,8 @@ function clearInspector() {
 
 function setBusy(on) {
   busy = on;
-  ["send", "input", "new", "token-button"].forEach((id) => { $(id).disabled = on; });
-  $("tour").disabled = on || touring;
+  ["new", "token-button"].forEach((id) => { $(id).disabled = on; });
+  ["send", "input", "tour"].forEach((id) => { $(id).disabled = on || touring; });
 }
 
 async function newConversation() {
@@ -330,6 +340,7 @@ async function newConversation() {
   sessionId = null; // a failed restart must not keep chatting into the old, now cleared, conversation
   $("messages").replaceChildren();
   clearInspector();
+  setBusy(true);  // one conversation at a time: a second click while this one is being created is ignored
   let data;
   try {
     const r = await fetch("/api/session", {
@@ -347,10 +358,12 @@ async function newConversation() {
     data = await r.json();
   } catch (err) {
     addMessage("system", `Network error: ${err.message}`); return;
+  } finally {
+    setBusy(false);
   }
   showTokenState(Boolean(token));
   sessionId = data.session_id;
-  addPhaseDivider(null, data.state.phase);
+  addPhaseDivider(null, data.state.phase, []);
   addMessage("assistant", data.greeting);
   showExamples();
   renderState(data.state);
@@ -382,14 +395,17 @@ async function sendMessage() {
     setBusy(false);
     $("input").focus();
   }
-  if (data.trace.phase_before !== data.trace.phase_after) {
-    addPhaseDivider(data.trace.phase_before, data.trace.phase_after);
+  const processed = data.trace.turn !== undefined;  // a closed conversation or a Reader failure returns no trace
+  const events = processed ? turnEvents(data.state) : [];
+  if (processed && data.trace.phase_before !== data.trace.phase_after) {
+    addPhaseDivider(data.trace.phase_before, data.trace.phase_after, events);
   }
-  addDecided(addMessage("assistant", data.reply), data);
+  const node = addMessage("assistant", data.reply);
+  if (processed) addDecided(node, data, events);
   renderState(data.state);
   $("trace").textContent = JSON.stringify(data.trace, null, 1);
   await refreshOutbox();
-  return true;
+  return processed;
 }
 
 // Plays the walkthrough in a fresh conversation; stops if the conversation is replaced or a send fails.
@@ -401,7 +417,7 @@ async function runTour() {
     await newConversation();
     const sid = sessionId;
     if (!sid) return;
-    addMessage("system", "Guided walkthrough: one phase per turn. Each divider marks the phase the harness moved to, "
+    addMessage("system", "Guided walkthrough: one phase at a time. Each divider marks the phase the harness moved to, "
       + "and the line under every reply is what it decided.");
     for (const text of TOUR) {
       if (sessionId !== sid) return;
@@ -415,7 +431,7 @@ async function runTour() {
     }
   } finally {
     touring = false;
-    $("tour").disabled = busy;
+    setBusy(busy);
   }
 }
 
