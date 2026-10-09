@@ -10,7 +10,7 @@ BUCKET="$APP-build-$ACCOUNT"
 ECR="$ACCOUNT.dkr.ecr.$REGION.amazonaws.com"
 TAGS="Key=Project,Value=$APP"
 
-ZIP=$(mktemp -d)/source.zip
+ZIP=$(python -c "import os, tempfile; print(os.path.join(tempfile.mkdtemp(), 'source.zip'))")  # a path python can open on Windows too
 python - "$ZIP" <<'EOF'
 import pathlib, sys, zipfile
 out = pathlib.Path(sys.argv[1])
