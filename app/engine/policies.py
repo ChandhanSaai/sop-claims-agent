@@ -115,6 +115,8 @@ def pass1(session: Session, ctx: TurnContext, settings: Settings) -> None:
             ctx.acknowledge = _acknowledgment_seed(session)
     else:
         session.counters.frustration_streak = 0
+        if max(a.affect.anxiety, a.affect.confusion) >= 2:  # worried or lost, not angry: a warmer reply
+            ctx.tone = "warm"
     if session.counters.frustration_streak >= 2:
         ctx.offer_human = True
 

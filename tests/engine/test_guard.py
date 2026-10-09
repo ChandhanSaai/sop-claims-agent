@@ -252,3 +252,39 @@ def test_german_day_first_dates_keep_their_marker_after_a_preposition(store):
     r = g.check("Ihr Antrag vom 3. November liegt vor.", unverified(store), pre)
     assert "fixture_date_before_verification" in r.violations
     assert g.check("Step 1. March is when most claims arrive.", unverified(store), pre).ok  # a list number
+
+
+def test_dashed_dotted_and_two_digit_year_dates_are_identifiers_too(store):
+    g = OutputGuard(store)
+    pre = ReplyBrief(phase="VERIFY_ID", goal="g")
+    dob = unverified(store)
+    dob.memory.set("dob", "1985-03-15", 1)
+    for echo in ("Born 15-03-1985.", "Born 03-15-1985.", "Born 15.3.1985.", "Born 3/15/85.", "Born 15/03/85.",
+                 "Born 1985/03/15.", "Born 15.03.85."):
+        assert "identifier:dob" in g.check(echo, dob, pre).violations, echo
+    pol = unverified(store)
+    pol.memory.set("policy_number", "POL-9921", 1)
+    assert "identifier:policy_number" in g.check("Policy 9921, thanks.", pol, pre).violations
+    assert g.check("Policy 99210 is not yours.", pol, pre).ok  # the digits as a token only
+
+
+def test_the_callers_own_amount_or_date_echoed_before_verification_is_no_oracle(store):
+    g = OutputGuard(store)
+    pre = ReplyBrief(phase="VERIFY_ID", goal="g")
+    said = unverified(store, user_said="was my 1450.00 claim from January 12, 2026 denied?")
+    assert g.check("I can't confirm anything about a 1450.00 claim or January 12, 2026 before verifying you.",
+                   said, pre).ok
+    quiet = unverified(store, user_said="was my claim denied?")
+    r = g.check("Your 1450.00 claim from January 12, 2026 is still under review.", quiet, pre)
+    assert {"amount_before_verification", "fixture_date_before_verification"} <= set(r.violations)
+
+
+def test_numbered_lists_and_day_first_numeric_dates_after_verification(store):
+    g = OutputGuard(store)
+    s = unverified(store)
+    s.verification = Verification(status="verified", party_id="P9", role="policyholder")
+    post = ReplyBrief(phase="PROCESS_CASE", goal="g", allowed_facts={"appeal_deadline": "March 18, 2026"})
+    assert g.check("1. March 2026 is the appeal month. 2. Send the files first.", s, post).ok
+    assert g.check("The deadline was 18/03/2026.", s, post).ok  # day first, the allowed date
+    assert "date_not_allowed" in g.check("The deadline was 30/04/2026.", s, post).violations
+    assert "date_not_allowed" in g.check("The deadline was 4-30-26.", s, post).violations

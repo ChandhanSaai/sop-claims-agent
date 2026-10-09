@@ -21,6 +21,8 @@ def test_zero_claim_vocabulary_before_verification(name, settings):
     vocab = OutputGuard(store)
     spec = load(name)
     results = run_scenario(spec, settings)
+    if all(r["verified_after"] for r in results):
+        pytest.skip("every turn ends verified: nothing for the pre-verification rule to check")
     said = ""
     for turn_spec, r in zip(spec["turns"], results, strict=True):
         said += " " + turn_spec["user"]

@@ -34,7 +34,8 @@ GENERIC_DATE = re.compile(
     rf"|\b(?:(?P<prep>am|vom|bis|zum|den|der)\s+)?(?P<d2>\d{{1,2}})(?P<mark>st|nd|rd|th|\.)?"
     rf"(?:\s+(?P<of>of|de))?\s+(?P<m2>{_MONTH_WORDS})"
     rf"(?!\.?\s+\d{{1,2}}(?!\d))\.?(?:,?\s+(?:de\s+)?(?P<y2>\d{{4}}))?\b"
-    r"|\b(?P<y3>\d{4})-(?P<m3>\d{2})-(?P<d3>\d{2})\b|\b(?P<m4>\d{1,2})/(?P<d4>\d{1,2})/(?P<y4>\d{4})\b",
+    r"|\b(?P<y3>\d{4})[-/.](?P<m3>\d{2})[-/.](?P<d3>\d{2})\b"
+    r"|\b(?P<m4>\d{1,2})(?P<sep>[/.-])(?P<d4>\d{1,2})(?P=sep)(?P<y4>\d{2,4})\b",
     re.IGNORECASE)
 
 
@@ -44,15 +45,22 @@ def date_mention(m: re.Match) -> tuple[int, int, int | None] | None:
     if g["y3"]:
         return int(g["m3"]), int(g["d3"]), int(g["y3"])
     if g["y4"]:
-        return int(g["m4"]), int(g["d4"]), int(g["y4"])
+        mo, da, yr = int(g["m4"]), int(g["d4"]), int(g["y4"])
+        if mo > 12 >= da:  # 18/03/2026: the month is impossible, so the day came first
+            mo, da = da, mo
+        if yr < 100:  # 3/15/85
+            yr += 1900 if yr > 30 else 2000
+        return mo, da, yr
     mo, da, yr = ("m1", "d1", "y1") if g["m1"] else ("m2", "d2", "y2")
     word = g[mo].casefold().replace("\u0131", "i")  # IGNORECASE matches a dotless i that casefold keeps
     month = _MONTHS.get(word)
     if month is None:
         return None
-    marked = g[yr] or g["mark"] in ("st", "nd", "rd", "th") or g["of"] or (g["prep"] and g["mark"])
+    dot_only = g["mark"] == "." and not g["prep"]  # "1. March 2026" is a list item, "am 10. September" a day
+    marked = ((g[yr] and not dot_only) or g["mark"] in ("st", "nd", "rd", "th") or g["of"]
+              or (g["prep"] and g["mark"]))
     if mo == "m2" and word in _ENGLISH and not marked:
-        return None  # a count or a list number before an English month word ("am 10. September" is a day)
+        return None  # a count or a list number before an English month word
     return month, int(g[da]), int(g[yr]) if g[yr] else None
 
 
@@ -81,6 +89,11 @@ def date_variants(d: date) -> list[str]:
             f"{d:%m}/{d:%d}/{d.year}", f"{d.month}/{d.day}/{d.year}", f"{d:%B} {o}, {d.year}", f"{d:%B} {o}",
             f"{d:%b} {o}", f"{o} {d:%B} {d.year}", f"{d:%d}/{d:%m}/{d.year}", f"{d.day}/{d.month}/{d.year}",
             f"{d:%d}.{d:%m}.{d.year}", f"{d.day} {d:%B}", f"{d.day} {d:%b}",
+            f"{d:%d}-{d:%m}-{d.year}", f"{d.day}-{d.month}-{d.year}", f"{d:%m}-{d:%d}-{d.year}",
+            f"{d.month}-{d.day}-{d.year}", f"{d.day}.{d.month}.{d.year}", f"{d.year}/{d:%m}/{d:%d}",
+            f"{d.year}.{d:%m}.{d:%d}", f"{d:%m}/{d:%d}/{d:%y}", f"{d.month}/{d.day}/{d:%y}",
+            f"{d:%d}/{d:%m}/{d:%y}", f"{d.day}/{d.month}/{d:%y}", f"{d:%d}.{d:%m}.{d:%y}",
+            f"{d:%d}-{d:%m}-{d:%y}", f"{d:%m}-{d:%d}-{d:%y}",
             f"{d:%B} {d.year}"]  # month-year stays last: pre-verification checks drop it
 
 
@@ -126,8 +139,10 @@ class OutputGuard:
             out.append("email")
         if (id4 := m.value("id_last4")) and re.search(rf"\b{re.escape(id4)}\b", text):
             out.append("id_last4")
-        if (pn := m.value("policy_number")) and pn.lower() in low:
-            out.append("policy_number")
+        if pn := m.value("policy_number"):
+            digits_pn = re.sub(r"\D", "", pn)
+            if pn.lower() in low or (len(digits_pn) >= 4 and contains_token(text, digits_pn)):
+                out.append("policy_number")
         return out
 
     def check(self, text: str, session: Session, brief: ReplyBrief) -> GuardResult:
@@ -143,13 +158,17 @@ class OutputGuard:
         if session.verification.status != "verified":
             if CLAIM_ID.search(text):
                 v.append("claim_id_before_verification")
-            # whole dollars, so "3500" is caught and still matches "3500.00"
-            if any(contains_token(plain, a.removesuffix(".00")) for a in self.amounts):
+            # whole dollars, so "3500" is caught and still matches "3500.00"; an amount or date the caller
+            # typed is theirs to hear back, like a document phrase, so the verdict never tells a guess from a
+            # fixture value
+            amounts = (a.removesuffix(".00") for a in self.amounts)
+            if any(contains_token(plain, a) and not contains_token(user_plain, a) for a in amounts):
                 v.append("amount_before_verification")
-            ms = mentions(text)
+            ms, said_ms = mentions(text), mentions(user_text)
             for d in self.dates:
-                # month-year alone is the caller's own words
-                if any(contains_token(text, x) for x in date_variants(d)[:-1]) or names_date(ms, d):
+                forms = date_variants(d)[:-1]  # month-year alone is the caller's own words
+                said = any(contains_token(user_text, x) for x in forms) or names_date(said_ms, d)
+                if not said and (any(contains_token(text, x) for x in forms) or names_date(ms, d)):
                     v.append("fixture_date_before_verification")
                     break
             user_run, reply_run = _token_run(user_text), _token_run(text)

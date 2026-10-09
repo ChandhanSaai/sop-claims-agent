@@ -6,6 +6,7 @@ import yaml
 from app.config import Settings
 from app.data.repos import build_repos
 from app.data.store import FixtureStore
+from app.engine.briefs import render_brief
 from app.engine.guard import OutputGuard
 from app.engine.machine import Engine
 from app.engine.service import ConversationService
@@ -16,6 +17,23 @@ from app.observability.trace import TraceWriter
 FIXTURES = Path(__file__).parent / "fixtures"
 EXPECT_KEYS = {"phase", "verified", "party_id", "attempts", "pending_ask", "escalated", "off_topic",
                "outbox_len", "reply_contains", "reply_not_contains", "guard_ok"}
+
+
+class ScriptedFakeLLM(FakeLLM):
+    """The offline Writer renders the brief, unless the fixture scripts what the Writer says on a turn
+    (`writer:` one text per attempt), so the guard path has an offline test that can fail."""
+
+    def __init__(self, analyses: list[TurnAnalysis], scripts: list[list[str]]):
+        super().__init__(analyses)
+        self.scripts, self.turn = scripts, -1
+
+    def analyze(self, **kw):
+        self.turn += 1
+        return super().analyze(**kw)
+
+    def compose(self, *, brief, transcript, violation=None):
+        texts = self.scripts[self.turn] if 0 <= self.turn < len(self.scripts) else []
+        return texts.pop(0) if texts else render_brief(brief)
 
 
 def scenario_names() -> list[str]:
@@ -31,7 +49,8 @@ def run_scenario(spec: dict, settings: Settings) -> list[dict]:
     store = FixtureStore.load(settings.fixtures_dir)
     repos = build_repos(store, settings)
     today = date.fromisoformat(spec.get("today", "2026-10-07"))
-    llm = FakeLLM([TurnAnalysis.model_validate(t.get("analysis", {})) for t in spec["turns"]])
+    llm = ScriptedFakeLLM([TurnAnalysis.model_validate(t.get("analysis", {})) for t in spec["turns"]],
+                          [list(t.get("writer", [])) for t in spec["turns"]])
     svc = ConversationService(Engine(repos, settings, lambda: today), llm, OutputGuard(store), repos,
                               settings, TraceWriter(settings.traces_dir))
     session = svc.start(spec.get("scenario", "default"))

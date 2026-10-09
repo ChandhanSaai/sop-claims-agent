@@ -26,7 +26,11 @@ EOF
 
 aws ecr describe-repositories --repository-names "$APP" --region "$REGION" >/dev/null 2>&1 \
   || aws ecr create-repository --repository-name "$APP" --region "$REGION" --image-scanning-configuration scanOnPush=true --tags $TAGS >/dev/null
-aws s3api head-bucket --bucket "$BUCKET" 2>/dev/null || aws s3api create-bucket --bucket "$BUCKET" --region "$REGION" >/dev/null
+if ! aws s3api head-bucket --bucket "$BUCKET" 2>/dev/null; then  # us-east-1 takes no location constraint
+  if [ "$REGION" = "us-east-1" ]; then aws s3api create-bucket --bucket "$BUCKET" --region "$REGION" >/dev/null
+  else aws s3api create-bucket --bucket "$BUCKET" --region "$REGION" \
+         --create-bucket-configuration LocationConstraint="$REGION" >/dev/null; fi
+fi
 aws s3api put-public-access-block --bucket "$BUCKET" --public-access-block-configuration \
   BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
 aws s3 cp "$ZIP" "s3://$BUCKET/source.zip" --only-show-errors
@@ -62,3 +66,9 @@ for _ in $(seq 1 60); do
   sleep 15
 done
 echo "build $STATUS: $ECR/$APP:main"
+# a rebuilt image does not roll out by itself: start a deployment when the service already exists
+SERVICE_ARN=$(aws apprunner list-services --region "$REGION" --query "ServiceSummaryList[?ServiceName=='$APP'].ServiceArn | [0]" --output text 2>/dev/null || true)
+if [ -n "$SERVICE_ARN" ] && [ "$SERVICE_ARN" != "None" ] && [ "${NO_DEPLOY:-}" != "1" ]; then
+  OP=$(aws apprunner start-deployment --service-arn "$SERVICE_ARN" --region "$REGION" --query OperationId --output text)
+  echo "deployment $OP started (NO_DEPLOY=1 skips this)"
+fi
