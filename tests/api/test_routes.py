@@ -135,3 +135,11 @@ def test_the_trace_route_starts_at_the_fence():
     for m in ("one", "two", "switch", "four"):
         client.post("/api/chat", json={"session_id": sid, "message": m})
     assert [t["turn"] for t in client.get(f"/api/session/{sid}/trace").json()["turns"]] == [3, 4]
+
+
+def test_ui_files_are_revalidated_on_every_load(client):
+    """No version in the file names: a deploy must not leave an old script behind a new page."""
+    for path in ("/", "/ui/app.js", "/ui/styles.css"):
+        assert client.get(path).headers["cache-control"] == "no-cache", path
+    assert "cache-control" not in client.get("/healthz").headers
+

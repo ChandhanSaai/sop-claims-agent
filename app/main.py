@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -27,6 +27,15 @@ def create_app(settings: Settings | None = None, llm=None, service=None) -> Fast
 
         service = build_service(settings, llm=llm)
     app.state.service = service
+
+    @app.middleware("http")
+    async def revalidate_ui(request: Request, call_next):
+        # the UI files carry no version in their names: browsers must revalidate them (ETag) on every load, or
+        # a deploy leaves an old script behind a new page
+        response = await call_next(request)
+        if request.url.path == "/" or request.url.path.startswith("/ui/"):
+            response.headers["Cache-Control"] = "no-cache"
+        return response
 
     @app.get("/healthz")
     def healthz() -> dict[str, str]:
