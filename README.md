@@ -230,7 +230,7 @@ Every variable in `.env.example`, read by `app/config.py` from the environment o
 | `DEMO_ACCESS_TOKEN` | empty (off) | When set, every `/api/*` request needs header `X-Access-Token` with this value. |
 | `REQUIRE_ACCESS_TOKEN` | `false` | When `true`, the app refuses to start while `DEMO_ACCESS_TOKEN` is empty. `fly.toml` sets it, so a hosted deploy is never a public endpoint. |
 | `LOG_LEVEL` | `INFO` | Root level for the JSON logs. |
-| `PORT` | `8000` | Port uvicorn binds inside the container. `docker-compose.yml` publishes `8000:8000` and the healthcheck probes 8000, so change them together. Local `uvicorn` ignores it; pass `--port`. |
+| `PORT` | `8000` | Port uvicorn binds inside the container; the image's healthcheck probes the same value. `docker-compose.yml` publishes `8000:8000`, so change them together. Local `uvicorn` ignores it; pass `--port`. |
 
 Do not set `ANTHROPIC_LOG` in production. The Anthropic SDK then calls `logging.basicConfig`, which installs an
 unredacted root log handler wherever the SDK is imported before `configure_logging` runs (the terminal CLI, for
@@ -554,7 +554,7 @@ ruff check .
 ```
 
 CI (`.github/workflows/ci.yml`) runs `ruff check .`, then `pytest -q --ignore=tests/replay`, then
-`pytest -q tests/replay` on every pull request.
+`pytest -q tests/replay` on every pull request, and a second job builds the Docker image (no push, no key).
 
 - **Unit** (`tests/unit`): normalization (names, phone formats, emails, DOB formats including ambiguous dates,
   ID last 4); lookup by each identifier and pass/fail verification over the fixture near-collisions, with the
