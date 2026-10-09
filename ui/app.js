@@ -23,7 +23,7 @@ function el(tag, className, text) {
 // Tokens are printable ASCII; anything else (a zero-width space from a copy, a curly quote) is dropped so the
 // header value stays valid and a bad paste becomes a plain 401 rather than a failed request.
 function cleanToken(value) {
-  return (value || "").replace(/[^\x21-\x7E]/g, "");
+  return (value || "").replace(/[^\x20-\x7E]/g, "").trim();
 }
 
 function loadToken() {
@@ -56,6 +56,8 @@ function showTokenState(required) {
 
 function showTokenDialog({ rejected = false, prefill = "" } = {}) {
   $("token-error").hidden = !rejected;
+  if (rejected) $("token-input").setAttribute("aria-describedby", "token-error");
+  else $("token-input").removeAttribute("aria-describedby");
   $("token-input").value = prefill || (rejected ? "" : token);
   const dialog = $("token-dialog");
   if (!dialog.open) dialog.showModal();
@@ -342,12 +344,11 @@ $("token-form").addEventListener("submit", (ev) => {
   if (!sessionId || changed) newConversation();  // an unchanged token mid-conversation just closes the dialog
 });
 $("token-dialog").addEventListener("cancel", (ev) => {
-  if (!sessionId) {  // nothing works without a token; keep the dialog up, and explain if the browser lets Escape through
+  if (!sessionId || !token) {  // nothing works without a token; keep the dialog up and explain if Escape gets through
     ev.preventDefault();
     if (!$("messages").textContent.includes(NEEDS_TOKEN)) addMessage("system", NEEDS_TOKEN);
   }
 });
-$("token-dialog").addEventListener("close", () => { if (!sessionId && !token) addMessage("system", NEEDS_TOKEN); });
 $("token-button").addEventListener("click", () => showTokenDialog());
 $("new").addEventListener("click", newConversation);
 loadToken();
