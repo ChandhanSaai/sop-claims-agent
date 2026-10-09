@@ -118,12 +118,12 @@ class OutputGuard:
             for p in self.phrases:
                 pr = _token_run(p)
                 if pr.strip() and pr in reply_run and pr not in user_run:
-                    v.append(f"phrase_before_verification:{p[:30]}")
+                    v.append("phrase_before_verification")
                     break
         else:
             for cid in CLAIM_ID.findall(text):
                 if cid.upper() not in allowed.upper():
-                    v.append(f"claim_id_not_allowed:{cid}")
+                    v.append("claim_id_not_allowed")
             allowed_dates = {d for d in self.dates
                              if any(contains_token(allowed, x) for x in date_variants(d))}
             allowed_months = {(d.year, d.month) for d in allowed_dates}
@@ -142,10 +142,11 @@ class OutputGuard:
                 mentioned = any(am == month and ad == day and year in (None, ay)
                                 for am, ad, ay in allowed_mentions)
                 if not (known or mentioned):
-                    v.append(f"date_not_allowed:{m[0]}")
+                    v.append("date_not_allowed")
                     break
             ref = session.escalation.reference or ""
             for n in NUMBER.findall(plain):
                 if not (contains_token(allowed_plain, n) or contains_token(user_plain, n) or n in ref):
-                    v.append(f"number_not_allowed:{n}")
-        return GuardResult(ok=not v, violations=v)
+                    v.append("number_not_allowed")
+        # kinds only, once each: the matched values would otherwise reach the trace and the inspector
+        return GuardResult(ok=not v, violations=list(dict.fromkeys(v)))
