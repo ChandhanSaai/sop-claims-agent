@@ -23,14 +23,18 @@
         </select>
       </label>
       <button id="token-button" type="button" class="secondary" hidden>Access token</button>
-      <button id="tour" type="button" class="secondary">Walk through the procedure</button>
-      <button id="new" type="button">New conversation</button>
+      <button id="tour" type="button">Walk through the procedure</button>
+      <button id="new" type="button" class="secondary">New conversation</button>
     </div>
   </header>
 
   <main>
     <section id="chat" aria-label="chat">
       <div id="messages" aria-live="polite"></div>
+      <div id="tour-progress" class="tour-progress" hidden>
+        <span id="tour-step"></span>
+        <div class="bar" aria-hidden="true"><div id="tour-bar"></div></div>
+      </div>
       <form id="form" autocomplete="off">
         <textarea id="input" rows="1" placeholder="Write a message" aria-label="Message"></textarea>
         <button id="send" type="submit">Send</button>

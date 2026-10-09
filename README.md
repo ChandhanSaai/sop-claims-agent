@@ -17,10 +17,11 @@ owns the SOP; the model reads and phrases:** one LLM call reads each message int
 - **Chat and SOP inspector:** http://localhost:8000 shows the chat beside the inspector, which tracks the
   phase, verification status and attempts, memory slots with their source turn, the brief the Writer got, the
   guard verdict, the outbox and the last redacted trace.
-- **Guided walkthrough:** the **Walk through the procedure** button plays a seven-turn conversation one
-  phase at a time. A divider in the chat marks each phase the harness moves to and the rule it enforces
-  there, and the line under every reply lists what the harness did that turn: the events, the pending ask,
-  the guard verdict and the latency. The script is in [Demo script](#demo-script).
+- **Guided walkthrough:** the **Walk through the procedure** button, in the top bar and on the start panel of
+  every new conversation, plays a seven-turn conversation one phase at a time with a progress strip above the
+  composer. A divider in the chat marks each phase the harness moves to and the rule it enforces there, and
+  the line under every reply lists what the harness did that turn: the events, the pending ask, the guard
+  verdict and the latency. The script is in [Demo script](#demo-script).
 - **Golden transcripts:** both transcripts from the spec (Margaret in one turn, the angry caller) and the
   representative approve and timeout paths are in [Golden transcripts](#golden-transcripts), with the state
   after each turn and what each reply must and must not say.
