@@ -22,7 +22,7 @@
           <option value="timeout">timeout: never approved</option>
         </select>
       </label>
-      <label>Access token <input id="token" type="password" placeholder="if required"></label>
+      <button id="token-button" type="button" class="secondary" hidden>Access token</button>
       <button id="new" type="button">New conversation</button>
     </div>
   </header>
@@ -31,8 +31,8 @@
     <section id="chat" aria-label="chat">
       <div id="messages" aria-live="polite"></div>
       <form id="form" autocomplete="off">
-        <input id="input" placeholder="Write a message" aria-label="Message">
-        <button type="submit">Send</button>
+        <textarea id="input" rows="1" placeholder="Write a message" aria-label="Message"></textarea>
+        <button id="send" type="submit">Send</button>
       </form>
     </section>
 
@@ -72,6 +72,20 @@
       </details>
     </aside>
   </main>
+
+  <dialog id="token-dialog" aria-labelledby="token-title">
+    <form id="token-form" method="dialog">
+      <h2 id="token-title">This demo needs an access token</h2>
+      <p>The server is shared and gated. Paste the token you were given to start a conversation; it stays in
+        this browser only.</p>
+      <label for="token-input">Access token</label>
+      <input id="token-input" type="password" autocomplete="off" placeholder="paste the token">
+      <p id="token-error" class="error" hidden>That token was not accepted. Check it and try again.</p>
+      <div class="dialog-actions">
+        <button id="token-submit" type="submit">Continue</button>
+      </div>
+    </form>
+  </dialog>
   <script src="/ui/app.js"></script>
 </body>
 </html>

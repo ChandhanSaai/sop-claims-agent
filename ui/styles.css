@@ -167,6 +167,39 @@ pre {
 }
 .empty { color: var(--muted); font-style: italic; }
 
+/* Message box: a textarea that grows to a few lines; Enter sends, Shift+Enter breaks a line */
+#form textarea {
+  flex: 1; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; resize: none;
+  background: var(--panel); color: var(--ink); line-height: 1.4; max-height: 160px;
+}
+#form button:disabled, #form textarea:disabled { opacity: 0.6; cursor: default; }
+button.secondary { background: transparent; color: var(--ink); border: 1px solid var(--line); font-weight: 500; }
+
+/* Example prompts shown at the start of a conversation */
+.examples { align-self: stretch; display: flex; flex-direction: column; gap: 8px; padding: 6px 0 0 4px; }
+.examples-title { font-size: 12.5px; color: var(--muted); }
+.chip {
+  align-self: flex-start; max-width: 100%; text-align: left; padding: 8px 12px; border-radius: 10px;
+  background: var(--panel); color: var(--ink); border: 1px solid var(--line); font-weight: 500; font-size: 13.5px;
+}
+.chip:hover { border-color: var(--accent); filter: none; }
+
+/* Access-token dialog */
+dialog {
+  border: 1px solid var(--line); border-radius: 12px; padding: 22px 24px; width: min(440px, calc(100vw - 32px));
+  background: var(--panel); color: var(--ink); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+}
+dialog::backdrop { background: rgba(10, 14, 20, 0.55); }
+dialog h2 { font-size: 16px; font-weight: 650; margin-bottom: 6px; }
+dialog p { font-size: 13.5px; color: var(--muted); margin-bottom: 14px; }
+dialog label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+dialog input {
+  width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--panel); color: var(--ink); font-family: var(--mono);
+}
+dialog .error { color: var(--bad); margin: 8px 0 0; }
+.dialog-actions { display: flex; justify-content: flex-end; margin-top: 16px; }
+
 @media (max-width: 960px) {
   main { grid-template-columns: 1fr; height: auto; padding: 12px 16px; }
   #chat { height: 70vh; }

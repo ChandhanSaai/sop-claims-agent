@@ -181,7 +181,8 @@ per-turn traces; `GET /healthz` is open. When `DEMO_ACCESS_TOKEN` is set, every 
 ### Hosted demo on AWS
 
 Live at **https://7ph7pceym3.us-east-1.awsapprunner.com** (HTTPS on App Runner's own hostname; no domain). The
-page asks for an access token, which is shared separately; `/healthz` is open. What runs it, all in one AWS
+page asks for the access token in a dialog on load; the token is shared separately, and a link of the form
+`https://<host>/#token=<token>` fills it in once (the fragment never reaches the server). `/healthz` is open. What runs it, all in one AWS
 account and region (`us-east-1`), created by the two scripts under `deploy/aws/`:
 
 | Service | Role |
