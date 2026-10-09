@@ -195,6 +195,7 @@ class Session(BaseModel):
             "turn": self.turn,
             "pending_ask": self.pending_ask.value,
             "closed": self.closed,
+            "fence_turn": self.fence_turn,
             "verification": self.verification.model_dump(exclude={"last_fingerprint"}),
             "consent": self.consent.model_dump(exclude={"last_match"}),
             "case": self.case.model_dump(),

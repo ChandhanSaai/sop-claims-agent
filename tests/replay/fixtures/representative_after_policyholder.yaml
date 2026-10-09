@@ -1,0 +1,60 @@
+name: representative_after_policyholder
+scenario: default
+today: "2026-10-07"
+turns:
+  - user: "Ma Tian here, born 1964-09-10, last four 6688. Why was my healthcare claim from March denied?"
+    analysis:
+      identity: {full_name: "Ma Tian", dob: "1964-09-10", id_last4: "6688"}
+      caller_role: policyholder
+      case_hints: {case_type: healthcare, status: denied, month: 3}
+      intent: denial_question
+    expect:
+      phase: PROCESS_CASE
+      verified: true
+      party_id: P12
+      reply_contains: ["CL-3001"]
+      reply_not_contains: ["1964-09-10", "6688"]
+      guard_ok: true
+  - user: "Actually, this is David Chen. I'm calling for my mother Margaret Chen, policy POL-9921."
+    analysis:
+      caller_role: representative
+      representative: {name: "David Chen", relationship: "son", policyholder_name: "Margaret Chen"}
+      identity: {policy_number: "POL-9921"}
+      corrections:
+        - {slot: full_name, new_value: "David Chen"}
+    expect:
+      phase: VERIFY_ID
+      verified: false
+      pending_ask: consent_wait
+      reply_contains: ["consent"]
+      reply_not_contains: ["CL-3001", "CL-2048", "margaret@email.com", "POL-9921"]
+      guard_ok: true
+  - user: "Has she approved it yet?"
+    analysis:
+      scope: in_scope
+    expect:
+      phase: VERIFY_ID
+      verified: false
+      pending_ask: consent_wait
+      reply_not_contains: ["CL-3001", "CL-2048"]
+      guard_ok: true
+  - user: "Anything now?"
+    expect:
+      phase: RESOLVE_INTENT
+      verified: true
+      party_id: P9
+      pending_ask: disambiguation
+      reply_contains: ["CON-", "CL-2048", "CL-2102"]
+      reply_not_contains: ["CL-3001", "I don't see a claim", "Ma Tian"]
+      guard_ok: true
+  - user: "The denied healthcare one."
+    analysis:
+      case_hints: {case_type: healthcare, status: denied}
+      intent: denial_question
+    expect:
+      phase: PROCESS_CASE
+      verified: true
+      party_id: P9
+      reply_contains: ["CL-2048", "pathology report"]
+      reply_not_contains: ["CL-3001"]
+      guard_ok: true

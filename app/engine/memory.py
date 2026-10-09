@@ -2,6 +2,7 @@ from app.engine.state import (
     IDENTITY_SLOTS,
     REP_SLOTS,
     CaseState,
+    Escalation,
     PendingAsk,
     Phase,
     Session,
@@ -61,4 +62,8 @@ def _apply_corrections(session: Session, analysis: TurnAnalysis, changed: list[s
             session.phase = Phase.VERIFY_ID
             session.pending_ask = PendingAsk.NONE
             session.pending_draft = None  # a draft written for the earlier party is never sent to the next
+            # a hand-off and a declined human offer belong to the party that gave them; the conduct counters
+            # (off-topic, frustration, abuse) stay: a change of name is not a way round those rules
+            session.escalation = Escalation()
+            session.counters.human_declined = False
             session.log("verification_reset", slot=c.slot, party_id=party_id)

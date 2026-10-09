@@ -336,3 +336,24 @@ def test_earlier_details_and_the_email_offer_look_only_past_the_verification_fen
     b2 = eng.handle_turn(s, A(requests={"confirmation": "no", "closing": True}), "No, that's all.")
     assert s.phase == Phase.POST_PROCESS and b2.must_say == [NO_CLAIMS, GOODBYE]
     assert not s.counters.email_offered
+
+
+def test_a_later_party_gets_its_own_hand_off_packet_and_reference(repos, settings):
+    eng = Engine(repos, settings)
+    s = Session.new()
+    eng.greeting(s)
+    eng.handle_turn(s, A(identity={"full_name": "Margaret Chen", "dob": "1985-03-15", "id_last4": "4472"}),
+                    "Margaret Chen, 1985-03-15, 4472.")
+    eng.handle_turn(s, A(requests={"wants_human": True}), "I want a person.")
+    first = s.escalation.reference
+    assert s.verification.party_id == "P9" and first == "ESC-" + s.id[:6].upper()
+    eng.handle_turn(s, A(identity={"full_name": "Ma Tian", "dob": "1964-09-10", "id_last4": "6688"},
+                         corrections=[{"slot": "full_name", "new_value": "Ma Tian"}]),
+                    "Sorry, this is actually Ma Tian, born 1964-09-10, last four 6688.")
+    assert s.verification.party_id == "P12" and not s.escalation.requested
+    b = eng.handle_turn(s, A(requests={"wants_human": True}), "I want a person too.")
+    assert s.escalation.requested and s.escalation.reference == first + "-2"
+    assert b.allowed_facts["handoff_reference"] == first + "-2"
+    assert any(m.startswith("A representative will follow up") for m in b.must_say)
+    packets = [e.data["packet"] for e in s.events if e.type == "escalated"]
+    assert [p["verified"] for p in packets] == ["verified", "verified"] and len(packets) == 2

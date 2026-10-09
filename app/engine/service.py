@@ -87,7 +87,8 @@ class ConversationService:
         except LLMError as e:  # the state already moved (an email may have gone out): the reply must agree
             log.warning("writer failed: %s", e)
             session.log("llm_error", stage="writer")
-            return render_brief(brief), {"ok": True, "violations": [], "fallback": "llm_error"}
+            text = render_brief(brief)  # guarded like any reply: no recorded pass without a check
+            return text, {**self.guard.check(text, session, brief).model_dump(), "fallback": "llm_error"}
         result = self.guard.check(text, session, brief)
         if result.ok:
             return text, result.model_dump()

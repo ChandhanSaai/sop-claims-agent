@@ -330,3 +330,32 @@ def test_power_of_attorney_without_names_routes_too_and_a_changed_relationship_r
     assert r.brief.offer_human and s.pending_ask == PendingAsk.HUMAN_OFFER and s.consent.status == "none"
     declare(s, repos, settings, representative=DAVID)
     assert s.consent.status == "pending" and s.consent.consent_id == "CON-0001"
+
+
+def test_an_approved_representative_of_someone_else_does_not_inherit_the_earlier_hints(repos, settings):
+    """Ma Tian verifies and asks about his claim; the next message is David Chen, calling for his mother. Once
+    her consent arrives the hints Ma Tian gave are gone (they are not hers), the email offer is David's to
+    get, and the brief lists Margaret's claims without the no-match line."""
+    eng = Engine(repos, settings, lambda: TODAY)
+    s = Session.new()
+    eng.greeting(s)
+    eng.handle_turn(s, analysis(identity={"full_name": "Ma Tian", "dob": "1964-09-10", "id_last4": "6688"},
+                                case_hints={"case_type": "healthcare", "status": "denied", "month": 3},
+                                intent="denial_question"), "Ma Tian, 1964-09-10, 6688, my March claim")
+    assert s.verification.party_id == "P12" and s.case.selected_case_id == "CL-3001"
+    s.counters.email_offered = True
+    eng.handle_turn(s, analysis(caller_role="representative", representative=DAVID,
+                                identity={"policy_number": "POL-9921"},
+                                corrections=[{"slot": "full_name", "new_value": "David Chen"}]),
+                    "Actually this is David Chen, calling for my mother Margaret Chen, policy POL-9921")
+    assert s.fence_turn == 2 and s.consent.status == "pending" and s.phase == Phase.VERIFY_ID
+    assert s.memory.value("case_type") == "healthcare"  # still held while unverified; purged on approval
+    eng.handle_turn(s, analysis(), "Has she approved it yet?")
+    b = eng.handle_turn(s, analysis(), "Anything now?")
+    v = s.verification
+    assert (v.status, v.role, v.party_id) == ("verified", "representative", "P9")
+    assert all(s.memory.value(n) is None for n in ("case_type", "status_hint", "month", "intent"))
+    assert not s.counters.email_offered
+    assert s.pending_ask == PendingAsk.DISAMBIGUATION and s.case.selected_case_id is None
+    assert not any(m.startswith("I don't see a claim") for m in b.must_say)
+    assert "CL-3001" not in render_brief(b) and "CL-2048" in render_brief(b)

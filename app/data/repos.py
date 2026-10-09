@@ -33,13 +33,14 @@ class VerificationResult(BaseModel):
     matched: list[str] = Field(default_factory=list)
 
 
-def _policy_key(s: str) -> str:
+def id_key(s: str) -> str:
     return re.sub(r"[^a-z0-9]", "", s.casefold())  # "POL-9921", "pol 9921" -> "pol9921"
 
 
-def _policy_matches(given_key: str, on_file: str) -> bool:
-    """The whole token, or exactly the digits of the one on file when the caller gives only digits."""
-    f = _policy_key(on_file)
+def id_matches(given_key: str, on_file: str) -> bool:
+    """Policy numbers and claim ids: the whole token, or exactly the digits of the one on file when the
+    caller gives only digits."""
+    f = id_key(on_file)
     return given_key == f or (given_key.isdigit() and given_key == re.sub(r"\D", "", f))
 
 
@@ -67,12 +68,12 @@ class PolicyholderRepo:
              email: str | None = None, name: str | None = None) -> list[Policyholder]:
         """Every record any given key matches, in record order: a near-miss phone that belongs to another
         record must not hide the record the name, email or policy number points at (verify decides)."""
-        pn = _policy_key(policy_number) if policy_number else None
+        pn = id_key(policy_number) if policy_number else None
         p = normalize_phone(phone) if phone else None
         e = normalize_email(email) if email else None
         n = normalize_name(name) if name else None
         return [r for r in self._records
-                if (pn and _policy_matches(pn, r.policy_number)) or (p and p in self._phones(r))
+                if (pn and id_matches(pn, r.policy_number)) or (p and p in self._phones(r))
                 or (e and e in self._emails(r)) or (n and n in self._names(r))]
 
     def verify(self, record: Policyholder, provided: dict[str, str], *, min_fields: int,
@@ -113,7 +114,8 @@ class ClaimsRepo:
                month: int | None = None, year: int | None = None, case_id: str | None = None) -> list[Claim]:
         out = claims
         if case_id:
-            out = [c for c in out if c.case_id.casefold() == case_id.strip().casefold()]
+            key = id_key(case_id)  # "cl 2048", "CL2048" and "2048" all name CL-2048
+            out = [c for c in out if id_matches(key, c.case_id)]
         if case_type:
             out = [c for c in out if c.case_type.casefold() == case_type.casefold()]
         if status:

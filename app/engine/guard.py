@@ -15,20 +15,44 @@ NUMBER = re.compile(r"\d[\d,]*\.\d+|\d{3,}")  # bare numbers under 100 ("the 2 d
 THOUSANDS = re.compile(r"(?<=\d),(?=\d{3}(?!\d))")  # "$1,450.00" -> "$1450.00", not "March 18,2026"
 _MONTHS = {name.casefold(): i for names in (calendar.month_name, calendar.month_abbr)
            for i, name in enumerate(names) if name}  # "january" -> 1, "jan" -> 1
+# the Writer answers in the caller's language: month words in the languages the demo is likely to meet
+for _words in ("enero febrero marzo abril mayo junio julio agosto septiembre octubre noviembre diciembre",
+               "janvier février mars avril mai juin juillet août septembre octobre novembre décembre",
+               "januar februar märz april mai juni juli august september oktober november dezember",
+               "janeiro fevereiro março abril maio junho julho agosto setembro outubro novembro dezembro",
+               "gennaio febbraio marzo aprile maggio giugno luglio agosto settembre ottobre novembre "
+               "dicembre"):
+    _MONTHS.update({w: i for i, w in enumerate(_words.split(), start=1)})
 _MONTH_WORDS = "|".join(sorted(_MONTHS, key=len, reverse=True))
-# any month-name, ISO or m/d/yyyy date mention, fixture or invented:
-# "April 30, 2026", "apr 30th", "2026-04-30", "4/30/2026"
-GENERIC_DATE = re.compile(rf"\b({_MONTH_WORDS})\.?\s+(\d{{1,2}})(?:st|nd|rd|th)?(?:,?\s+(\d{{4}}))?\b"
-                          r"|\b(\d{4})-(\d{2})-(\d{2})\b|\b(\d{1,2})/(\d{1,2})/(\d{4})\b", re.IGNORECASE)
+# any date mention, fixture or invented, month first or day first, ISO or m/d/yyyy: "April 30, 2026",
+# "apr 30th", "30 April 2026", "30 de abril de 2026", "30. April 2026", "2026-04-30", "4/30/2026";
+# a bare "may" after a number ("the 2 may differ") is a month only with a year
+GENERIC_DATE = re.compile(
+    rf"\b(?P<m1>{_MONTH_WORDS})\.?\s+(?P<d1>\d{{1,2}})(?:st|nd|rd|th)?(?:,?\s+(?P<y1>\d{{4}}))?\b"
+    rf"|\b(?P<d2>\d{{1,2}})(?:st|nd|rd|th|\.)?\s+(?:of\s+|de\s+)?(?P<m2>(?!may\b(?!,?\s+\d{{4}}))"
+    rf"(?:{_MONTH_WORDS}))\.?(?:,?\s+(?:de\s+)?(?P<y2>\d{{4}}))?\b"
+    r"|\b(?P<y3>\d{4})-(?P<m3>\d{2})-(?P<d3>\d{2})\b|\b(?P<m4>\d{1,2})/(?P<d4>\d{1,2})/(?P<y4>\d{4})\b",
+    re.IGNORECASE)
 
 
 def date_mention(m: re.Match) -> tuple[int, int, int | None]:
     """(month, day, year or None) for a GENERIC_DATE match."""
-    if m[1]:
-        return _MONTHS[m[1].casefold()], int(m[2]), int(m[3]) if m[3] else None
-    if m[4]:
-        return int(m[5]), int(m[6]), int(m[4])
-    return int(m[7]), int(m[8]), int(m[9])
+    g = m.groupdict()
+    for mo, da, yr in (("m1", "d1", "y1"), ("m2", "d2", "y2")):
+        if g[mo]:
+            return _MONTHS[g[mo].casefold()], int(g[da]), int(g[yr]) if g[yr] else None
+    if g["y3"]:
+        return int(g["m3"]), int(g["d3"]), int(g["y3"])
+    return int(g["m4"]), int(g["d4"]), int(g["y4"])
+
+
+def mentions(text: str) -> list[tuple[int, int, int | None]]:
+    return [date_mention(m) for m in GENERIC_DATE.finditer(text)]
+
+
+def names_date(ms: list[tuple[int, int, int | None]], d: date) -> bool:
+    """A mention of the day and month of d with its year or none: "18 de marzo" names March 18, 2026."""
+    return any(mo == d.month and da == d.day and yr in (None, d.year) for mo, da, yr in ms)
 
 
 def contains_token(haystack: str, needle: str) -> bool:
@@ -46,7 +70,7 @@ def date_variants(d: date) -> list[str]:
     return [d.isoformat(), fmt_date(d), f"{d:%B} {d.day}", f"{d:%b} {d.day}", f"{d.day} {d:%B} {d.year}",
             f"{d:%m}/{d:%d}/{d.year}", f"{d.month}/{d.day}/{d.year}", f"{d:%B} {o}, {d.year}", f"{d:%B} {o}",
             f"{d:%b} {o}", f"{o} {d:%B} {d.year}", f"{d:%d}/{d:%m}/{d.year}", f"{d.day}/{d.month}/{d.year}",
-            f"{d:%d}.{d:%m}.{d.year}",
+            f"{d:%d}.{d:%m}.{d.year}", f"{d.day} {d:%B}", f"{d.day} {d:%b}",
             f"{d:%B} {d.year}"]  # month-year stays last: pre-verification checks drop it
 
 
@@ -82,7 +106,9 @@ class OutputGuard:
             d = parse_dob(dob)[0]
             # a partial value ("March") is not an echo to hunt for: the raw check needs two digit runs
             raw = len(re.findall(r"\d+", dob)) >= 2 and contains_token(text, dob)
-            if raw or (d and any(contains_token(text, v) for v in date_variants(d))):
+            echoed = d and (any(contains_token(text, v) for v in date_variants(d))
+                            or names_date(mentions(text), d))
+            if raw or echoed:
                 out.append("dob")
         if (ph := m.value("phone")) and (p := normalize_phone(ph)) and p[2:] in digits:
             out.append("phone")
@@ -110,9 +136,10 @@ class OutputGuard:
             # whole dollars, so "3500" is caught and still matches "3500.00"
             if any(contains_token(plain, a.removesuffix(".00")) for a in self.amounts):
                 v.append("amount_before_verification")
+            ms = mentions(text)
             for d in self.dates:
                 # month-year alone is the caller's own words
-                if any(contains_token(text, x) for x in date_variants(d)[:-1]):
+                if any(contains_token(text, x) for x in date_variants(d)[:-1]) or names_date(ms, d):
                     v.append("fixture_date_before_verification")
                     break
             user_run, reply_run = _token_run(user_text), _token_run(text)

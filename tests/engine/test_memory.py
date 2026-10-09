@@ -1,5 +1,5 @@
 from app.engine.memory import merge_analysis
-from app.engine.state import CaseState, Phase, Session, SlotStatus, Verification
+from app.engine.state import CaseState, Counters, Escalation, Phase, Session, SlotStatus, Verification
 from app.llm.schemas import TurnAnalysis
 
 
@@ -80,3 +80,20 @@ def test_identity_values_given_with_a_correction_replace_the_reset_slots():
         "full_name": "Ma Tian", "dob": "1964-09-10", "id_last4": "6688"}
     assert all(s.memory.get(n).status == SlotStatus.PROVISIONAL for n in ("full_name", "dob", "id_last4"))
     assert s.verification.status == "unverified" and s.phase == Phase.VERIFY_ID
+
+
+def test_verification_reset_drops_the_hand_off_and_the_declined_offer_but_keeps_conduct_counters():
+    """A hand-off reference and a declined human offer belong to the party that gave them; off-topic,
+    frustration and abuse counts are the conversation's, so a change of name is not a way round them."""
+    s = Session.new()
+    s.memory.set("dob", "1985-03-15", 1)
+    s.memory.slots["dob"].status = SlotStatus.VERIFIED
+    s.verification = Verification(status="verified", party_id="P9", role="policyholder")
+    s.escalation = Escalation(requested=True, reference="ESC-TEST01", reason="caller asked")
+    s.counters = Counters(off_topic=2, frustration_streak=1, gate_explanations=1, abusive=1,
+                          human_declined=True, email_offered=True)
+    s.turn = 2
+    merge_analysis(s, analysis(corrections=[{"slot": "dob", "new_value": "1964-09-10"}]))
+    assert s.escalation == Escalation() and not s.counters.human_declined
+    assert (s.counters.off_topic, s.counters.frustration_streak, s.counters.abusive) == (2, 1, 1)
+    assert s.counters.gate_explanations == 1 and s.counters.email_offered  # cleared only by another party

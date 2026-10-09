@@ -101,8 +101,21 @@ def _human_brief(session: Session, goal: str, must_say: list[str],
     return HandlerResult(brief=brief)
 
 
+def _new_party_cleanup(session: Session, party_id: str) -> None:
+    """Someone other than the party before the verification reset verified: the hints given before the
+    reset are not theirs, and the summary offer is theirs to get."""
+    before = next((e.data["party_id"] for e in reversed(session.events)
+                   if e.type == "verification_reset"), None)
+    if before and before != party_id:
+        for n in HINT_SLOTS:
+            if (slot := session.memory.get(n)) and slot.source_turn < session.fence_turn:
+                del session.memory.slots[n]
+        session.counters.email_offered = False
+
+
 def _approve(session: Session) -> HandlerResult:
     v, c = session.verification, session.consent
+    _new_party_cleanup(session, c.party_id)
     v.status, v.party_id, v.role = "verified", c.party_id, "representative"
     session.memory.mark_verified(REP_SLOTS)
     session.phase = Phase.RESOLVE_INTENT
@@ -213,8 +226,8 @@ def _handle(
              "details here.",
              "A representative can verify your identity another way."],
         )
-    hints_noted = any(
-        session.memory.value(n)
+    hints_noted = any(  # hints from before a verification reset are not this caller's
+        (slot := session.memory.get(n)) and slot.source_turn >= session.fence_turn
         for n in ("case_type", "status_hint", "month", "year", "case_id", "free_text", "intent")
     )
     rep = a.representative
@@ -284,13 +297,7 @@ def _handle(
     passes = [(r, res) for r, res in checks if res.passed]
     if len(passes) == 1:
         rec, result = passes[0]
-        before = next((e.data["party_id"] for e in reversed(session.events)
-                       if e.type == "verification_reset"), None)
-        if before and before != rec.party_id:  # someone else: the hints given before the reset are not theirs
-            for n in HINT_SLOTS:
-                if (slot := session.memory.get(n)) and slot.source_turn < session.fence_turn:
-                    del session.memory.slots[n]
-            session.counters.email_offered = False  # the new party gets their own summary offer
+        _new_party_cleanup(session, rec.party_id)
         v.status, v.party_id, v.role = "verified", rec.party_id, "policyholder"
         session.memory.mark_verified(result.matched)  # a wrong extra identifier stays provisional
         session.log("verified", party_id=rec.party_id, fields=len(provided))

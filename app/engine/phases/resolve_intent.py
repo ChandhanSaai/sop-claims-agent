@@ -3,7 +3,7 @@ from datetime import date
 from app.config import Settings
 from app.data.models import Claim
 from app.data.normalize import fmt_date
-from app.data.repos import Repos
+from app.data.repos import Repos, id_key, id_matches
 from app.engine.briefs import HandlerResult
 from app.engine.context import HUMAN_ASK, TurnContext
 from app.engine.state import PendingAsk, Phase, Session
@@ -83,11 +83,12 @@ def handle(
     hint_changed = any(n in ctx.changed_slots for n in HINT_SLOT_NAMES)
 
     if ctx.pending_at_start == PendingAsk.DISAMBIGUATION:
-        pick = None
-        if ctx.selection_case_id and ctx.selection_case_id.upper() in session.case.candidates:
-            pick = ctx.selection_case_id.upper()
-        elif ctx.selection_ordinal and 1 <= ctx.selection_ordinal <= len(session.case.candidates):
-            pick = session.case.candidates[ctx.selection_ordinal - 1]
+        pick, n = None, ctx.selection_ordinal
+        if ctx.selection_case_id:
+            key = id_key(ctx.selection_case_id)
+            pick = next((c for c in session.case.candidates if id_matches(key, c)), None)
+        if pick is None and n and 1 <= n <= len(session.case.candidates):
+            pick = session.case.candidates[n - 1]
         if pick:
             return _select(session, by_id[pick])
 
