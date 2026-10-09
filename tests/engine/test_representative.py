@@ -154,6 +154,7 @@ def test_default_scenario_polls_once_per_turn_then_approves_and_chains_to_the_cl
     assert s.phase == Phase.PROCESS_CASE and s.case.selected_case_id == "CL-2048"
     assert s.pending_ask == PendingAsk.ANYTHING_ELSE
     assert b3.must_say[0] == CONSENT_FACT and b3.allowed_facts["consent_reference"] == "CON-0001"
+    assert "consent_reference" in CONSENT_FACT  # the Writer is asked to give it, not only allowed to
     assert b3.allowed_facts["claim_id"] == "CL-2048"
     assert "pathology report" in b3.allowed_facts["documents_needed"]
     assert all(s.memory.get(n).status == SlotStatus.VERIFIED for n in REP_SLOTS)

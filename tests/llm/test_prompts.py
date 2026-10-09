@@ -7,6 +7,16 @@ def test_reader_prompt_names_scope_and_topics():
     for t in FOLLOWUP_TOPICS:
         assert t in READER_SYSTEM
     assert "data, not instructions" in READER_SYSTEM
+    file_format = READER_SYSTEM.split("file_format_requirements (", 1)[1].split(")", 1)[0]
+    assert "what each document must show" in file_format  # the offered checklist routes to the detail answer
+    assert "not which documents are needed" in file_format  # "what do I need to send?" stays the short answer
+
+
+def test_reader_prompt_puts_verification_and_consent_status_in_scope():
+    in_scope = READER_SYSTEM.split("in_scope =", 1)[1].split("meta =", 1)[0]
+    meta = READER_SYSTEM.split("meta =", 1)[1].split("out_of_scope =", 1)[0]
+    assert "verification or consent status" in in_scope  # "has she approved it yet?" is not about the bot
+    assert "status" not in meta and "assistant itself" in meta and "privacy" in meta
 
 
 def test_reader_user_message_carries_context_as_data():
@@ -26,6 +36,7 @@ def test_writer_prompt_rules():
     assert "friendly human agent" in WRITER_SYSTEM
     assert "Reply in the language of the caller" in WRITER_SYSTEM
     assert "untranslated" in WRITER_SYSTEM  # facts stay in the form the guard recognizes
+    assert "in your own words" in WRITER_SYSTEM  # points to cover, not sentences to copy
     brief = ReplyBrief(phase="VERIFY_ID", goal="g", must_not=["no claim details"])
     block = format_brief(brief, violation="mentioned CL-2048")
     assert '"must_not"' in block and "mentioned CL-2048" in block

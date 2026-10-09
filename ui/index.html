@@ -7,31 +7,69 @@
   <link rel="stylesheet" href="/ui/styles.css">
 </head>
 <body>
-  <header>
-    <h1>Claims support assistant</h1>
+  <header class="topbar">
+    <div class="brand">
+      <span class="mark" aria-hidden="true"></span>
+      <div>
+        <h1>Claims support assistant</h1>
+        <p class="tagline">Automated assistant with a code-owned procedure. Fixture data only.</p>
+      </div>
+    </div>
     <div class="controls">
       <label>Consent scenario
-        <select id="scenario"><option value="default">default</option><option value="timeout">timeout</option></select>
+        <select id="scenario">
+          <option value="default">default: approved on the second check</option>
+          <option value="timeout">timeout: never approved</option>
+        </select>
       </label>
       <label>Access token <input id="token" type="password" placeholder="if required"></label>
-      <button id="new">New conversation</button>
+      <button id="new" type="button">New conversation</button>
     </div>
   </header>
+
   <main>
     <section id="chat" aria-label="chat">
-      <div id="messages"></div>
-      <form id="form"><input id="input" autocomplete="off" placeholder="Type a message"><button>Send</button></form>
+      <div id="messages" aria-live="polite"></div>
+      <form id="form" autocomplete="off">
+        <input id="input" placeholder="Write a message" aria-label="Message">
+        <button type="submit">Send</button>
+      </form>
     </section>
+
     <aside id="inspector" aria-label="SOP inspector">
-      <h2>SOP inspector</h2>
-      <div id="phases" class="stepper"></div>
-      <dl id="status"></dl>
-      <h3>Memory</h3><table id="memory"></table>
-      <h3>Last brief</h3><pre id="brief"></pre>
-      <h3>Guard</h3><pre id="guard"></pre>
-      <h3>Outbox</h3><ul id="outbox"></ul>
-      <h3>Events</h3><ul id="events"></ul>
-      <h3>Last trace</h3><pre id="trace"></pre>
+      <div class="inspector-head">
+        <h2>SOP inspector</h2>
+        <p>What the harness decided this turn. Identifiers are masked. This view is never sent to the model.</p>
+      </div>
+      <ol id="phases" class="stepper" aria-label="Phases"></ol>
+      <section class="block">
+        <h3>Session</h3>
+        <dl id="status" class="kv"></dl>
+      </section>
+      <section class="block">
+        <h3>Memory</h3>
+        <table id="memory" class="memory"></table>
+      </section>
+      <details class="block" open>
+        <summary><h3>Last brief</h3></summary>
+        <div id="brief" class="brief"></div>
+      </details>
+      <details class="block" open>
+        <summary><h3>Guard</h3></summary>
+        <div id="guard" class="guard"></div>
+      </details>
+      <section class="block">
+        <h3>Outbox</h3>
+        <ul id="outbox" class="list"></ul>
+      </section>
+      <section class="block">
+        <h3>Events</h3>
+        <ul id="events" class="list events"></ul>
+      </section>
+      <details class="block">
+        <summary><h3>Last trace</h3></summary>
+        <pre id="trace"></pre>
+      </details>
     </aside>
   </main>
   <script src="/ui/app.js"></script>

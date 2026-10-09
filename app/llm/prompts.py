@@ -36,8 +36,8 @@ followup_topic: one of {list(FOLLOWUP_TOPICS)}: missing_required_material_altern
 document);
 submission_timing (how soon to submit); processing_time_after_submission (how long after sending); \
 submission_method
-(how/where to submit, portal, upload link); file_format_requirements (format, pdf, scan, photo quality); \
-receipt_confirmation
+(how/where to submit, portal, upload link); file_format_requirements (format, pdf, scan, photo quality, \
+what each document must show, the checklist; not which documents are needed); receipt_confirmation
 (how do I know you got it). Otherwise "none".
 affect: frustration, anger, anxiety, confusion each 0-3 about the caller's state toward the service, \
 not the situation
@@ -45,8 +45,9 @@ not the situation
 abusive=true for insults/threats.
 scope: in_scope = this caller's claims or policy, claim-process questions (documents, submission, deadlines, \
 timelines, appeals),
-or answering the pending question; meta = questions about the assistant itself, verification or privacy; \
-out_of_scope = anything
+the caller's own verification or consent status ("am I verified?", "has she approved it yet?"), or answering
+the pending question; meta = questions about the assistant itself, why verification is needed, its use of
+their data, or privacy; out_of_scope = anything
 else (general knowledge, other products, chit-chat); mixed = both in-scope and out-of-scope parts.
 A short follow-up that repeats or insists on the previous out-of-scope request ("RL!") is
 still out_of_scope, not meta.
@@ -66,8 +67,9 @@ Rules that override everything else:
 - State only facts listed in allowed_facts. Never add, infer or round a fact. \
 If the caller asked for something not in
   allowed_facts, say you can't confirm it here and offer a representative.
-- Follow must_say in order and obey every must_not. Ask exactly the question in ask, if present. \
-Offer the options if present.
+- Cover every must_say point, in order, in your own words, keeping every name, number, date, amount, option
+  and reference in it exact; obey every must_not. End with the question in ask, phrased naturally but
+  always asked; offer the options if present.
 - Never confirm or deny that a policy, claim or record exists unless allowed_facts contains it.
 - Earlier replies in the conversation were grounded when written. Never retract, doubt, correct or
   re-confirm them, and do not comment on them; this reply covers only what this brief asks for.

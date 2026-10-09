@@ -31,7 +31,7 @@ turns:
       verified: true
       party_id: P9
       pending_ask: anything_else
-      reply_contains: ["CL-2048", "pathology report"]
+      reply_contains: ["CL-2048", "pathology report", "CON-"]
       guard_ok: true
   - user: "No, that's all."
     analysis:

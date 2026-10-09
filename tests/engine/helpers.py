@@ -15,13 +15,13 @@ def verified_session(repos, party_id: str = "P9") -> Session:
     return s
 
 
-def turn(session, repos, settings, handler, user_text: str = "", **analysis_fields):
+def turn(session, repos, settings, handler, user_text: str = "", today: date = TODAY, **analysis_fields):
     analysis = TurnAnalysis.model_validate(analysis_fields)
     session.turn += 1
     ctx = resolve_pending(session, analysis, user_text)
     ctx.changed_slots = merge_analysis(session, analysis)
-    return handle_with(session, ctx, repos, settings, handler)
+    return handle_with(session, ctx, repos, settings, handler, today)
 
 
-def handle_with(session, ctx, repos, settings, handler):
-    return handler(session, ctx, repos, settings, TODAY)
+def handle_with(session, ctx, repos, settings, handler, today: date = TODAY):
+    return handler(session, ctx, repos, settings, today)

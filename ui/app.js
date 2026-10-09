@@ -2,6 +2,14 @@ const PHASES = ["VERIFY_ID", "RESOLVE_INTENT", "PROCESS_CASE", "POST_PROCESS"];
 const $ = (id) => document.getElementById(id);
 let sessionId = null;
 
+// Every piece of model or server text is rendered with textContent, never parsed as HTML.
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
 function headers() {
   const h = { "Content-Type": "application/json" };
   const t = $("token").value.trim();
@@ -9,72 +17,191 @@ function headers() {
   return h;
 }
 
-function addMessage(role, text) {
-  const div = document.createElement("div");
-  div.className = `msg ${role}`;
-  div.textContent = text; // never innerHTML: model text is untrusted
-  $("messages").appendChild(div);
-  $("messages").scrollTop = $("messages").scrollHeight;
+function timestamp() {
+  return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-function setText(el, text) { el.textContent = text; }
+function addMessage(role, text) {
+  const wrap = el("div", `msg ${role}`);
+  if (role !== "system") {
+    wrap.appendChild(el("div", "meta", `${role === "user" ? "You" : "Assistant"} · ${timestamp()}`));
+  }
+  wrap.appendChild(el("div", "bubble", text));
+  $("messages").appendChild(wrap);
+  $("messages").scrollTop = $("messages").scrollHeight;
+  return wrap;
+}
 
-function renderState(state) {
-  const stepper = $("phases");
-  stepper.replaceChildren(...PHASES.map((p) => {
-    const span = document.createElement("span");
-    span.textContent = p;
-    span.className = p === state.phase ? "active" : "";
-    return span;
+function pill(text, kind) {
+  return el("span", `pill${kind ? ` ${kind}` : ""}`, text);
+}
+
+function renderPhases(current) {
+  const idx = PHASES.indexOf(current);
+  $("phases").replaceChildren(...PHASES.map((p, i) => {
+    const li = el("li", i < idx ? "done" : i === idx ? "active" : "", p.replace("_", " "));
+    li.title = p;
+    return li;
   }));
+}
+
+function renderStatus(state) {
+  const v = state.verification;
+  const verification = pill(v.status, v.status === "verified" ? "ok" : v.status === "exhausted" ? "bad" : "");
   const rows = [
-    ["Turn", state.turn], ["Verification", `${state.verification.status} (${state.verification.role ?? "-"}, attempts ${state.verification.attempts})`],
-    ["Pending ask", state.pending_ask], ["Selected claim", state.case.selected_case_id ?? "-"], ["Intent", state.case.intent ?? "-"],
-    ...Object.entries(state.counters),
-    ["Escalation", state.escalation.requested ? (state.escalation.reference ?? "-") : "no"], ["Consent", state.consent.status],
-    ["Closed", state.closed ? "yes" : "no"],
+    ["Turn", String(state.turn)],
+    ["Verification", verification],
+    ["Role / attempts", `${v.role ?? "-"} / ${v.attempts}`],
+    ["Pending ask", state.pending_ask],
+    ["Selected claim", state.case.selected_case_id ?? "-"],
+    ["Intent", state.case.intent ?? "-"],
+    ["Off-topic turns", String(state.counters.off_topic)],
+    ["Frustration streak", String(state.counters.frustration_streak)],
+    ["Gate explanations", String(state.counters.gate_explanations)],
+    ["Abusive turns", String(state.counters.abusive)],
+    ["Email offered", state.counters.email_offered ? "yes" : "no"],
+    ["Human declined", state.counters.human_declined ? "yes" : "no"],
+    ["Escalation", state.escalation.requested ? pill(state.escalation.reference ?? "requested", "warn") : "no"],
+    ["Consent", state.consent.status === "none" ? "none" : pill(state.consent.status,
+      state.consent.status === "approved" ? "ok" : state.consent.status === "timed_out" ? "bad" : "warn")],
+    ["Closed", state.closed ? pill("yes", "bad") : "no"],
   ];
   $("status").replaceChildren(...rows.flatMap(([k, v]) => {
-    const dt = document.createElement("dt"); dt.textContent = k;
-    const dd = document.createElement("dd"); dd.textContent = String(v);
-    return [dt, dd];
+    const dd = el("dd");
+    if (typeof v === "string") dd.textContent = v; else dd.appendChild(v);
+    return [el("dt", "", k), dd];
   }));
-  $("memory").replaceChildren(...Object.entries(state.memory).map(([name, slot]) => {
-    const tr = document.createElement("tr");
-    [name, slot.value, slot.status, `turn ${slot.source_turn}`].forEach((c) => {
-      const td = document.createElement("td"); td.textContent = c; tr.appendChild(td);
-    });
+}
+
+function renderMemory(memory) {
+  const entries = Object.entries(memory);
+  if (!entries.length) {
+    const tr = el("tr");
+    tr.appendChild(el("td", "empty", "Nothing remembered yet."));
+    $("memory").replaceChildren(tr);
+    return;
+  }
+  $("memory").replaceChildren(...entries.map(([name, slot]) => {
+    const tr = el("tr");
+    tr.appendChild(el("td", "", name));
+    tr.appendChild(el("td", "", slot.value));
+    const status = el("td");
+    status.appendChild(pill(slot.status, slot.status === "verified" ? "ok" : slot.status === "rejected" ? "bad" : ""));
+    tr.appendChild(status);
+    tr.appendChild(el("td", "", `turn ${slot.source_turn}`));
     return tr;
   }));
-  setText($("brief"), state.last_brief ? JSON.stringify(state.last_brief, null, 1) : "");
-  setText($("guard"), state.last_guard ? JSON.stringify(state.last_guard, null, 1) : "");
-  $("events").replaceChildren(...state.events.slice(-8).map((e) => {
-    const li = document.createElement("li"); li.textContent = `t${e.turn} ${e.type}`; return li;
+}
+
+function renderBrief(brief) {
+  const box = $("brief");
+  if (!brief) { box.replaceChildren(el("p", "empty", "No brief yet.")); return; }
+  const dl = el("dl");
+  const row = (label, node) => {
+    const r = el("div", "row");
+    r.appendChild(el("dt", "", label));
+    const dd = el("dd");
+    if (typeof node === "string") dd.textContent = node; else dd.appendChild(node);
+    r.appendChild(dd);
+    dl.appendChild(r);
+  };
+  const list = (items) => {
+    const ul = el("ul");
+    items.forEach((t) => ul.appendChild(el("li", "", t)));
+    return ul;
+  };
+  row("Phase", brief.phase);
+  row("Goal", brief.goal);
+  row("Tone", brief.tone + (brief.acknowledge ? ` (acknowledge: ${brief.acknowledge})` : ""));
+  const facts = Object.entries(brief.allowed_facts || {});
+  if (facts.length) {
+    const table = el("table");
+    facts.forEach(([k, v]) => {
+      const tr = el("tr");
+      tr.appendChild(el("td", "", k));
+      tr.appendChild(el("td", "", String(v)));
+      table.appendChild(tr);
+    });
+    row("Allowed facts", table);
+  } else {
+    row("Allowed facts", "none (nothing about any claim may be stated)");
+  }
+  if (brief.must_say?.length) row("Must say", list(brief.must_say));
+  if (brief.must_not?.length) row("Must not", list(brief.must_not));
+  if (brief.options?.length) row("Options", list(brief.options));
+  if (brief.ask) row("Ask", brief.ask);
+  if (brief.offer_human) row("Human offer", "yes");
+  if (brief.verbatim) row("Verbatim", brief.verbatim);
+  box.replaceChildren(dl);
+}
+
+function renderGuard(guard) {
+  const box = $("guard");
+  if (!guard) { box.replaceChildren(el("p", "empty", "No reply checked yet.")); return; }
+  const frag = document.createDocumentFragment();
+  if (guard.ok && !guard.fallback) {
+    frag.appendChild(pill(guard.regenerated ? "passed after one regeneration" : "passed", "ok"));
+  } else if (guard.fallback) {
+    frag.appendChild(pill(`fallback: ${guard.fallback}`, "bad"));
+  } else {
+    frag.appendChild(pill("violations", "bad"));
+  }
+  if (guard.violations?.length) {
+    const ul = el("ul", "violations");
+    guard.violations.forEach((v) => ul.appendChild(el("li", "", v)));
+    frag.appendChild(ul);
+  }
+  box.replaceChildren(frag);
+}
+
+function renderEvents(events) {
+  const recent = events.slice(-12);
+  if (!recent.length) { $("events").replaceChildren(el("li", "empty", "No events yet.")); return; }
+  $("events").replaceChildren(...recent.map((e) => {
+    const li = el("li");
+    li.appendChild(el("span", "turn", `t${e.turn}`));
+    li.appendChild(document.createTextNode(e.type));
+    return li;
   }));
+}
+
+function renderState(state) {
+  renderPhases(state.phase);
+  renderStatus(state);
+  renderMemory(state.memory);
+  renderBrief(state.last_brief);
+  renderGuard(state.last_guard);
+  renderEvents(state.events);
 }
 
 async function refreshOutbox() {
   try {
     const r = await fetch(`/api/session/${sessionId}/outbox`, { headers: headers() });
-    if (!r.ok) return;
+    if (!r.ok) { addMessage("system", `Could not load the outbox (${r.status}).`); return; }
     const { emails } = await r.json();
-    $("outbox").replaceChildren(...emails.map((e) => {
-      const li = document.createElement("li"); li.textContent = `${e.id} to ${e.to_masked}: ${e.subject}`; return li;
-    }));
+    if (!emails.length) { $("outbox").replaceChildren(el("li", "empty", "Nothing sent.")); return; }
+    $("outbox").replaceChildren(...emails.map((e) => el("li", "", `${e.id} to ${e.to_masked}: ${e.subject}`)));
   } catch (err) {
     addMessage("system", `Could not load the outbox (${err.message}).`);
   }
 }
 
+function clearInspector() {
+  ["phases", "status", "memory", "brief", "guard", "outbox", "events"].forEach((id) => $(id).replaceChildren());
+  $("trace").textContent = "";
+}
+
 async function newConversation() {
   sessionId = null; // a failed restart must not keep chatting into the old, now cleared, conversation
   $("messages").replaceChildren();
-  ["phases", "status", "memory", "brief", "guard", "outbox", "events", "trace"].forEach((id) => $(id).replaceChildren());
+  clearInspector();
   let data;
   try {
-    const r = await fetch("/api/session", { method: "POST", headers: headers(), body: JSON.stringify({ scenario: $("scenario").value }) });
-    if (r.status === 401) { addMessage("system", "Enter the access token above and click New conversation."); return; }
-    if (!r.ok) { addMessage("system", `Could not start a session (${r.status}).`); return; }
+    const r = await fetch("/api/session", {
+      method: "POST", headers: headers(), body: JSON.stringify({ scenario: $("scenario").value }),
+    });
+    if (r.status === 401) { addMessage("system", "This server needs an access token. Enter it above and start again."); return; }
+    if (!r.ok) { addMessage("system", `Could not start a conversation (${r.status}).`); return; }
     data = await r.json();
   } catch (err) {
     addMessage("system", `Network error: ${err.message}`); return;
@@ -83,6 +210,7 @@ async function newConversation() {
   addMessage("assistant", data.greeting);
   renderState(data.state);
   await refreshOutbox();
+  $("input").focus();
 }
 
 $("form").addEventListener("submit", async (ev) => {
@@ -91,12 +219,13 @@ $("form").addEventListener("submit", async (ev) => {
   if (!text || !sessionId) return;
   $("input").value = "";
   addMessage("user", text);
-  const typing = document.createElement("div"); typing.className = "msg assistant typing"; typing.textContent = "…";
-  $("messages").appendChild(typing);
+  const typing = addMessage("assistant typing", "");
   let data;
   try {
-    const r = await fetch("/api/chat", { method: "POST", headers: headers(), body: JSON.stringify({ session_id: sessionId, message: text }) });
-    if (!r.ok) { addMessage("system", `Request failed (${r.status}).`); return; }
+    const r = await fetch("/api/chat", {
+      method: "POST", headers: headers(), body: JSON.stringify({ session_id: sessionId, message: text }),
+    });
+    if (!r.ok) { addMessage("system", `The request failed (${r.status}).`); return; }
     data = await r.json();
   } catch (err) {
     addMessage("system", `Network error: ${err.message}`); return;
@@ -105,8 +234,9 @@ $("form").addEventListener("submit", async (ev) => {
   }
   addMessage("assistant", data.reply);
   renderState(data.state);
-  setText($("trace"), JSON.stringify(data.trace, null, 1));
+  $("trace").textContent = JSON.stringify(data.trace, null, 1);
   await refreshOutbox();
+  $("input").focus();
 });
 
 $("new").addEventListener("click", newConversation);

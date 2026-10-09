@@ -77,6 +77,13 @@ def test_ui_is_served(client):
     assert r.status_code == 200 and "SOP inspector" in r.text
 
 
+def test_ui_script_renders_text_only(client):
+    js = client.get("/ui/app.js").text
+    assert "textContent" in js
+    for sink in ("innerHTML", "outerHTML", "insertAdjacentHTML"):  # model text must never be parsed as HTML
+        assert sink not in js, sink
+
+
 def test_expired_session_is_404(client, monkeypatch):
     sid = client.post("/api/session", json={}).json()["session_id"]
     later = time.monotonic() + client.app.state.settings.session_ttl_minutes * 60 + 1

@@ -158,3 +158,40 @@ def test_explicit_switch_answers_new_claim_in_same_turn(repos, settings):
     assert brief.ask
     fact = "The claim you mentioned is CL-2102, auto claim opened February 28, 2026, status open."
     assert brief.must_say.count(fact) == 1
+
+
+def test_submission_answer_says_no_chat_upload_and_offers_the_checklist(repos, settings):
+    s = in_case(repos, settings)
+    turn(s, repos, settings, process_case.handle, intent="denial_question")
+    r = turn(s, repos, settings, process_case.handle, intent="document_submission",
+             followup_topic="submission_method")
+    assert process_case.NO_CHAT_UPLOAD in r.brief.must_say
+    assert process_case.SUBMISSION_SHORT in r.brief.must_say
+    assert process_case.DEADLINE_CAVEAT in r.brief.must_say  # the deadline passed before today
+    assert r.brief.allowed_facts["today"] == "October 7, 2026"
+    assert "submission_guidance" in r.brief.allowed_facts
+    assert any(k.startswith("guidance_") for k in r.brief.allowed_facts)  # the checklist stays available
+    r2 = turn(s, repos, settings, process_case.handle, intent="document_submission",
+              followup_topic="file_format_requirements")
+    assert process_case.SUBMISSION_DETAIL in r2.brief.must_say
+    assert process_case.NO_CHAT_UPLOAD in r2.brief.must_say
+
+
+def test_processing_time_answer_carries_the_passed_deadline_caveat(repos, settings):
+    s = in_case(repos, settings)
+    turn(s, repos, settings, process_case.handle, intent="denial_question")
+    r = turn(s, repos, settings, process_case.handle, intent="next_steps",
+             followup_topic="processing_time_after_submission")
+    assert "topic_processing_time_after_submission" in r.brief.allowed_facts
+    assert process_case.DEADLINE_CAVEAT in r.brief.must_say
+
+
+def test_no_deadline_caveat_before_the_deadline(repos, settings):
+    s = in_case(repos, settings)
+    before = date(2026, 3, 1)  # CL-2048's appeal deadline is March 18, 2026
+    turn(s, repos, settings, process_case.handle, today=before, intent="denial_question")
+    for topic in ("submission_method", "processing_time_after_submission"):
+        r = turn(s, repos, settings, process_case.handle, today=before, intent="next_steps",
+                 followup_topic=topic)
+        assert r.brief.allowed_facts["deadline_passed"] == "no"
+        assert process_case.DEADLINE_CAVEAT not in r.brief.must_say

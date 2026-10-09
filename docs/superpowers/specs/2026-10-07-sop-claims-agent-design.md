@@ -2,6 +2,8 @@
 
 Status: v0.5, frozen 2026-10-07 after four external review rounds. Internal planning document; the README carries the distilled version.
 Research basis: `docs/research/report.md` (156 sources) and `docs/research/notes/`.
+Amended after the freeze (2026-10-08): the Appendix A Turn 2 contract follows the submission brief (the
+no-upload line first, documents and channel named, the per-document checklist offered).
 
 Changes from v0.4: intent is a memory slot carried across phases; an attempt is defined as one verify call made
 only with the minimum identifiers on hand, and lookup outcome never changes the wording, closing the existence
@@ -570,8 +572,12 @@ Turn 2, caller: "What do I need to send and how do I submit it?"
   (fuzzy match from "pathology report", "office note"), the submission_method template filled with CL-2048 and
   the documents, default guidance and healthcare case-type guidance.
 - State after: phase PROCESS_CASE, pending_ask anything_else.
-- Reply must: mention the member portal or claim upload link first; mention fax or mail as the fallback; mention
-  both documents and at least one requirement for each (patient name, visit date, signature or similar).
+- Reply must: first say, as plain information, that documents cannot be sent through this chat; name both
+  documents and the channel (the member portal or claim upload link, with fax or mail as the fallback); offer
+  the checklist of what each document must show instead of reciting it; say the appeal deadline has passed, so
+  sending documents does not reopen the appeal by itself. A follow-up asking what each document must show
+  (followup_topic file_format_requirements) gets the detail: patient name, specimen details, visit date,
+  signature or similar (replay fixture document_checklist).
 - Reply must not: contain any number, date or document not in allowed_facts.
 
 Turn 3, caller: "How long after I send them will it take?"

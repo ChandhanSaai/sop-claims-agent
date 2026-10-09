@@ -1,12 +1,16 @@
-"""Run the replay fixtures against the real Reader and Writer and write docs/live-transcripts.md.
+"""Run the replay fixtures against the real Reader and Writer; write docs/live-transcripts.md and, with
+--repeat N, docs/live-reliability.md (pass^N per scenario).
 
-Usage: python scripts/live_replay.py [scenario ...]   (needs ANTHROPIC_API_KEY in .env; costs API calls)
+Usage: python scripts/live_replay.py [--repeat N] [scenario ...]
+(needs ANTHROPIC_API_KEY in .env; costs API calls)
 
 State expectations (phase, verification, pending ask, escalation, counters, outbox) and the leak checks
 (reply_not_contains, guard verdict) are hard checks; so is a turn the model never answered (a Reader or Writer
 failure). reply_contains wording checks are reported as soft mismatches, because a live Writer paraphrases
-must_say lines. Exit code 1 when any hard check fails. The transcript file is written only for a full run.
+must_say lines. Exit code 1 when any hard check fails in any run. The files are written only for a full run
+(no scenario names given): the transcript from the first run, the reliability table over all runs.
 """
+import argparse
 import json
 import os
 import sys
@@ -26,6 +30,7 @@ from tests.replay.runner import EXPECT_KEYS, load, scenario_names  # noqa: E402
 
 HARD_KEYS = sorted(EXPECT_KEYS - {"reply_contains", "reply_not_contains", "guard_ok"})
 OUT = ROOT / "docs" / "live-transcripts.md"
+RELIABILITY = ROOT / "docs" / "live-reliability.md"
 
 
 def run_scenario(name: str, settings) -> dict:
@@ -99,13 +104,45 @@ def write_markdown(results: list[dict], settings) -> None:
     OUT.write_text("\n".join(lines), encoding="utf-8")
 
 
-def main() -> int:
-    settings = get_settings()
-    configure_logging(settings.log_level)
-    names = sys.argv[1:] or scenario_names()
+def write_reliability(runs: list[list[dict]], settings) -> None:
+    """pass^N per scenario: 1 when all N runs passed every hard check on every turn, else 0; wording
+    misses listed."""
+    n = len(runs)
+    names = [r["name"] for r in runs[0]]
+    lines = ["# Live-model reliability", "",
+             f"`scripts/live_replay.py --repeat {n}` with Reader `{settings.reader_model}` and Writer "
+             f"`{settings.writer_model}`: each scenario run {n} times against the real models. A run passes "
+             "when every turn passes every hard check (state, leaks, guard, model answered); pass^N is 1.00 "
+             "only when all N runs passed, else 0.00 (pass^k counts a task only when all k trials succeed). "
+             "Soft misses are wording expectations the live Writer paraphrased.",
+             "", f"| Scenario | Turns | Hard passes | pass^{n} | Soft misses (run: turn, text) |",
+             "|---|---|---|---|---|"]
+    total_pass = total_runs = 0
+    for name in names:
+        rs = [next(r for r in run if r["name"] == name) for run in runs]
+        passes = sum(1 for r in rs if "error" not in r and not any(t["hard"] for t in r["turns"]))
+        total_pass += passes
+        total_runs += n
+        turns = next((len(r["turns"]) for r in rs if "error" not in r), 0)
+        softs = [f"{k + 1}: T{t['i']} {m}" for k, r in enumerate(rs) if "error" not in r
+                 for t in r["turns"] for m in t["soft"]]
+        hards = [f"{k + 1}: T{t['i']} {m}" for k, r in enumerate(rs) if "error" not in r
+                 for t in r["turns"] for m in t["hard"]]
+        hards += [f"{k + 1}: {r['error']}" for k, r in enumerate(rs) if "error" in r]  # a failed run too
+        detail = "; ".join(softs) or "none"
+        if hards:
+            detail += " / HARD " + "; ".join(hards)
+        pass_n = "1.00" if passes == n else "0.00"
+        lines.append(f"| {name} | {turns} | {passes}/{n} | {pass_n} | {cell(detail)} |")
+    lines += ["", f"Overall: {total_pass}/{total_runs} scenario runs passed every hard check "
+                  f"({total_pass / total_runs:.0%})."]
+    RELIABILITY.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def run_all(names: list[str], settings, label: str) -> tuple[list[dict], int]:
     results, failed = [], 0
     for name in names:
-        print(f"== {name}", flush=True)
+        print(f"== {label}{name}", flush=True)
         try:
             r = run_scenario(name, settings)
         except Exception as exc:  # keep going; the transcript records the failure without local paths
@@ -124,10 +161,32 @@ def main() -> int:
             for line in t["soft"]:
                 print(f"       soft {line}", flush=True)
         failed += any(t["hard"] for t in r["turns"])
-    if not sys.argv[1:]:  # a subset run never overwrites the full record
-        write_markdown(results, settings)
+    return results, failed
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Replay the fixtures against the real Reader and Writer.")
+    parser.add_argument("--repeat", type=int, default=1, metavar="N", help="runs per scenario (at least 1)")
+    parser.add_argument("scenarios", nargs="*", help="fixture names (default: all, and only then write docs)")
+    args = parser.parse_args()
+    repeat = args.repeat
+    if repeat < 1:
+        parser.error("--repeat must be at least 1")
+    settings = get_settings()
+    configure_logging(settings.log_level)
+    names = args.scenarios or scenario_names()
+    runs, failed = [], 0
+    for k in range(repeat):
+        results, f = run_all(names, settings, f"run {k + 1}/{repeat} " if repeat > 1 else "")
+        runs.append(results)
+        failed += f
+    if not args.scenarios:  # a subset run never overwrites the full record
+        write_markdown(runs[0], settings)
         print(f"wrote {OUT}")
-    print(f"{len(results) - failed}/{len(results)} scenarios without hard failures")
+        if repeat > 1:
+            write_reliability(runs, settings)
+            print(f"wrote {RELIABILITY}")
+    print(f"{len(names) * repeat - failed}/{len(names) * repeat} scenario runs without hard failures")
     return 1 if failed else 0
 
 
