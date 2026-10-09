@@ -170,8 +170,10 @@ def test_writer_transcript_starts_at_the_verification_reset(settings):
     svc.chat(session, "Margaret Chen, 1985-03-15, 4472, my denied January healthcare claim")
     assert len(llm.seen[0]) == 2 and "Margaret" in llm.seen[0][1]  # the greeting and the caller's message
     svc.chat(session, "Sorry, this is actually Ma Tian, born 1964-09-10, last four 6688.")
-    assert session.verification.party_id == "P12" and llm.seen[1] == []  # nothing before the reset
+    assert session.verification.party_id == "P12"
+    correction = "Sorry, this is actually Ma Tian, born 1964-09-10, last four 6688."
+    assert llm.seen[1] == [correction]  # only the correction itself, nothing from before the reset
     svc.chat(session, "That's all.")
-    assert llm.seen[2] == [session.transcript[-3].text, "That's all."]  # the reset turn's reply onward
+    assert llm.seen[2] == [correction, session.transcript[-3].text, "That's all."]  # from the correction on
     assert all("CL-2048" not in t and "Margaret" not in t and "1985" not in t for t in llm.seen[2])
-    assert "CL-3001" in llm.seen[2][0]
+    assert "CL-3001" in llm.seen[2][1]  # the reset turn's reply answers the new party's claim
