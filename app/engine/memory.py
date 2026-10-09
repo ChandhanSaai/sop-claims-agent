@@ -15,6 +15,9 @@ def merge_analysis(session: Session, analysis: TurnAnalysis) -> list[str]:
     """Capture anything early. Only code advances phases; this only records what the caller said."""
     changed: list[str] = []
     t = session.turn
+    # corrections first: one that resets verification makes the other identifiers in the same message the
+    # new party's values, which the identity loop would otherwise refuse as restatements of verified slots
+    _apply_corrections(session, analysis, changed)
     ident = analysis.identity
     for name in IDENTITY_SLOTS:
         val = getattr(ident, name)
@@ -34,6 +37,11 @@ def merge_analysis(session: Session, analysis: TurnAnalysis) -> list[str]:
             changed.append(name)
     if analysis.intent != "none" and session.memory.set("intent", analysis.intent, t):
         changed.append("intent")
+    return changed
+
+
+def _apply_corrections(session: Session, analysis: TurnAnalysis, changed: list[str]) -> None:
+    t = session.turn
     for c in analysis.corrections:
         cur = session.memory.get(c.slot)
         was_verified = cur is not None and cur.status == SlotStatus.VERIFIED
@@ -52,4 +60,3 @@ def merge_analysis(session: Session, analysis: TurnAnalysis) -> list[str]:
             session.phase = Phase.VERIFY_ID
             session.pending_ask = PendingAsk.NONE
             session.log("verification_reset", slot=c.slot, party_id=party_id)
-    return changed
