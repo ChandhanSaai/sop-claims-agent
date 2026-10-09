@@ -23,7 +23,7 @@ owns the SOP; the model reads and phrases:** one LLM call reads each message int
 - **Live transcripts:** [docs/live-transcripts.md](docs/live-transcripts.md) replays all 18 scenarios against
   the real Reader and Writer (Sonnet 5.5) and shows each reply with its state, guard verdict, latency and
   checks, and [docs/live-reliability.md](docs/live-reliability.md) repeats every scenario and reports pass^N.
-- **Replay suite:** `pytest -q` runs 245 tests offline with no key or network, including the 18 scenarios turn
+- **Replay suite:** `pytest -q` runs 263 tests offline with no key or network, including the 20 scenarios turn
   by turn and a leak check on every reply that ends unverified.
 - **Where each requirement and attack lives:** the [Grader's map](#graders-map) names the code, the test that
   pins each requirement and the live turn that shows it, and [Attacks we tried](#attacks-we-tried) pairs each
@@ -577,12 +577,13 @@ CI (`.github/workflows/ci.yml`) runs `ruff check .`, then `pytest -q --ignore=te
 - **API** (`tests/api`): the health check, the session, chat, outbox and trace routes, 404 and 422 handling,
   the access-token gate, session expiry, per-session locking under concurrent chats, the UI being served with
   a text-only script, and Margaret's first turn over HTTP end to end.
-- **Replay** (`tests/replay/test_replay.py`): eighteen scenarios run turn by turn through the full
+- **Replay** (`tests/replay/test_replay.py`): twenty scenarios run turn by turn through the full
   `ConversationService`: `margaret_happy_path`, `angry_caller`, `refusing_caller`, `decoy_disambiguation`,
   `dob_correction`, `human_request_then_continue`, `injection_attempt`, `off_topic_three_times`,
   `question_after_goodbye`, `near_miss_phone_then_more`, `representative_declared`, `representative_approved`,
   `representative_timeout`, `abusive_caller`, `casual_identity_phrasing`, `spanish_caller`,
-  `first_name_only` and `document_checklist`. Each turn can assert
+  `first_name_only`, `document_checklist`, `no_claims_on_file` and `reverify_as_another_party`. Each turn
+  can assert
   phase, verification, party, attempts, pending ask, escalation, off-topic count, outbox size, text that must
   and must not appear, and the guard's verdict (`guard_ok: true` also requires no fallback).
 - **Leak checks:** the guard tests (`tests/engine/test_guard.py`) prove a pre-verification reply cannot carry a
