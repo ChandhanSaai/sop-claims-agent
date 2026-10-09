@@ -15,3 +15,8 @@ jobs:
       - run: ruff check .
       - run: pytest -q --ignore=tests/replay
       - run: pytest -q tests/replay
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t sop-claims-agent .

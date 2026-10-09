@@ -59,3 +59,24 @@ def test_verification_reset_keeps_the_representative_flag():
                                   declared_representative=True)
     merge_analysis(s, analysis(corrections=[{"slot": "dob", "new_value": "1986-03-15"}]))
     assert s.verification.status == "unverified" and s.verification.declared_representative
+
+
+def test_identity_values_given_with_a_correction_replace_the_reset_slots():
+    """The live Reader reads "this is actually Ma Tian, born ..., last four ..." as one correction (the name)
+    plus identity fields: once the correction resets verification, the rest of the message is the new
+    party's identity, not a restatement of the verified slots."""
+    s = Session.new()
+    s.turn = 1
+    merge_analysis(s, analysis(identity={"full_name": "Margaret Chen", "dob": "1985-03-15",
+                                         "id_last4": "4472"}))
+    s.memory.mark_verified(["full_name", "dob", "id_last4"])
+    s.verification = Verification(status="verified", party_id="P9", role="policyholder")
+    s.turn = 2
+    changed = merge_analysis(s, analysis(
+        identity={"full_name": "Ma Tian", "dob": "1964-09-10", "id_last4": "6688"},
+        corrections=[{"slot": "full_name", "new_value": "Ma Tian"}]))
+    assert set(changed) == {"full_name", "dob", "id_last4"}
+    assert {n: s.memory.value(n) for n in ("full_name", "dob", "id_last4")} == {
+        "full_name": "Ma Tian", "dob": "1964-09-10", "id_last4": "6688"}
+    assert all(s.memory.get(n).status == SlotStatus.PROVISIONAL for n in ("full_name", "dob", "id_last4"))
+    assert s.verification.status == "unverified" and s.phase == Phase.VERIFY_ID

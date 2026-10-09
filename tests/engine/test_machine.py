@@ -42,3 +42,19 @@ def test_frustration_streak_adds_human_offer(repos, settings):
     assert b1.tone == "de_escalate" and b1.acknowledge and not b1.offer_human
     b2 = eng.handle_turn(s, TurnAnalysis.model_validate(angry), "still ridiculous")
     assert b2.offer_human and s.pending_ask == PendingAsk.HUMAN_OFFER
+
+
+def test_one_turn_verify_resolve_answer_says_each_transition_fact_once(repos, settings):
+    eng = Engine(repos, settings, today=lambda: date(2026, 10, 7))
+    s = Session.new()
+    eng.greeting(s)
+    brief = eng.handle_turn(s, TurnAnalysis.model_validate({
+        "identity": {"full_name": "Margaret Chen", "dob": "1985-03-15", "id_last4": "4472"},
+        "case_hints": {"case_type": "healthcare", "status": "denied", "month": 1},
+        "intent": "denial_question",
+    }), "Margaret Chen, 1985-03-15, 4472, my denied January healthcare claim")
+    assert s.phase == Phase.PROCESS_CASE and brief.phase == "PROCESS_CASE"
+    fact = "The claim you mentioned is CL-2048, healthcare claim opened January 12, 2026, status denied."
+    assert brief.must_say[:2] == ["Identity verification is complete.", fact]
+    assert len(brief.must_say) == len(set(brief.must_say))  # the lead facts are not repeated by the answer
+    assert brief.allowed_facts["claim_id"] == "CL-2048" and brief.ask

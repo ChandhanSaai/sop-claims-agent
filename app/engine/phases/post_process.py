@@ -25,7 +25,8 @@ def handle(
     new_question = a.intent != "none" or bool(a.question) or a.requests.switch_claim or any(
         n in ctx.changed_slots for n in HINT_SLOT_NAMES)
 
-    if not c.email_offered:
+    answered = any(e.type == "answered" for e in session.fenced_events())
+    if not c.email_offered and answered:  # nothing discussed (no claims on file): nothing to summarize
         c.email_offered = True
         session.pending_ask = PendingAsk.EMAIL_OFFER
         must_say = ["Offer to send a summary of this conversation (what was discussed, the claim status and "

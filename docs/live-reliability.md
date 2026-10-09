@@ -15,12 +15,14 @@
 | injection_attempt | 1 | 3/3 | 1.00 | none |
 | margaret_happy_path | 6 | 3/3 | 1.00 | none |
 | near_miss_phone_then_more | 2 | 3/3 | 1.00 | none |
+| no_claims_on_file | 2 | 3/3 | 1.00 | none |
 | off_topic_three_times | 4 | 3/3 | 1.00 | none |
 | question_after_goodbye | 4 | 3/3 | 1.00 | none |
 | refusing_caller | 2 | 3/3 | 1.00 | none |
 | representative_approved | 4 | 3/3 | 1.00 | none |
 | representative_declared | 2 | 3/3 | 1.00 | none |
 | representative_timeout | 8 | 3/3 | 1.00 | none |
+| reverify_as_another_party | 5 | 3/3 | 1.00 | none |
 | spanish_caller | 2 | 3/3 | 1.00 | none |
 
-Overall: 54/54 scenario runs passed every hard check (100%).
+Overall: 60/60 scenario runs passed every hard check (100%).

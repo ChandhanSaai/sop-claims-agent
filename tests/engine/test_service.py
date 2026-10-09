@@ -74,10 +74,32 @@ def test_session_trace_is_the_redacted_record(settings):
     assert res.trace == session.traces[-1]
 
 
-def test_writer_error_gives_the_trouble_line(settings):
+def test_writer_error_gives_the_rendered_brief(settings):
     res, session = chat(settings, ScriptedWriter([LLMError("boom")]))
-    assert res.reply == TROUBLE and session.last_guard["fallback"] == "llm_error"
+    assert res.reply == render_brief(session.last_brief) == session.transcript[-1].text
+    assert session.last_guard == {"ok": True, "violations": [], "fallback": "llm_error"}
     assert session.events[-1].type == "llm_error" and session.traces[-1]["guard"]["fallback"] == "llm_error"
+
+
+def test_writer_error_after_the_email_was_sent_confirms_it_from_the_brief(settings):
+    llm = ScriptedWriter([])
+    for a in ({"identity": {"full_name": "Margaret Chen", "dob": "1985-03-15", "id_last4": "4472"},
+               "case_hints": {"case_id": "CL-2048"}, "intent": "denial_question"},
+              {"requests": {"confirmation": "no", "closing": True}},
+              {"requests": {"confirmation": "yes", "email_summary": "yes"}},
+              {"requests": {"confirmation": "yes"}}):
+        llm.queue(TurnAnalysis.model_validate(a))
+    svc = build_service(settings, llm=llm)
+    session = svc.start()
+    for text in ("Margaret Chen, 1985-03-15, 4472, about CL-2048", "No, that's all.", "Yes please."):
+        svc.chat(session, text)
+    assert session.pending_ask.value == "email_confirm" and svc.outbox(session) == []
+    llm.texts = [LLMError("boom")]  # the Writer fails on the send turn, after the email went out
+    res = svc.chat(session, "Yes, send it.")
+    assert len(svc.outbox(session)) == 1 and session.pending_ask.value == "none"
+    assert res.reply == render_brief(session.last_brief) and res.reply != TROUBLE
+    assert "EML-0001" in res.reply and "sent to the email on file" in res.reply
+    assert session.last_guard == {"ok": True, "violations": [], "fallback": "llm_error"}
 
 
 def test_general_submission_question_is_answered_before_verification(settings):
@@ -119,3 +141,39 @@ def test_closed_session_answers_from_code_without_the_reader(settings):
     assert session.turn == turn and len(session.transcript) == transcript_len
     assert session.memory.slots == {} and session.verification.status != "verified"
     assert [e.type for e in session.events][-1] == "message_after_close"
+
+
+class RecordingWriter(FakeLLM):
+    """Records the transcript each compose call receives."""
+
+    def __init__(self):
+        super().__init__()
+        self.seen: list[list[str]] = []
+
+    def compose(self, *, brief, transcript, violation=None):
+        self.seen.append([t.text for t in transcript])
+        return render_brief(brief)
+
+
+def test_writer_transcript_starts_at_the_verification_reset(settings):
+    llm = RecordingWriter()
+    llm.queue(TurnAnalysis.model_validate({
+        "identity": {"full_name": "Margaret Chen", "dob": "1985-03-15", "id_last4": "4472"},
+        "case_hints": {"case_type": "healthcare", "status": "denied", "month": 1},
+        "intent": "denial_question"}))
+    llm.queue(TurnAnalysis.model_validate({"corrections": [
+        {"slot": "full_name", "new_value": "Ma Tian"}, {"slot": "dob", "new_value": "1964-09-10"},
+        {"slot": "id_last4", "new_value": "6688"}]}))
+    llm.queue(TurnAnalysis.model_validate({"requests": {"closing": True}}))
+    svc = build_service(settings, llm=llm)
+    session = svc.start()
+    svc.chat(session, "Margaret Chen, 1985-03-15, 4472, my denied January healthcare claim")
+    assert len(llm.seen[0]) == 2 and "Margaret" in llm.seen[0][1]  # the greeting and the caller's message
+    svc.chat(session, "Sorry, this is actually Ma Tian, born 1964-09-10, last four 6688.")
+    assert session.verification.party_id == "P12"
+    correction = "Sorry, this is actually Ma Tian, born 1964-09-10, last four 6688."
+    assert llm.seen[1] == [correction]  # only the correction itself, nothing from before the reset
+    svc.chat(session, "That's all.")
+    assert llm.seen[2] == [correction, session.transcript[-3].text, "That's all."]  # from the correction on
+    assert all("CL-2048" not in t and "Margaret" not in t and "1985" not in t for t in llm.seen[2])
+    assert "CL-3001" in llm.seen[2][1]  # the reset turn's reply answers the new party's claim

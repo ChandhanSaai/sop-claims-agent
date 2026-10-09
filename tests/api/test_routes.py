@@ -72,6 +72,16 @@ def test_access_token_gate():
     assert c.get("/ui/app.js").status_code == 200
 
 
+def test_require_access_token_refuses_to_start_without_one():
+    with pytest.raises(RuntimeError, match="DEMO_ACCESS_TOKEN"):
+        create_app(settings=Settings(_env_file=None, require_access_token=True), service=StubService())
+    app = create_app(settings=Settings(_env_file=None, require_access_token=True, demo_access_token="s3cret"),
+                     service=StubService())
+    c = TestClient(app)
+    assert c.post("/api/session", json={}).status_code == 401
+    assert c.post("/api/session", json={}, headers={"X-Access-Token": "s3cret"}).status_code == 200
+
+
 def test_ui_is_served(client):
     r = client.get("/")
     assert r.status_code == 200 and "SOP inspector" in r.text

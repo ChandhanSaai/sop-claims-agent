@@ -113,7 +113,7 @@ def test_amounts_match_by_token_and_ignore_thousands_separators(store):
     assert g.check("You mentioned $3500.", said, post).ok
     dated = ReplyBrief(phase="PROCESS_CASE", goal="g", allowed_facts={"appeal_deadline": "March 18, 2026"})
     assert g.check("The deadline was March 18,2026.", s, dated).ok  # not a thousands separator
-    assert "number_not_allowed:450.00" in g.check("Your dental claim allowed $450.00.", s, post).violations
+    assert "number_not_allowed" in g.check("Your dental claim allowed $450.00.", s, post).violations
 
 
 def test_raw_dob_echo_is_caught_in_any_format(store):
@@ -158,8 +158,7 @@ def test_invented_dates_are_caught_after_verification(store):
     for leak in ("You can still appeal until April 30, 2026.", "The deadline was 2026-04-30.",
                  "You can still appeal until April 30th.", "Appeal by Apr 30, 2026.", "Appeal by 4/30/2026.",
                  "appeal by april 30, 2026."):  # none of these is a fixture date
-        r = g.check(leak, s, post)
-        assert any(x.startswith("date_not_allowed:") for x in r.violations), leak
+        assert "date_not_allowed" in g.check(leak, s, post).violations, leak
     assert g.check("Please send the 2 documents before March 18; the review takes under a week.", s, post).ok
     for ok in ("The deadline was Mar 18, 2026.", "The deadline was 3/18/2026.", "The deadline was MARCH 18."):
         assert g.check(ok, s, post).ok, ok
@@ -171,7 +170,7 @@ def test_phrases_match_only_as_contiguous_token_runs(store):
     assert g.check("Please note that our office needs to verify you first.", unverified(store), pre).ok
     r = g.check("The review file did not include the pathology report and office note.",
                 unverified(store), pre)
-    assert any(x.startswith("phrase_before_verification:") for x in r.violations)
+    assert "phrase_before_verification" in r.violations
     said = unverified(store, user_said="they said the office note was missing")
     assert g.check("I've noted the office note issue; first I need to verify you.", said, pre).ok
     scattered = unverified(store, user_said="my office sent a note")  # not the phrase, so not an echo
@@ -186,5 +185,18 @@ def test_a_date_in_allowed_facts_is_allowed_after_verification(store):
                       allowed_facts={"today": "October 7, 2026", "appeal_deadline": "March 18, 2026"})
     assert g.check("As of today, October 7, 2026, the March 18, 2026 deadline has passed.", s, post).ok
     assert g.check("As of October 7 the deadline has passed.", s, post).ok  # same date, month-day form
-    r = g.check("As of October 8, 2026 the deadline has passed.", s, post)
-    assert any(x.startswith("date_not_allowed:") for x in r.violations)
+    assert "date_not_allowed" in g.check("As of October 8, 2026 the deadline has passed.", s, post).violations
+
+
+def test_violations_name_the_kind_only_and_are_deduplicated(store):
+    g = OutputGuard(store)
+    s = unverified(store)
+    s.verification = Verification(status="verified", party_id="P9", role="policyholder")
+    post = ReplyBrief(phase="PROCESS_CASE", goal="g", allowed_facts={"claim_id": "CL-2048"})
+    r = g.check("Thanks, born March 15, 1985. The allowed amounts were 3500.00 and 450.00; your claims "
+                "CL-2011 and CL-1899 were closed on February 28, 2026 and April 30, 2026.", s, post)
+    assert set(r.violations) == {"identifier:dob", "claim_id_not_allowed", "date_not_allowed",
+                                 "number_not_allowed"}
+    assert len(r.violations) == len(set(r.violations))
+    for leaked in ("1985", "3500.00", "CL-2011", "February 28, 2026", "April 30, 2026"):
+        assert not any(leaked in v for v in r.violations)  # the echoed values stay out of the record

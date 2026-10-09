@@ -5,11 +5,12 @@ from app.data.models import Claim
 from app.data.normalize import fmt_date
 from app.data.repos import Repos
 from app.engine.briefs import HandlerResult
-from app.engine.context import TurnContext
+from app.engine.context import HUMAN_ASK, TurnContext
 from app.engine.state import PendingAsk, Phase, Session
 from app.llm.schemas import ReplyBrief
 
 HINT_SLOT_NAMES = ("case_type", "status_hint", "month", "year", "case_id")
+NO_CLAIMS = "There are no claims on file under this policy."
 
 
 def hints_from_memory(session: Session) -> dict:
@@ -53,10 +54,31 @@ def _select(session: Session, claim: Claim) -> HandlerResult:
                          transition_fact=fact, transition_facts=facts)
 
 
+def _no_claims(session: Session, ctx: TurnContext) -> HandlerResult:
+    """A verified party with nothing on file: say so (the caller is verified), offer a person under the usual
+    rule, never list options. A goodbye leaves the phase; POST_PROCESS then closes without an email offer."""
+    a = ctx.analysis
+    if a.requests.closing and a.intent == "none" and not a.question:
+        session.phase = Phase.POST_PROCESS
+        session.pending_ask = PendingAsk.NONE
+        return HandlerResult(brief=ReplyBrief(phase=Phase.POST_PROCESS.value, goal="Wrap up."),
+                             advanced=True, needs_input=False, transition_fact=NO_CLAIMS)
+    session.log("no_claims")
+    offer = not (session.counters.human_declined or session.escalation.requested)
+    session.pending_ask = PendingAsk.HUMAN_OFFER if offer else PendingAsk.NONE
+    brief = ReplyBrief(phase=Phase.RESOLVE_INTENT.value, goal="Say no claims are on file; offer a person.",
+                       must_say=[NO_CLAIMS],
+                       must_not=["Do not list, describe or invent any claim.", "Do not repeat identifiers."],
+                       offer_human=offer, ask=HUMAN_ASK if offer else None)
+    return HandlerResult(brief=brief)
+
+
 def handle(
     session: Session, ctx: TurnContext, repos: Repos, settings: Settings, today: date
 ) -> HandlerResult:
     claims = repos.claims.for_party(session.verification.party_id)
+    if not claims:
+        return _no_claims(session, ctx)
     by_id = {c.case_id: c for c in claims}
     hint_changed = any(n in ctx.changed_slots for n in HINT_SLOT_NAMES)
 

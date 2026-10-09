@@ -37,7 +37,11 @@ class Engine:
         session.transcript.append(Turn(role="user", text=user_text))
         ctx = resolve_pending(session, analysis, user_text)
         if not analysis.injection_suspected:  # an injection-flagged turn never changes memory
-            ctx.changed_slots = merge_analysis(session, analysis)
+            changed = merge_analysis(session, analysis)
+            if session.fence_turn == session.turn:  # a verification reset happened on this turn
+                # the context was read against the earlier party's pending question; read it again now
+                ctx = resolve_pending(session, analysis, user_text)
+            ctx.changed_slots = changed
         pass1(session, ctx, self.settings)
         if ctx.policy_brief is not None:
             brief = ctx.policy_brief

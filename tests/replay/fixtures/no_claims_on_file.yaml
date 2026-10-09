@@ -1,0 +1,26 @@
+name: no_claims_on_file
+scenario: default
+turns:
+  - user: "Hi, this is Ava Lopez, born 21 August 1990, last four of my SSN 9180. Can you check what claims I have open?"
+    analysis:
+      identity: {full_name: "Ava Lopez", dob: "1990-08-21", id_last4: "9180"}
+      caller_role: policyholder
+      intent: status_inquiry
+      question: "what claims do I have open"
+    expect:
+      phase: RESOLVE_INTENT
+      verified: true
+      party_id: P7
+      pending_ask: human_offer
+      reply_contains: ["claims on file"]
+      reply_not_contains: ["Which of these", "CL-2048", "1990-08-21", "9180"]
+      guard_ok: true
+  - user: "No, that's all, thanks."
+    analysis:
+      requests: {confirmation: "no", closing: true}
+    expect:
+      phase: POST_PROCESS
+      pending_ask: none
+      outbox_len: 0
+      reply_not_contains: ["summary", "email", "Which of these"]
+      guard_ok: true
