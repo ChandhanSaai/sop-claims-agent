@@ -1,0 +1,84 @@
+name: angry_caller
+scenario: default
+today: "2026-10-07"
+turns:
+  - user: "I need to know why my claim was denied. This is Margaret Chen."
+    analysis:
+      identity: {full_name: "Margaret Chen"}
+      case_hints: {status: denied}
+      intent: denial_question
+      affect: {frustration: 1}
+      scope: in_scope
+    expect:
+      phase: VERIFY_ID
+      verified: false
+      attempts: 0
+      pending_ask: identity_fields
+      reply_contains: ["date of birth", "last four"]
+      reply_not_contains: ["CL-2048", "pathology", "I see your claim", "we have your claim"]
+      guard_ok: true
+  - user: "I already told you who I am. This is ridiculous. Just tell me why my claim was denied."
+    analysis:
+      intent: denial_question
+      affect: {frustration: 3, anger: 2, refusal: true}
+      scope: in_scope
+    expect:
+      phase: VERIFY_ID
+      verified: false
+      attempts: 0
+      pending_ask: identity_fields
+      reply_contains: ["protect", "representative"]
+      reply_not_contains: ["CL-2048", "pathology", "calm down", "I apologize for the inconvenience"]
+      guard_ok: true
+  - user: "Fine. DOB 1985-03-15, phone 650-521-2836."
+    analysis:
+      identity: {dob: "1985-03-15", phone: "650-521-2836"}
+      affect: {frustration: 1}
+      scope: in_scope
+    expect:
+      phase: PROCESS_CASE
+      verified: true
+      party_id: P9
+      pending_ask: anything_else
+      reply_contains: ["CL-2048", "pathology report", "office note", "March 18, 2026"]
+      reply_not_contains: ["1985-03-15", "650-521-2836", "6505212836", "your name"]
+      guard_ok: true
+  - user: "I can't get the pathology report, the lab closed."
+    analysis:
+      intent: next_steps
+      followup_topic: missing_required_material_alternatives
+      question: "I can't get the pathology report because the lab closed"
+      scope: in_scope
+    expect:
+      phase: PROCESS_CASE
+      pending_ask: human_offer
+      reply_contains: ["replacement copy", "representative"]
+      guard_ok: true
+  - user: "Yeah, get me a person."
+    analysis:
+      requests: {confirmation: "yes", wants_human: true}
+      scope: in_scope
+    expect:
+      phase: PROCESS_CASE
+      escalated: true
+      pending_ask: none
+      reply_contains: ["ESC-"]
+      guard_ok: true
+  - user: "Thanks, bye."
+    analysis:
+      requests: {closing: true}
+      scope: in_scope
+    expect:
+      phase: POST_PROCESS
+      pending_ask: email_offer
+      reply_contains: ["m*******@email.com"]
+      guard_ok: true
+  - user: "No."
+    analysis:
+      requests: {confirmation: "no", email_summary: "no"}
+      scope: in_scope
+    expect:
+      phase: POST_PROCESS
+      pending_ask: none
+      outbox_len: 0
+      guard_ok: true
