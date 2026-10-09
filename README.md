@@ -178,7 +178,29 @@ per-turn traces; `GET /healthz` is open. When `DEMO_ACCESS_TOKEN` is set, every 
 `X-Access-Token` header. Replies are buffered, not streamed. The interactive docs are switched off on purpose
 (`docs_url=None`); the request and response models are in `app/api/schemas.py`.
 
-### Hosted demo (optional)
+### Hosted demo on AWS
+
+Live at **https://7ph7pceym3.us-east-1.awsapprunner.com** (HTTPS on App Runner's own hostname; no domain). The
+page asks for an access token, which is shared separately; `/healthz` is open. What runs it, all in one AWS
+account and region (`us-east-1`), created by the two scripts under `deploy/aws/`:
+
+| Service | Role |
+|---|---|
+| AWS App Runner | Runs the container with HTTPS, health-checked on `/healthz`; pinned to one instance (min = max = 1) because sessions live in the process's memory |
+| Amazon ECR | Holds the image |
+| AWS CodeBuild + S3 | Builds the image in the cloud from a source zip (`deploy/aws/cloud_build.sh`), so no local Docker is needed |
+| SSM Parameter Store | Two SecureString parameters, the Anthropic key and the demo token, read by the instance role at start; the key never appears in the service configuration |
+| IAM | An ECR pull role for App Runner and an instance role that may read the two parameters |
+
+```bash
+bash deploy/aws/cloud_build.sh        # ECR + S3 + CodeBuild: build and push the image
+bash deploy/aws/deploy_apprunner.sh   # parameters, roles, single-instance scaling, the service; prints the URL
+aws apprunner pause-service --service-arn <arn>   # stop paying while idle; resume-service brings it back
+```
+
+The smallest instance (0.25 vCPU, 0.5 GB) costs a few dollars a month while running. Traces are ephemeral there.
+
+### Hosted demo on Fly.io (optional)
 
 `fly.toml` is ready for Fly.io. With the `fly` CLI signed in, from the repo root:
 
@@ -717,8 +739,8 @@ the OpenAI adapter are stretch items (below).
 - **S02 Live persona evaluations:** five simulated personas run four times each against the real pipeline, with
   code checks for gates and leaks, an LLM judge for tone and groundedness, and a pass^k report; opt-in, never in
   CI by default.
-- **S03 Hosted demo:** config ready, not deployed: `fly.toml` runs this image on Fly.io behind
-  `DEMO_ACCESS_TOKEN` with `/healthz` checked; the three commands are in its header and under Quick start.
+- **S03 Hosted demo:** deployed on AWS App Runner (see Hosted demo on AWS under Quick start);
+  `fly.toml` remains as an alternative.
 - **S04 Abuse handling:** built (see Abuse under How it works): one calm boundary statement on the first
   abusive message; on the second the conversation ends with the hand-off reference; replay fixture
   `abusive_caller`.

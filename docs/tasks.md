@@ -29,7 +29,7 @@ Merge order for the reviewer: #1, #2, #3, then the wave-3 PRs #4 to #8, then #9,
 |---|---|---|---|---|---|---|
 | S01 | Representative and consent sub-flow (approve and timeout scenarios) | Fable 5.1 | T10 | merged | #13 | plan `docs/superpowers/plans/2026-10-08-s01-representative-consent.md`; also routes a claimed power of attorney to a human and makes CONSENT_SCENARIO the default scenario; base task/T10-integration, merge after #10 |
 | S02 | Live persona evaluations with pass^k and an LLM judge (opt-in) | Opus 5.5 | T11 | merged (#15, #18, #19): live replay + pass^N reliability table; LLM judge still todo | #15, #18 | live replay of all 14 fixtures against the real models (`scripts/live_replay.py`, `docs/live-transcripts.md`): 14/14 hard and wording checks; Writer no-retraction rule; pass^k judge still todo; PR stacked on #14 |
-| S03 | Hosted demo behind DEMO_ACCESS_TOKEN | Opus 5.5 | T12 | merged (fly.toml), not deployed: needs the user's Fly.io account | #18 | |
+| S03 | Hosted demo behind DEMO_ACCESS_TOKEN | Opus 5.5 | T12 | deployed: AWS App Runner at https://7ph7pceym3.us-east-1.awsapprunner.com (account 314445553387, us-east-1); scripts in deploy/aws/ | #18 | |
 | S04 | Abuse handling policy | Opus 5.5 | T07 | merged | #14 | plan `docs/superpowers/plans/2026-10-08-s04-abuse-policy.md`; branch task/S04-abuse-policy stacked on task/S01-representative, merge after #13 |
 | S05 | OpenAI provider adapter | Opus 5.5 | T04 | todo | | |
 
@@ -56,6 +56,7 @@ Merge order for the reviewer: #1, #2, #3, then the wave-3 PRs #4 to #8, then #9,
 
 ## Log
 
+- 2026-10-09: hosted demo deployed to the user's AWS account (314445553387, us-east-1): CodeBuild from an S3 source zip (local Docker engine was failing) -> ECR -> App Runner single instance behind REQUIRE_ACCESS_TOKEN, secrets in SSM Parameter Store; verified live (UI 200, no token 401, a verified model turn with the guard ok).
 - 2026-10-09: the whole stack merged into main in order (#1-#9, #10, #13-#19) with merge commits; head branches deleted; no open pull requests. main carries the full implementation: 265 offline tests, 20 live scenarios x 3 runs = 60/60. PR #19 (grader findings) approved after one Critical was found in review and fixed (a stale draft could be emailed to a re-verified party).
 - 2026-10-09: external grading pass on the stack (7/10 as it sits, 8.5 after fixes): P0 main holds no code (merge the stack); P1 verified party with no claims dead-ends in RESOLVE_INTENT; P1 re-verification not fenced (summary, Writer window, hints); P1 first Writer failure after a side effect returns the trouble line; P2 guard violation strings carry values, representative match has no attempt cap, Fly deploy without secrets is public; P3 Dockerfile healthcheck port, CI never builds the image, transition fact rendered twice. Fix branch task/C8-grader-fixes started (Fable). Attribution trailers: none found in any commit or PR body (grep over all refs).
 - 2026-10-08 (final): PR #18 approved on re-review. Full stack ready to merge in order: #1, #2, #3, #4-#8, #9, #10, #13, #14, #15, #16, #17, #18 (delete each head branch on merge so the next PR retargets). Final evidence: 245 offline tests; 18 live scenarios x 3 runs = 54/54 hard passes.

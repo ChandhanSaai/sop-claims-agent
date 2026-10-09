@@ -1,0 +1,12 @@
+version: 0.2
+# CodeBuild: build the image from the uploaded source zip and push it to ECR. Used by cloud_build.sh.
+phases:
+  pre_build:
+    commands:
+      - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR
+  build:
+    commands:
+      - docker build -t $ECR/$APP:main .
+  post_build:
+    commands:
+      - docker push $ECR/$APP:main
