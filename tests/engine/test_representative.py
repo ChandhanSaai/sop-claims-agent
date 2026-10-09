@@ -423,3 +423,20 @@ def test_leftover_helper_details_never_complete_a_later_representative(repos, se
     assert s.verification.declared_representative and s.consent.status == "none"
     assert s.memory.value("rep_name") is None and "representative call" in " ".join(b.must_say)
     assert not any(e.type == "consent_requested" for e in s.events)
+
+
+def test_a_declared_representative_restating_the_role_is_not_questioned(repos, settings,
+                                                                       no_policyholder_lookup):
+    """The live Reader labels a poll turn ("has she approved it yet?") as caller_role representative with no
+    fields: that is the same caller, not a declaration."""
+    eng, s = declared(repos, settings)
+    eng.handle_turn(s, analysis(caller_role="representative"), "Has she approved it yet?")
+    assert s.pending_identity is None and s.consent.status == "pending" and s.consent.polls == 1
+    eng.handle_turn(s, analysis(caller_role="representative",
+                                representative={"relationship": "son", "policyholder_name": "Margaret Chen"}),
+                    "Her son here, anything now?")
+    assert s.pending_identity is None and s.consent.status == "approved"
+    eng.handle_turn(s, analysis(caller_role="representative", representative={"name": "David Chen"}),
+                    "David Chen")
+    assert s.pending_identity is None and s.verification.role == "representative"
+

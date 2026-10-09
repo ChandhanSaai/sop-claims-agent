@@ -127,9 +127,11 @@ def identity_gate(session: Session, analysis: TurnAnalysis, *, flagged: bool = F
     helper = analysis.caller_role == "policyholder" and not v.declared_representative
     names = [n for n in _names_given(analysis, with_rep=not helper) if not exact(n, _holder_names(session))]
     strange = [n for n in names if not exact(n, known_names(session))]
+    # a declaration counts on a policyholder session; a declared representative restating the role, a
+    # relationship or the policyholder is who they said they were, and only a new name changes that
     details = bool(rep.name or rep.relationship or rep.policyholder_name)
-    declares = analysis.caller_role == "representative" or (
-        not helper and not v.declared_representative and details)
+    declares = not v.declared_representative and (analysis.caller_role == "representative"
+                                                 or (not helper and details))
     if strange or declares:
         _ask_identity(session, analysis, strange[0] if strange else (rep.name or rep.policyholder_name or ""))
         return
