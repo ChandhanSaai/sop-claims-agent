@@ -1,10 +1,10 @@
-FROM python:3.12-slim AS builder
+FROM public.ecr.aws/docker/library/python:3.12-slim AS builder
 WORKDIR /build
 COPY pyproject.toml ./
 COPY app ./app
 RUN pip install --no-cache-dir --prefix=/install .
 
-FROM python:3.12-slim
+FROM public.ecr.aws/docker/library/python:3.12-slim
 RUN useradd -m appuser && mkdir -p /app/traces && chown appuser /app/traces
 WORKDIR /app
 COPY --from=builder /install /usr/local
