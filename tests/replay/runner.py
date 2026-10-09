@@ -63,6 +63,7 @@ def run_scenario(spec: dict, settings: Settings) -> list[dict]:
             "outbox_len": len(svc.outbox(session)), "verified_before": verified_before,
             "verified_after": session.verification.status == "verified",
         })
+    assert not any(llm.scripts), "unused writer scripts in the fixture"
     return results
 
 

@@ -288,3 +288,19 @@ def test_numbered_lists_and_day_first_numeric_dates_after_verification(store):
     assert g.check("The deadline was 18/03/2026.", s, post).ok  # day first, the allowed date
     assert "date_not_allowed" in g.check("The deadline was 30/04/2026.", s, post).violations
     assert "date_not_allowed" in g.check("The deadline was 4-30-26.", s, post).violations
+
+
+def test_dotted_day_first_dates_are_strict_before_verification_and_lenient_after(store):
+    g = OutputGuard(store)
+    pre = ReplyBrief(phase="VERIFY_ID", goal="g")
+    dob = unverified(store)
+    dob.memory.set("dob", "1985-03-15", 1)
+    assert "identifier:dob" in g.check("Born 15. Mar 1985.", dob, pre).violations
+    assert "identifier:dob" in g.check("Born 1985-3-15.", dob, pre).violations
+    r = g.check("Your claim from 12. January 2026 was denied.", unverified(store), pre)
+    assert "fixture_date_before_verification" in r.violations
+    s = unverified(store)
+    s.verification = Verification(status="verified", party_id="P9", role="policyholder")
+    post = ReplyBrief(phase="PROCESS_CASE", goal="g", allowed_facts={"appeal_deadline": "March 18, 2026"})
+    assert g.check("1. March 2026 is the appeal month. 2. Send the files first.", s, post).ok
+    assert g.check("Use form 12-34-56 to appeal; pages 0-15-85 are blank.", s, post).ok  # not dates

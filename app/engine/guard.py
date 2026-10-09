@@ -34,38 +34,44 @@ GENERIC_DATE = re.compile(
     rf"|\b(?:(?P<prep>am|vom|bis|zum|den|der)\s+)?(?P<d2>\d{{1,2}})(?P<mark>st|nd|rd|th|\.)?"
     rf"(?:\s+(?P<of>of|de))?\s+(?P<m2>{_MONTH_WORDS})"
     rf"(?!\.?\s+\d{{1,2}}(?!\d))\.?(?:,?\s+(?:de\s+)?(?P<y2>\d{{4}}))?\b"
-    r"|\b(?P<y3>\d{4})[-/.](?P<m3>\d{2})[-/.](?P<d3>\d{2})\b"
+    r"|\b(?P<y3>\d{4})[-/.](?P<m3>\d{1,2})[-/.](?P<d3>\d{1,2})\b"
     r"|\b(?P<m4>\d{1,2})(?P<sep>[/.-])(?P<d4>\d{1,2})(?P=sep)(?P<y4>\d{2,4})\b",
     re.IGNORECASE)
 
 
-def date_mention(m: re.Match) -> tuple[int, int, int | None] | None:
-    """(month, day, year or None) for a GENERIC_DATE match; None when the match is not a date after all."""
+def _valid(month: int, day: int, year: int | None) -> tuple[int, int, int | None] | None:
+    return (month, day, year) if 1 <= month <= 12 and 1 <= day <= 31 else None
+
+
+def date_mention(m: re.Match, strict: bool = False) -> tuple[int, int, int | None] | None:
+    """(month, day, year or None) for a GENERIC_DATE match; None when the match is not a date after all.
+    Strict reads \"12. January 2026\" as a date (an echoed identifier or fixture date costs a leak); lenient
+    reads it as a list item (an invented-date false positive only costs a regeneration)."""
     g = m.groupdict()
     if g["y3"]:
-        return int(g["m3"]), int(g["d3"]), int(g["y3"])
+        return _valid(int(g["m3"]), int(g["d3"]), int(g["y3"]))
     if g["y4"]:
         mo, da, yr = int(g["m4"]), int(g["d4"]), int(g["y4"])
         if mo > 12 >= da:  # 18/03/2026: the month is impossible, so the day came first
             mo, da = da, mo
         if yr < 100:  # 3/15/85
             yr += 1900 if yr > 30 else 2000
-        return mo, da, yr
+        return _valid(mo, da, yr)
     mo, da, yr = ("m1", "d1", "y1") if g["m1"] else ("m2", "d2", "y2")
     word = g[mo].casefold().replace("\u0131", "i")  # IGNORECASE matches a dotless i that casefold keeps
     month = _MONTHS.get(word)
     if month is None:
         return None
-    dot_only = g["mark"] == "." and not g["prep"]  # "1. March 2026" is a list item, "am 10. September" a day
+    dot_only = g["mark"] == "." and not g["prep"] and not strict  # "1. March 2026": a list item when lenient
     marked = ((g[yr] and not dot_only) or g["mark"] in ("st", "nd", "rd", "th") or g["of"]
               or (g["prep"] and g["mark"]))
     if mo == "m2" and word in _ENGLISH and not marked:
         return None  # a count or a list number before an English month word
-    return month, int(g[da]), int(g[yr]) if g[yr] else None
+    return _valid(month, int(g[da]), int(g[yr]) if g[yr] else None)
 
 
-def mentions(text: str) -> list[tuple[int, int, int | None]]:
-    return [d for m in GENERIC_DATE.finditer(text) if (d := date_mention(m)) is not None]
+def mentions(text: str, strict: bool = False) -> list[tuple[int, int, int | None]]:
+    return [d for m in GENERIC_DATE.finditer(text) if (d := date_mention(m, strict)) is not None]
 
 
 def names_date(ms: list[tuple[int, int, int | None]], d: date) -> bool:
@@ -130,7 +136,7 @@ class OutputGuard:
             # a partial value ("March") is not an echo to hunt for: the raw check needs two digit runs
             raw = len(re.findall(r"\d+", dob)) >= 2 and contains_token(text, dob)
             echoed = d and (any(contains_token(text, v) for v in date_variants(d))
-                            or names_date(mentions(text), d))
+                            or names_date(mentions(text, strict=True), d))
             if raw or echoed:
                 out.append("dob")
         if (ph := m.value("phone")) and (p := normalize_phone(ph)) and p[2:] in digits:
@@ -164,7 +170,7 @@ class OutputGuard:
             amounts = (a.removesuffix(".00") for a in self.amounts)
             if any(contains_token(plain, a) and not contains_token(user_plain, a) for a in amounts):
                 v.append("amount_before_verification")
-            ms, said_ms = mentions(text), mentions(user_text)
+            ms, said_ms = mentions(text, strict=True), mentions(user_text, strict=True)
             for d in self.dates:
                 forms = date_variants(d)[:-1]  # month-year alone is the caller's own words
                 said = any(contains_token(user_text, x) for x in forms) or names_date(said_ms, d)

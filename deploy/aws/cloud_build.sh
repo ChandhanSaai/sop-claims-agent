@@ -65,6 +65,7 @@ for _ in $(seq 1 60); do
   case "$STATUS" in SUCCEEDED) break;; FAILED|FAULT|STOPPED|TIMED_OUT) echo "build $STATUS"; exit 1;; esac
   sleep 15
 done
+[ "$STATUS" = "SUCCEEDED" ] || { echo "build $STATUS"; exit 1; }  # a slow build never rolls out an old image
 echo "build $STATUS: $ECR/$APP:main"
 # a rebuilt image does not roll out by itself: start a deployment when the service already exists
 SERVICE_ARN=$(aws apprunner list-services --region "$REGION" --query "ServiceSummaryList[?ServiceName=='$APP'].ServiceArn | [0]" --output text 2>/dev/null || true)

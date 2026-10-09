@@ -211,3 +211,25 @@ def test_the_outbox_stays_behind_the_fence(settings):
     svc.chat(session, "Sorry, this is actually Ma Tian, born 1964-09-10, last four 6688.")
     assert session.fence_turn == 5 and svc.outbox(session) == []
     assert all(e["turn"] >= 5 for e in session.snapshot()["events"])
+
+
+def test_a_confirmed_identity_puts_the_displaced_question_again_word_for_word(settings):
+    llm = ScriptedWriter([])
+    for a in ({"identity": {"full_name": "Margaret Chen", "dob": "1985-03-15", "id_last4": "4472"},
+               "case_hints": {"case_id": "CL-2048"}, "intent": "denial_question"},
+              {"requests": {"confirmation": "no", "closing": True}},
+              {"identity": {"full_name": "Maggie Chen"}},
+              {"requests": {"confirmation": "yes"}, "identity": {"full_name": "Maggie Chen"}},
+              {"requests": {"confirmation": "yes", "email_summary": "yes"}}):
+        llm.queue(TurnAnalysis.model_validate(a))
+    svc = build_service(settings, llm=llm)
+    session = svc.start()
+    for text in ("Margaret Chen, 1985-03-15, 4472, about CL-2048", "No, that's all.", "Maggie Chen here"):
+        svc.chat(session, text)
+    offer = session.transcript[-3].text  # the email offer the question displaced
+    assert session.pending_ask.value == "identity_confirm"
+    assert "Is this still Margaret Chen?" in session.transcript[-1].text
+    res = svc.chat(session, "Yes, Maggie Chen, that's me")
+    assert res.reply.endswith(offer) and session.pending_ask.value == "email_offer"
+    svc.chat(session, "yes please")
+    assert session.pending_ask.value == "email_confirm"

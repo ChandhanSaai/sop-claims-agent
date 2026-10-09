@@ -58,8 +58,7 @@ def escalation_brief(session: Session, first: bool, lead: list[str] | None = Non
 def identity_confirm_brief(session: Session) -> ReplyBrief:
     """A name that is partly the verified caller's: ask, never guess, and say nothing about claims meanwhile.
     The question names what the caller gave, never the record."""
-    slot = "rep_name" if session.verification.declared_representative else "full_name"
-    who = session.memory.value(slot) or "the person verified earlier"
+    who = session.pending_identity.who if session.pending_identity else "the person verified earlier"
     return ReplyBrief(phase=session.phase.value, goal="Confirm who is speaking before anything else.",
                       must_say=[IDENTITY_CHECK],
                       must_not=["Do not mention any claim details.", "Do not repeat identifiers."],
@@ -139,15 +138,24 @@ def pass1(session: Session, ctx: TurnContext, settings: Settings) -> None:
     if a.requests.wants_human or ctx.human_yes:
         first = not session.escalation.requested
         escalate(session, "caller asked for a representative")
-        session.pending_ask = PendingAsk.NONE
+        # the identity question survives the hand-off: it is asked again next turn
+        session.pending_ask = PendingAsk.IDENTITY_CONFIRM if session.pending_identity else PendingAsk.NONE
         ctx.offer_human = False
         ctx.policy_brief = escalation_brief(session, first)
         return
     if ctx.human_no:
         session.pending_ask = PendingAsk.NONE
         session.counters.human_declined = True
-    if session.pending_ask == PendingAsk.IDENTITY_CONFIRM:  # open, or just raised by this message
+    if session.pending_identity:  # open, or just raised by this message: nothing else is answered
+        session.pending_ask = PendingAsk.IDENTITY_CONFIRM
         ctx.policy_brief = identity_confirm_brief(session)
+        return
+    if session.resume_text:  # the identity was confirmed: the question it displaced is put again
+        ctx.policy_brief = ReplyBrief(
+            phase=session.phase.value, goal="Thank the caller for confirming; the earlier question follows.",
+            must_say=["Thanks for confirming.", "Say the earlier question follows."],
+            must_not=["Do not add anything else."], verbatim=session.resume_text)
+        session.resume_text = None
         return
 
     off_topic = a.scope == "out_of_scope" or a.injection_suspected
@@ -191,7 +199,7 @@ def pass2(session: Session, ctx: TurnContext, brief: ReplyBrief) -> ReplyBrief:
     if ctx.acknowledge and not brief.acknowledge:
         update["acknowledge"] = ctx.acknowledge
     if (ctx.offer_human and not brief.offer_human and not session.escalation.requested
-            and not session.counters.human_declined):
+            and not session.counters.human_declined and not session.pending_identity):
         update["offer_human"] = True
         update["ask"] = HUMAN_ASK
         session.pending_ask = PendingAsk.HUMAN_OFFER

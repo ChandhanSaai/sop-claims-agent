@@ -5,13 +5,14 @@ from app.engine.state import (
     CaseState,
     Consent,
     Escalation,
+    IdentityQuestion,
     PendingAsk,
     Phase,
     Session,
     SlotStatus,
     Verification,
 )
-from app.llm.schemas import Correction, TurnAnalysis
+from app.llm.schemas import Correction, IdentityFields, TurnAnalysis
 
 
 def merge_analysis(session: Session, analysis: TurnAnalysis) -> list[str]:
@@ -22,8 +23,8 @@ def merge_analysis(session: Session, analysis: TurnAnalysis) -> list[str]:
     # that belongs to someone else, a representative declaration after a verified policyholder, a change of
     # representative while a consent is pending or approved
     _confirm_answer(session, analysis)
-    _identity_switches(session, analysis)
     _declaration_switch(session, analysis)
+    _identity_switches(session, analysis)
     _representative_switch(session, analysis)
     # corrections first: one that resets verification makes the other identifiers in the same message the
     # new party's values, which the identity loop would otherwise refuse as restatements of verified slots
@@ -48,6 +49,17 @@ def merge_analysis(session: Session, analysis: TurnAnalysis) -> list[str]:
     if analysis.intent != "none" and session.memory.set("intent", analysis.intent, t):
         changed.append("intent")
     return changed
+
+
+def flagged_identity_check(session: Session, analysis: TurnAnalysis) -> None:
+    """A turn the Reader flagged as an injection stores nothing, but a name in it that is not the caller's can
+    still lower trust: the question is raised and holds every claim detail until it is answered."""
+    if session.pending_identity is not None or not _speaking_verified(session):
+        return
+    for n in _names_given(analysis, with_rep=analysis.caller_role != "policyholder"):
+        if name_match(n, _known_names(session)) != "same":
+            _ask_identity(session, analysis, n)
+            return
 
 
 def name_match(given: str, known: list[str]) -> str:
@@ -79,64 +91,101 @@ def _same_person(slot: str, verified: str, given: str) -> bool:
     return normalize_id4(given) in (None, normalize_id4(verified))
 
 
+def _speaking_verified(session: Session) -> bool:
+    """Someone verified, or a declared representative whose consent is pending or approved, is speaking."""
+    v, c = session.verification, session.consent
+    return v.status == "verified" or (v.declared_representative and c.status in ("pending", "approved"))
+
+
 def _known_names(session: Session) -> list[str]:
-    """The verified party's names on file plus the name the caller gave (a first name alone verifies too)."""
+    """The names the current caller is known by: a representative by the name the consent was requested for
+    and the name they gave; a policyholder by the names on file plus the name they gave (a first name alone
+    verifies too)."""
+    v, c = session.verification, session.consent
+    if v.declared_representative:
+        return [n for n in (c.representative_name, session.memory.value("rep_name")) if n]
     slot = session.memory.value("full_name")
-    return [*session.verification.names, *([slot] if slot else [])]
+    return [*v.names, *([slot] if slot else [])]
+
+
+def _names_given(analysis: TurnAnalysis, *, with_rep: bool) -> list[str]:
+    """The names this message gives for the caller: identity fields and labelled corrections, plus the
+    representative name where the caller is the representative (a policyholder's helper is not the caller)."""
+    names = [c.new_value for c in analysis.corrections if c.slot == "full_name"]
+    if analysis.identity.full_name:
+        names.append(analysis.identity.full_name)
+    if with_rep and analysis.representative.name:
+        names.append(analysis.representative.name)
+    return names
+
+
+def _hold_identity(analysis: TurnAnalysis) -> None:
+    """Nothing about identity from this message is stored: no field, no correction, no representative name."""
+    analysis.identity = IdentityFields()
+    analysis.corrections = []
+    analysis.representative.name = None
 
 
 def _ask_identity(session: Session, analysis: TurnAnalysis, name: str) -> None:
-    """Hold the new name on the session, not in the slots: the question names the caller as known so far."""
-    session.pending_identity = name.strip()
+    """Open the question "is this still X?". It names the caller as known so far, remembers the question it
+    displaces so a yes can resume it, and holds everything identity-related in this message."""
+    who_slot = "rep_name" if session.verification.declared_representative else "full_name"
+    resume = session.pending_ask if session.pending_ask != PendingAsk.IDENTITY_CONFIRM else PendingAsk.NONE
+    session.pending_identity = IdentityQuestion(
+        candidate=name.strip(), who=session.memory.value(who_slot) or "the person verified earlier",
+        resume=resume, asked=(session.last_assistant_text() or "") if resume != PendingAsk.NONE else "")
     session.pending_ask = PendingAsk.IDENTITY_CONFIRM
-    analysis.identity.full_name = analysis.representative.name = None
+    _hold_identity(analysis)
 
 
 def _policyholder_switch(session: Session, analysis: TurnAnalysis, name: str) -> None:
     """Someone else is speaking: verification resets, the earlier party's identifiers go, and the name becomes
     theirs (a correction the identity loop then stores, so the trace shows it)."""
     _reset_verification(session, slot="full_name", party_id=session.verification.party_id, wipe=True)
+    analysis.corrections = [c for c in analysis.corrections if c.slot != "full_name"]
     analysis.corrections.append(Correction(slot="full_name", new_value=name.strip()))
 
 
 def _confirm_answer(session: Session, analysis: TurnAnalysis) -> None:
-    """The answer to "is this still X?": yes keeps the session; no, or a name with nothing in common with the
-    names on file, is someone else; anything else leaves the question open."""
-    if session.pending_ask != PendingAsk.IDENTITY_CONFIRM:
+    """The answer to "is this still X?": yes keeps the session and resumes the question it displaced; no, or a
+    name with nothing in common with the caller's names, is someone else; anything else leaves the question
+    open. Whatever the outcome, no name from the answer is stored as the caller's."""
+    q = session.pending_identity
+    if q is None:
         return
+    names = _names_given(analysis, with_rep=session.verification.declared_representative)
+    verdicts = [name_match(n, _known_names(session)) for n in names]
+    # a labelled correction that is not the caller's name is an explicit no
+    corrected = [c.new_value for c in analysis.corrections if c.slot == "full_name"]
+    insists = any(name_match(n, _known_names(session)) != "same" for n in corrected)
     r = analysis.requests
-    name = analysis.identity.full_name or next(
-        (c.new_value for c in analysis.corrections if c.slot == "full_name"), None)
-    verdict = name_match(name, _known_names(session)) if name else None
-    no = r.confirmation == "no" or verdict == "other"
+    no = r.confirmation == "no" or "other" in verdicts or insists
     if r.confirmation == "yes" and not no:
-        session.pending_ask, session.pending_identity = PendingAsk.NONE, None
+        session.pending_identity, session.pending_ask = None, q.resume
+        session.resume_text = q.asked or None  # the displaced question is put again
+        _hold_identity(analysis)
         return
     if no:
-        new_name = name if verdict in ("other", "partial") else session.pending_identity
+        new_name = next((n for n, v in zip(names, verdicts, strict=True) if v == "other"), None)
+        new_name = new_name or (names[0] if names else q.candidate)
         session.pending_identity = None
-        analysis.corrections = [c for c in analysis.corrections if c.slot != "full_name"]
         if session.verification.declared_representative:
             _representative_reset(session)
         else:
-            _policyholder_switch(session, analysis, new_name or session.pending_identity or "")
-    # neither: the question stays open and is asked again
+            _policyholder_switch(session, analysis, new_name)
+        return
+    _hold_identity(analysis)  # neither: the question stays open and is asked again
 
 
 def _identity_switches(session: Session, analysis: TurnAnalysis) -> None:
     """Identity fields on a verified policyholder session, whether or not the Reader labelled them as a
     correction. A name: the same as one on file is a restatement; nothing in common is someone else and
     verification resets; partly the same is a question. A different date of birth or ID for a verified slot
-    is someone else too."""
+    is someone else too: the reset wipes the earlier identifiers, a labelled typo correction keeps them."""
     v = session.verification
-    if v.status != "verified" or v.role != "policyholder":
+    if v.status != "verified" or v.role != "policyholder" or session.pending_identity is not None:
         return
-    if session.pending_ask == PendingAsk.IDENTITY_CONFIRM:
-        return
-    names = [c.new_value for c in analysis.corrections if c.slot == "full_name"]
-    if analysis.identity.full_name:
-        names.append(analysis.identity.full_name)
-    analysis.corrections = [c for c in analysis.corrections if c.slot != "full_name"]
+    names = _names_given(analysis, with_rep=False)
     verdicts = {n: name_match(n, _known_names(session)) for n in names}
     if any(x == "other" for x in verdicts.values()):
         _policyholder_switch(session, analysis, next(n for n, x in verdicts.items() if x == "other"))
@@ -144,12 +193,15 @@ def _identity_switches(session: Session, analysis: TurnAnalysis) -> None:
     if any(x == "partial" for x in verdicts.values()):
         _ask_identity(session, analysis, next(n for n, x in verdicts.items() if x == "partial"))
         return
+    analysis.corrections = [c for c in analysis.corrections if c.slot != "full_name"]  # same: restated
     labelled = {c.slot for c in analysis.corrections}
     for slot in ("dob", "id_last4"):
         given, cur = getattr(analysis.identity, slot), session.memory.get(slot)
         if given and slot not in labelled and cur is not None and cur.status == SlotStatus.VERIFIED:
             if not _same_person(slot, cur.value, str(given)):
+                _reset_verification(session, slot=slot, party_id=v.party_id, wipe=True)
                 analysis.corrections.append(Correction(slot=slot, new_value=str(given).strip()))
+                return
 
 
 def _declaration_switch(session: Session, analysis: TurnAnalysis) -> None:
@@ -159,7 +211,7 @@ def _declaration_switch(session: Session, analysis: TurnAnalysis) -> None:
     policyholder who merely mentions a helper (caller_role stays policyholder) keeps the policyholder path."""
     v, rep = session.verification, analysis.representative
     if (v.status != "verified" or v.role != "policyholder" or analysis.caller_role == "policyholder"
-            or session.pending_ask == PendingAsk.IDENTITY_CONFIRM):
+            or session.pending_identity is not None):
         return
     if analysis.caller_role == "representative" and (rep.name or rep.relationship or rep.policyholder_name):
         _reset_verification(session, slot="representative", party_id=v.party_id, wipe=True)
@@ -184,25 +236,23 @@ def _representative_reset(session: Session) -> None:
 
 def _representative_switch(session: Session, analysis: TurnAnalysis) -> None:
     """A declared representative who may be someone else while a consent is pending or approved. Names are
-    compared with the names as matched on file, never with a restated slot: the same is a restatement,
-    nothing in common is someone else, partly the same ("Dave", "Tom Chen") is a question."""
+    compared with the name the consent was requested for, never with a restated slot: the same is a
+    restatement, nothing in common is someone else, partly the same ("Dave", "Tom Chen") is a question."""
     v, c = session.verification, session.consent
     if (not v.declared_representative or c.status not in ("pending", "approved")
-            or session.pending_ask == PendingAsk.IDENTITY_CONFIRM):
+            or session.pending_identity is not None):
         return
-    held = [n for n in (c.representative_name, session.memory.value("rep_name")) if n]
     holder = [n for n in (c.policyholder_name, session.memory.value("rep_policyholder_name")) if n]
-    names = [x.new_value for x in analysis.corrections if x.slot == "full_name"]
-    names += [n for n in (analysis.representative.name, analysis.identity.full_name) if n]
     # the policyholder's own name in an identity field names the person consent is asked from, not a caller
-    names = [n for n in names if name_match(n, holder) != "same"]
-    verdicts = {n: name_match(n, held) for n in names}
+    names = [n for n in _names_given(analysis, with_rep=True) if name_match(n, holder) != "same"]
+    verdicts = {n: name_match(n, _known_names(session)) for n in names}
     if any(x == "other" for x in verdicts.values()):
         analysis.corrections = [x for x in analysis.corrections if x.slot != "full_name"]
         _representative_reset(session)
     elif any(x == "partial" for x in verdicts.values()):
-        analysis.corrections = [x for x in analysis.corrections if x.slot != "full_name"]
         _ask_identity(session, analysis, next(n for n, x in verdicts.items() if x == "partial"))
+    else:
+        analysis.corrections = [x for x in analysis.corrections if x.slot != "full_name"]  # restated
 
 
 def caller_key(session: Session) -> str:

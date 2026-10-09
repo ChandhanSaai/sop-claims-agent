@@ -74,6 +74,12 @@ CONSENT_FACT = (
 MEANWHILE_ASK = "Is there a general question I can help with in the meantime?"
 
 
+def _claims_poa(relationship: str | None) -> bool:
+    """Spec 7: a claimed power of attorney goes to a person for document review."""
+    r = normalize_name(relationship or "")
+    return r == "poa" or "power of attorney" in r or "attorney in fact" in r
+
+
 def _fingerprint(provided: dict[str, str]) -> str:
     """Hash of the normalized identifiers, so a format-only restatement ("March 15, 1985" vs "1985-03-15")
     is not a new attempt. A value that does not normalize is hashed as given; str(date) is ISO."""
@@ -168,8 +174,7 @@ def _representative(session: Session, ctx: TurnContext, repos: Repos, settings: 
         return _human_brief(session, "A consent request already went out this conversation; offer a human.",
                             lead + [CONSENT_ONCE])
     # spec 7: a claimed power of attorney goes to a person for document review, before any match or consent
-    relationship = normalize_name(session.memory.value("rep_relationship") or "")
-    if relationship == "poa" or "power of attorney" in relationship or "attorney in fact" in relationship:
+    if _claims_poa(session.memory.value("rep_relationship")):
         if not any(e.type == "poa_claimed" for e in session.events):
             session.log("poa_claimed")
         return _human_brief(session, "A claimed power of attorney needs document review by a person; "
@@ -246,9 +251,11 @@ def _handle(
         for n in ("case_type", "status_hint", "month", "year", "case_id", "free_text", "intent")
     )
     rep = a.representative
-    # a policyholder who merely mentions a helper keeps the policyholder path; once set, the flag wins
+    # a policyholder who merely mentions a helper keeps the policyholder path, and a relationship word alone
+    # ("my husband told me to call") declares nothing unless it claims power of attorney; once set it wins
     if a.caller_role != "policyholder" and (
-            a.caller_role == "representative" or rep.name or rep.relationship or rep.policyholder_name):
+            a.caller_role == "representative" or rep.name or rep.policyholder_name
+            or _claims_poa(rep.relationship)):
         v.declared_representative = True
     if v.declared_representative:
         return _representative(session, ctx, repos, settings, hints_noted)

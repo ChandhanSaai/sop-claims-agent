@@ -37,3 +37,18 @@ def test_snapshot_events_start_at_the_fence():
     s.log("verified", party_id="P12")
     events = [(e["turn"], e["type"]) for e in s.snapshot()["events"]]
     assert events == [(2, "verification_reset"), (3, "verified")]
+
+
+def test_snapshot_hides_the_earlier_partys_hints_and_reset_details():
+    s = Session.new()
+    s.turn = 1
+    s.memory.set("case_id", "CL-2048", 1)
+    s.turn = 2
+    s.log("verification_reset", slot="full_name", party_id="P9", caller="policyholder:P9",
+          escalation={"requested": True, "reference": "ESC-ABC123", "reason": "x"}, human_declined=True)
+    s.fence_turn = 2
+    s.memory.set("case_type", "dental", 2)
+    snap = s.snapshot()
+    assert "case_id" not in snap["memory"] and "case_type" in snap["memory"]
+    assert snap["events"][-1] == {"turn": 2, "type": "verification_reset", "data": {"slot": "full_name"}}
+    assert "ESC-ABC123" not in repr(snap) and "P9" not in repr(snap["events"])

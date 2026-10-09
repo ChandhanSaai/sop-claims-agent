@@ -223,9 +223,15 @@ def test_policyholder_who_mentions_a_helper_keeps_the_policyholder_path(repos, s
             representative={"name": "David Chen", "relationship": "son"})
     assert not s.verification.declared_representative and s.consent.status == "none"
     assert (s.verification.status, s.verification.role) == ("verified", "policyholder")
-    unknown = Session.new()  # role unknown plus a representative field: the representative path
-    declare(unknown, repos, settings, representative={"relationship": "son"})
-    assert unknown.verification.declared_representative
+    unknown = Session.new()  # a relationship word alone ("my husband told me to call") declares nothing
+    declare(unknown, repos, settings, representative={"relationship": "husband"})
+    assert not unknown.verification.declared_representative
+    poa = Session.new()  # unless it claims power of attorney (spec 7)
+    declare(poa, repos, settings, representative={"relationship": "power of attorney"})
+    assert poa.verification.declared_representative
+    named = Session.new()  # or names someone
+    declare(named, repos, settings, representative={"name": "David Chen"})
+    assert named.verification.declared_representative
 
 
 def test_timeout_after_an_escalation_does_not_offer_a_human_again(repos, settings):
@@ -667,3 +673,21 @@ def test_an_approved_representative_does_not_inherit_the_policyholders_session(r
     assert all(s.memory.value(n) is None for n in ("case_type", "status_hint", "month", "intent"))
     assert not s.escalation.requested and not s.counters.human_declined and not s.counters.email_offered
     assert "denied because" not in render_brief(b).lower()
+
+
+def test_the_representatives_own_full_name_in_a_yes_keeps_the_consent(repos, settings,
+                                                                     no_policyholder_lookup):
+    eng = Engine(repos, settings, lambda: TODAY)
+    s = Session.new()
+    eng.greeting(s)
+    eng.handle_turn(s, analysis(caller_role="representative", representative=DAVID,
+                                identity={"policy_number": "POL-9921"}), "David Chen, for my mother")
+    eng.handle_turn(s, analysis(representative={"name": "Dave"}), "Dave here")
+    assert s.pending_ask == PendingAsk.IDENTITY_CONFIRM
+    eng.handle_turn(s, analysis(requests={"confirmation": "yes"}, identity={"full_name": "David Chen"}),
+                    "Yes, this is David Chen")
+    assert s.pending_identity is None and s.consent.status == "pending" and s.fence_turn == 0
+    eng.handle_turn(s, analysis(representative={"name": "David Chen"}), "It's David Chen, any news?")
+    assert s.pending_identity is None and s.consent.status == "pending"  # the yes turn re-asked, no poll
+    eng.handle_turn(s, analysis(), "Anything now?")
+    assert s.consent.status == "approved"  # the second poll approves
