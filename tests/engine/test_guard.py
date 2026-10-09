@@ -241,3 +241,14 @@ def test_counts_and_list_numbers_before_a_month_word_are_not_dates(store):
     dob.memory.set("dob", "1990-05-30", 1)
     assert "identifier:dob" in g.check("Thanks, born the 30th of May.", dob, pre).violations
     assert g.check("Su cita es el 30 de abr\u0131l.", unverified(store), pre).ok  # dotless i: read, no crash
+
+
+def test_german_day_first_dates_keep_their_marker_after_a_preposition(store):
+    g = OutputGuard(store)
+    pre = ReplyBrief(phase="VERIFY_ID", goal="g")
+    dob = unverified(store)
+    dob.memory.set("dob", "1964-09-10", 1)
+    assert "identifier:dob" in g.check("Danke, geboren am 10. September.", dob, pre).violations
+    r = g.check("Ihr Antrag vom 3. November liegt vor.", unverified(store), pre)
+    assert "fixture_date_before_verification" in r.violations
+    assert g.check("Step 1. March is when most claims arrive.", unverified(store), pre).ok  # a list number

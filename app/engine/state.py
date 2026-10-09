@@ -101,6 +101,7 @@ class Consent(BaseModel):
     # normalized representative, relationship and policyholder names of the last match attempt
     last_match: str | None = None
     match_attempts: int = 0  # failed name-pair matches; capped so the branch is not an enumeration oracle
+    requests: int = 0  # consent requests sent this session, kept across a representative switch: one only
 
 
 class CaseState(BaseModel):

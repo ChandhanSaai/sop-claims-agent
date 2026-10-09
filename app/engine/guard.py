@@ -31,7 +31,8 @@ _MONTH_WORDS = "|".join(sorted(_MONTHS, key=len, reverse=True))
 # "the 2 may differ" are counts and list numbers), and a month word followed by a day is read month first.
 GENERIC_DATE = re.compile(
     rf"\b(?P<m1>{_MONTH_WORDS})\.?\s+(?P<d1>\d{{1,2}})(?:st|nd|rd|th)?(?:,?\s+(?P<y1>\d{{4}}))?\b"
-    rf"|\b(?P<d2>\d{{1,2}})(?P<mark>st|nd|rd|th|\.)?(?:\s+(?P<of>of|de))?\s+(?P<m2>{_MONTH_WORDS})"
+    rf"|\b(?:(?P<prep>am|vom|bis|zum|den|der)\s+)?(?P<d2>\d{{1,2}})(?P<mark>st|nd|rd|th|\.)?"
+    rf"(?:\s+(?P<of>of|de))?\s+(?P<m2>{_MONTH_WORDS})"
     rf"(?!\.?\s+\d{{1,2}}(?!\d))\.?(?:,?\s+(?:de\s+)?(?P<y2>\d{{4}}))?\b"
     r"|\b(?P<y3>\d{4})-(?P<m3>\d{2})-(?P<d3>\d{2})\b|\b(?P<m4>\d{1,2})/(?P<d4>\d{1,2})/(?P<y4>\d{4})\b",
     re.IGNORECASE)
@@ -49,8 +50,9 @@ def date_mention(m: re.Match) -> tuple[int, int, int | None] | None:
     month = _MONTHS.get(word)
     if month is None:
         return None
-    if mo == "m2" and word in _ENGLISH and not (g[yr] or g["mark"] in ("st", "nd", "rd", "th") or g["of"]):
-        return None  # a count or a list number before an English month word, not a day
+    marked = g[yr] or g["mark"] in ("st", "nd", "rd", "th") or g["of"] or (g["prep"] and g["mark"])
+    if mo == "m2" and word in _ENGLISH and not marked:
+        return None  # a count or a list number before an English month word ("am 10. September" is a day)
     return month, int(g[da]), int(g[yr]) if g[yr] else None
 
 

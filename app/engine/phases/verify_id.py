@@ -59,6 +59,8 @@ POA_REVIEW = (
     "submitted."
 )
 CONSENT_PENDING = "The policyholder's consent is still pending."
+CONSENT_ONCE = ("A consent request has already been sent to the policyholder in this conversation, so I "
+                "can't send another one here.")
 NOT_PENDING = "Do not say the consent is still pending: it timed out in this conversation."
 CONSENT_TIMED_OUT = (
     "The policyholder's consent could not be obtained in this conversation, so I can't discuss claim details "
@@ -105,17 +107,18 @@ def _new_party_cleanup(session: Session, party_id: str) -> None:
     """After a verification reset: someone else verified, so the hints given before the reset are not theirs
     and the summary offer is theirs to get; or the same party verified again, so their hand-off and declined
     offer come back from the reset event unless a newer hand-off happened in between."""
-    ev = next((e for e in reversed(session.events) if e.type == "verification_reset"), None)
-    if ev is None:
+    resets = [e for e in session.events if e.type == "verification_reset"]
+    if not resets:
         return
-    if ev.data["party_id"] != party_id:
+    if resets[-1].data["party_id"] != party_id:
         for n in HINT_SLOTS:
             if (slot := session.memory.get(n)) and slot.source_turn < session.fence_turn:
                 del session.memory.slots[n]
         session.counters.email_offered = False
-    elif not session.escalation.requested:
-        session.escalation = Escalation(**ev.data["escalation"])
-        session.counters.human_declined = ev.data["human_declined"]
+    own = next((e for e in reversed(resets) if e.data["party_id"] == party_id), None)
+    if own is not None and not session.escalation.requested:  # back after someone else in between too
+        session.escalation = Escalation(**own.data["escalation"])
+        session.counters.human_declined = own.data["human_declined"]
 
 
 def _approve(session: Session) -> HandlerResult:
@@ -158,6 +161,9 @@ def _representative(session: Session, ctx: TurnContext, repos: Repos, settings: 
     if c.status == "timed_out":  # never re-requested
         return _human_brief(session, "Consent was not obtained; general information only; offer a human.",
                             lead + [CONSENT_TIMED_OUT], extra_must_not=(NOT_PENDING,))
+    if c.requests:  # one request per session: a different representative goes to a person, unmatched
+        return _human_brief(session, "A consent request already went out this conversation; offer a human.",
+                            lead + [CONSENT_ONCE])
     # spec 7: a claimed power of attorney goes to a person for document review, before any match or consent
     relationship = normalize_name(session.memory.value("rep_relationship") or "")
     if relationship == "poa" or "power of attorney" in relationship or "attorney in fact" in relationship:
@@ -186,6 +192,7 @@ def _representative(session: Session, ctx: TurnContext, repos: Repos, settings: 
         if match is not None:
             cid = repos.consent.request(match.buyer_party_id, match.rep_name, session.scenario)
             c.status, c.consent_id, c.party_id = "pending", cid, match.buyer_party_id
+            c.requests += 1
             c.representative_name = match.rep_name
             session.log("consent_requested", consent_id=cid, scenario=session.scenario)
             session.pending_ask = PendingAsk.CONSENT_WAIT

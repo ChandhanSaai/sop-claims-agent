@@ -4,7 +4,7 @@ from app.engine.briefs import render_brief
 from app.engine.machine import Engine
 from app.engine.memory import merge_analysis
 from app.engine.phases import verify_id
-from app.engine.phases.verify_id import CONSENT_FACT, NO_AUTHORIZATION, REP_CALL
+from app.engine.phases.verify_id import CONSENT_FACT, CONSENT_ONCE, NO_AUTHORIZATION, REP_CALL
 from app.engine.service import build_service
 from app.engine.state import REP_SLOTS, Consent, PendingAsk, Phase, Session, SlotStatus
 from app.llm.fake import FakeLLM
@@ -376,7 +376,8 @@ def test_a_different_name_while_consent_is_pending_drops_the_consent(repos, sett
     assert s.consent.status == "none" and s.verification.status == "unverified"
     assert s.verification.declared_representative and s.fence_turn == 3 and s.phase == Phase.VERIFY_ID
     assert all(s.memory.value(n) is None for n in REP_SLOTS)
-    assert "CL-" not in render_brief(b) and s.pending_ask == PendingAsk.IDENTITY_FIELDS
+    assert "CL-" not in render_brief(b) and s.pending_ask == PendingAsk.HUMAN_OFFER  # one request per session
+    assert CONSENT_ONCE in b.must_say
     b2 = eng.handle_turn(s, analysis(caller_role="policyholder", identity={"full_name": "Ma Tian"}),
                          "I am the policyholder, Ma Tian")  # the representative flag still wins
     assert s.verification.status == "unverified" and "CL-" not in render_brief(b2)
@@ -399,7 +400,8 @@ def test_a_different_representative_name_after_approval_drops_the_consent_too(re
     assert s.case.selected_case_id is None and "CL-2048" not in render_brief(b)
     ev = [e for e in s.events if e.type == "verification_reset"][-1]
     assert ev.data["slot"] == "rep_name" and ev.data["party_id"] == "P9"
-    assert s.consent.match_attempts == 1 and s.pending_ask == PendingAsk.HUMAN_OFFER  # matched on its own
+    assert s.consent.match_attempts == 0 and s.consent.requests == 1  # not matched: one request per session
+    assert s.pending_ask == PendingAsk.HUMAN_OFFER and CONSENT_ONCE in b.must_say
 
 
 def test_a_representative_declaration_after_a_verified_policyholder_is_a_switch(repos, settings):
@@ -420,3 +422,63 @@ def test_a_representative_declaration_after_a_verified_policyholder_is_a_switch(
     assert s.verification.status == "unverified" and s.verification.declared_representative
     assert s.fence_turn == 2 and s.consent.status == "pending" and s.pending_ask == PendingAsk.CONSENT_WAIT
     assert "CL-3001" not in render_brief(b) and "consent" in render_brief(b)
+
+
+def test_a_partial_restatement_does_not_widen_who_the_consent_is_for(repos, settings, no_policyholder_lookup):
+    eng = Engine(repos, settings, lambda: TODAY)
+    s = Session.new()
+    eng.greeting(s)
+    eng.handle_turn(s, analysis(caller_role="representative", representative=DAVID,
+                                identity={"policy_number": "POL-9921"}), "David Chen, for my mother")
+    eng.handle_turn(s, analysis(representative={"name": "Mr. Chen"}), "Mr. Chen here, any news?")
+    assert s.consent.status == "pending" and s.consent.requests == 1
+    b = eng.handle_turn(s, analysis(representative={"name": "Tom Chen", "relationship": "husband",
+                                                    "policyholder_name": "Margaret Chen"}),
+                        "Actually this is Tom Chen, her husband. Why was her claim denied?")
+    assert s.consent.status == "none" and s.verification.status == "unverified"
+    assert "CL-2048" not in render_brief(b) and CONSENT_ONCE in b.must_say
+    assert s.consent.requests == 1 and s.pending_ask == PendingAsk.HUMAN_OFFER  # one request per session
+    assert not any(e.type == "consent_requested" for e in session_events(s)[1:])
+
+
+def session_events(s):
+    return [e for e in s.events if e.type == "consent_requested"]
+
+
+def test_an_unlabelled_switch_on_the_representative_path_drops_the_consent(repos, settings,
+                                                                           no_policyholder_lookup):
+    eng = Engine(repos, settings, lambda: TODAY)
+    s = Session.new()
+    eng.greeting(s)
+    eng.handle_turn(s, analysis(caller_role="representative", representative=DAVID,
+                                identity={"policy_number": "POL-9921"}), "David Chen, for my mother")
+    eng.handle_turn(s, analysis(identity={"full_name": "Margaret Chen"}), "It is for Margaret Chen")
+    assert s.consent.status == "pending" and s.fence_turn == 0  # the policyholder's name is not a new caller
+    ma_tian = {"full_name": "Ma Tian", "dob": "1964-09-10", "id_last4": "6688"}
+    b = eng.handle_turn(s, analysis(caller_role="policyholder", identity=ma_tian),
+                        "Sorry, this is actually Ma Tian, born 1964-09-10, last four 6688. Why denied?")
+    assert s.consent.status == "none" and s.verification.declared_representative and s.fence_turn == 3
+    assert "CL-2048" not in render_brief(b)
+
+
+def test_a_declaration_for_another_policyholder_is_a_switch_whatever_the_label(repos, settings):
+    ma_tian = {"full_name": "Ma Tian", "dob": "1964-09-10", "id_last4": "6688"}
+    for fields in ({"caller_role": "unknown", "representative": DAVID},
+                   {"caller_role": "unknown",
+                    "representative": {"relationship": "son", "policyholder_name": "Margaret Chen"}}):
+        eng = Engine(repos, settings, lambda: TODAY)
+        s = Session.new()
+        eng.greeting(s)
+        eng.handle_turn(s, analysis(identity=ma_tian, case_hints={"case_id": "CL-3001"}), "Ma Tian, CL-3001")
+        assert s.verification.party_id == "P12"
+        b = eng.handle_turn(s, analysis(**fields), "I'm calling for my mother Margaret Chen")
+        assert s.verification.status == "unverified" and s.verification.declared_representative, fields
+        assert "CL-3001" not in render_brief(b) and s.fence_turn == 2, fields
+    eng = Engine(repos, settings, lambda: TODAY)
+    s = Session.new()
+    eng.greeting(s)
+    eng.handle_turn(s, analysis(identity=ma_tian, case_hints={"case_id": "CL-3001"}), "Ma Tian, CL-3001")
+    b = eng.handle_turn(s, analysis(caller_role="policyholder",
+                                    representative={"name": "David Chen", "relationship": "son"}),
+                        "My son David Chen will help me with the documents")  # a helper, not a switch
+    assert s.verification.party_id == "P12" and s.fence_turn == 0 and "CL-3001" in render_brief(b)

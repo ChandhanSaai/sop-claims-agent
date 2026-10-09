@@ -24,6 +24,7 @@ def merge_analysis(session: Session, analysis: TurnAnalysis) -> list[str]:
     changed: list[str] = []
     t = session.turn
     _implicit_corrections(session, analysis)
+    _declaration_switch(session, analysis)
     _representative_switch(session, analysis)
     # corrections first: one that resets verification makes the other identifiers in the same message the
     # new party's values, which the identity loop would otherwise refuse as restatements of verified slots
@@ -64,21 +65,30 @@ def _same_person(slot: str, verified: str, given: str) -> bool:
 
 
 def _implicit_corrections(session: Session, analysis: TurnAnalysis) -> None:
-    """\"This is actually Ma Tian, born ...\" read as identity fields rather than corrections, or \"this is
-    David Chen, calling for my mother\" read as a representative declaration, still names someone else:
-    verification must reset, not keep answering the earlier party's questions. A verified policyholder who
-    merely mentions a helper (caller_role stays policyholder) keeps the policyholder path."""
+    """\"This is actually Ma Tian, born ...\" read as identity fields rather than corrections still names
+    someone else: verification must reset, not keep answering the earlier party's questions."""
     labelled = {c.slot for c in analysis.corrections}
     for slot in PERSON_SLOTS:
         given, cur = getattr(analysis.identity, slot), session.memory.get(slot)
         if given and slot not in labelled and cur is not None and cur.status == SlotStatus.VERIFIED:
             if not _same_person(slot, cur.value, str(given)):
                 analysis.corrections.append(Correction(slot=slot, new_value=str(given).strip()))
-    rep, cur = analysis.representative.name, session.memory.get("full_name")
-    if (rep and analysis.caller_role == "representative" and "full_name" not in labelled
-            and session.verification.role == "policyholder" and cur is not None
-            and cur.status == SlotStatus.VERIFIED and not _same_person("full_name", cur.value, rep)):
-        analysis.corrections.append(Correction(slot="full_name", new_value=rep.strip()))
+
+
+def _declaration_switch(session: Session, analysis: TurnAnalysis) -> None:
+    """A verified policyholder followed by a representative declaration for someone else (\"this is David
+    Chen, calling for my mother Margaret Chen\"), however the Reader labels it: a representative whose name
+    is not the verified person's, or a declaration naming another policyholder. A policyholder who merely
+    mentions a helper (caller_role stays policyholder) keeps the policyholder path."""
+    v, rep, cur = session.verification, analysis.representative, session.memory.get("full_name")
+    if v.status != "verified" or v.role != "policyholder" or analysis.caller_role == "policyholder":
+        return
+
+    def other(name: str | None) -> bool:
+        return bool(name) and (cur is None or not _same_person("full_name", cur.value, name))
+
+    if (analysis.caller_role == "representative" and other(rep.name)) or other(rep.policyholder_name):
+        _reset_verification(session, slot="representative", party_id=v.party_id)
 
 
 def _representative_switch(session: Session, analysis: TurnAnalysis) -> None:
@@ -89,14 +99,17 @@ def _representative_switch(session: Session, analysis: TurnAnalysis) -> None:
     v, c = session.verification, session.consent
     if not v.declared_representative or c.status not in ("pending", "approved"):
         return
-    held = [n for n in (c.representative_name, session.memory.value("rep_name")) if n]
+    # compared with the name the consent was requested for, never with the restated slot ("Mr. Chen")
+    held = c.representative_name or session.memory.value("rep_name") or ""
+    holder = session.memory.value("rep_policyholder_name") or ""
     named = [x.new_value for x in analysis.corrections if x.slot == "full_name"]
-    if analysis.representative.name:
-        named.append(analysis.representative.name)
-    if not named or all(any(_same_person("full_name", h, n) for h in held) for n in named):
+    named += [n for n in (analysis.representative.name, analysis.identity.full_name) if n]
+    # the policyholder's own name in an identity field names the person consent is asked from, not a caller
+    named = [n for n in named if not (holder and _same_person("full_name", holder, n))]
+    if not named or all(_same_person("full_name", held, n) for n in named):
         return
     _reset_verification(session, slot="rep_name", party_id=c.party_id)
-    session.consent = Consent(match_attempts=c.match_attempts)
+    session.consent = Consent(match_attempts=c.match_attempts, requests=c.requests)
     for n in REP_SLOTS:  # the new representative's details are captured from this message on
         session.memory.slots.pop(n, None)
 

@@ -374,3 +374,20 @@ def test_a_same_party_re_verification_keeps_its_hand_off(repos, settings):
     assert len([e for e in s.events if e.type == "escalated"]) == 1
     b = eng.handle_turn(s, A(requests={"wants_human": True}), "Is someone going to call me?")
     assert s.escalation.reference == ref and any("already been asked" in m for m in b.must_say)
+
+
+def test_the_hand_off_comes_back_after_another_party_in_between(repos, settings):
+    eng = Engine(repos, settings)
+    s = Session.new()
+    eng.greeting(s)
+    margaret = {"full_name": "Margaret Chen", "dob": "1985-03-15", "id_last4": "4472"}
+    eng.handle_turn(s, A(identity=margaret), "Margaret Chen, 1985-03-15, 4472.")
+    eng.handle_turn(s, A(requests={"wants_human": True}), "I want a person.")
+    ref = s.escalation.reference
+    eng.handle_turn(s, A(identity={"full_name": "Ma Tian", "dob": "1964-09-10", "id_last4": "6688"},
+                         corrections=[{"slot": "full_name", "new_value": "Ma Tian"}]), "This is Ma Tian ...")
+    assert s.verification.party_id == "P12" and not s.escalation.requested
+    eng.handle_turn(s, A(identity=margaret,
+                         corrections=[{"slot": "full_name", "new_value": "Margaret Chen"}]),
+                    "Sorry, it is Margaret again, 1985-03-15, 4472.")
+    assert s.verification.party_id == "P9" and s.escalation.requested and s.escalation.reference == ref
