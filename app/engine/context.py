@@ -54,6 +54,14 @@ def resolve_pending(session: Session, analysis: TurnAnalysis, user_text: str) ->
     elif p == PendingAsk.DISAMBIGUATION:
         ctx.selection_case_id = analysis.case_hints.case_id
         ctx.selection_ordinal = parse_ordinal(user_text)
+    elif p == PendingAsk.IDENTITY_CONFIRM and r.confirmation == "unspecified":
+        # code reads a plain yes or no the Reader left unspecified: "No. Ma Tian, born ...", "Yes."
+        low = user_text.strip().lower()
+        follow = r"(?:[.,!;:]|$|\s+(?:it'?s|that'?s|this is|i am|i'?m|still|not)\b)"
+        if re.match(r"^(no|nope|not me)" + follow, low):
+            r.confirmation = "no"
+        elif re.match(r"^(yes|yep|yeah)" + follow + r"|^(it'?s me|still me|that'?s me)\b", low):
+            r.confirmation = "yes"
     elif p == PendingAsk.IDENTITY_FIELDS and analysis.identity.id_last4 is None:
         if re.fullmatch(r"\s*\d{4}\s*", user_text):  # four bare digits are the last four of the ID
             digits = user_text.strip()  # unless they are the policy number's digits, restated
