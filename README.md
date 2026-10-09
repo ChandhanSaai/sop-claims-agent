@@ -28,7 +28,7 @@ owns the SOP; the model reads and phrases:** one LLM call reads each message int
 - **Live transcripts:** [docs/live-transcripts.md](docs/live-transcripts.md) replays all 24 live scenarios against
   the real Reader and Writer (Sonnet 5.5) and shows each reply with its state, guard verdict, latency and
   checks, and [docs/live-reliability.md](docs/live-reliability.md) repeats every scenario and reports pass^N.
-- **Replay suite:** `pytest -q` runs 325 tests offline with no key or network (six leak checks skip when every turn of a scenario ends verified with no identity question open), including the 25 scenarios turn
+- **Replay suite:** `pytest -q` runs 326 tests offline with no key or network (six leak checks skip when every turn of a scenario ends verified with no identity question open), including the 25 scenarios turn
   by turn and a leak check on every reply that ends unverified.
 - **Where each requirement and attack lives:** the [Grader's map](#graders-map) names the code, the test that
   pins each requirement and the live turn that shows it, and [Attacks we tried](#attacks-we-tried) pairs each
