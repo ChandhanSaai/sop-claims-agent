@@ -19,10 +19,12 @@
 | off_topic_three_times | 4 | 3/3 | 1.00 | none |
 | question_after_goodbye | 4 | 3/3 | 1.00 | none |
 | refusing_caller | 2 | 3/3 | 1.00 | none |
+| representative_after_policyholder | 5 | 3/3 | 1.00 | none |
 | representative_approved | 4 | 3/3 | 1.00 | none |
 | representative_declared | 2 | 3/3 | 1.00 | none |
 | representative_timeout | 8 | 3/3 | 1.00 | none |
 | reverify_as_another_party | 5 | 3/3 | 1.00 | none |
+| reverify_then_own_handoff | 7 | 3/3 | 1.00 | none |
 | spanish_caller | 2 | 3/3 | 1.00 | none |
 
-Overall: 60/60 scenario runs passed every hard check (100%).
+Overall: 66/66 scenario runs passed every hard check (100%).
