@@ -389,16 +389,18 @@ CI (`.github/workflows/ci.yml`) runs `ruff check .`, then `pytest -q --ignore=te
 - **API** (`tests/api`): the health check, the session, chat, outbox and trace routes, 404 and 422 handling,
   the access-token gate, session expiry, per-session locking under concurrent chats, the UI being served, and
   Margaret's first turn over HTTP end to end.
-- **Replay** (`tests/replay/test_replay.py`): fifteen scenarios run turn by turn through the full
+- **Replay** (`tests/replay/test_replay.py`): seventeen scenarios run turn by turn through the full
   `ConversationService`: `margaret_happy_path`, `angry_caller`, `refusing_caller`, `decoy_disambiguation`,
   `dob_correction`, `human_request_then_continue`, `injection_attempt`, `off_topic_three_times`,
   `question_after_goodbye`, `near_miss_phone_then_more`, `representative_declared`, `representative_approved`,
-  `representative_timeout`, `abusive_caller` and `casual_identity_phrasing`. Each turn can assert
+  `representative_timeout`, `abusive_caller`, `casual_identity_phrasing`, `spanish_caller` and
+  `first_name_only`. Each turn can assert
   phase, verification, party, attempts, pending ask, escalation, off-topic count, outbox size, text that must
   and must not appear, and the guard's verdict (`guard_ok: true` also requires no fallback).
 - **Leak checks:** the guard tests (`tests/engine/test_guard.py`) prove a pre-verification reply cannot carry a
   claim id, a fixture amount, a fixture date in any format or a fixture phrase the caller did not say, and that
-  identifiers are rejected in any format. `tests/replay/test_leaks.py` then checks every reply of every turn
+  identifiers are rejected in their numeric and English forms. `tests/replay/test_leaks.py` then checks every
+  reply of every turn
   that ends unverified, in every scenario, for claim ids, fixture amounts, fixture dates and non-echoed fixture
   phrases, regardless of the guard's verdict. The summary tests check the email body carries no identifiers.
 
@@ -428,15 +430,18 @@ turns:
 the real Reader and Writer (it needs `ANTHROPIC_API_KEY` in `.env` and costs API calls) and writes
 `docs/live-transcripts.md`. State and leak expectations are hard checks, and so is a Reader or Writer
 failure; wording expectations are soft, because a live Writer paraphrases. Last run, with Sonnet 5.5 in both
-roles: 15 of 15 scenarios passed every hard check over 53 turns, with one soft wording miss (an escalation
-reply paraphrased "I remain available"), no guard regeneration and 3 to 6 seconds per turn (the Secs
-column in the transcript). In an earlier run the first Reader call with a new output schema took about 35
-seconds (the schema is compiled and cached server-side). The first live run exposed one Writer habit the
-offline suite could not: at the goodbye step it second-guessed facts it had stated correctly earlier, so the
-Writer prompt now says that earlier replies were grounded when written and are never retracted or commented
-on. The committed run shows the habit reduced, not gone: no apology, but in `dob_correction` turn 2, after
-a corrected date of birth reset verification, the reply says its earlier claim details "shouldn't have"
-been given, although they were given to a verified caller at the time.
+roles: 17 of 17 scenarios passed every hard check over 57 turns, with one soft wording miss (an escalation
+reply paraphrased "I remain available") and one guard regeneration (`casual_identity_phrasing` turn 2: the
+first draft was rejected and the second passed, which is why that turn took 15.1 seconds; every
+other model-call turn took 2.9 to 7.6 seconds, the Secs column). In an earlier run the first Reader call
+with a new output schema took about 35 seconds (the schema is compiled and cached server-side). Earlier
+live runs exposed one Writer habit the offline suite could not: when the state moved on (a goodbye brief
+without claim facts, a corrected date of birth resetting verification, a consent timeout), the Writer
+"corrected" or apologized for replies that had been right when given. Three things now hold it: the Writer
+prompt says earlier replies were grounded when written and are never retracted or commented on; every
+later brief without claim facts says the details given earlier stand; and the brief for a
+verification-reset or consent-timeout turn says to state the new development plainly. The committed run
+has no retraction and no apology in any reply, and the timeout turn says the consent could not be obtained.
 
 Live persona evaluations (simulated callers scored as pass^k with an LLM judge) remain stretch item S02.
 
@@ -495,6 +500,15 @@ Live persona evaluations (simulated callers scored as pass^k with an LLM judge) 
   only names and the relationship, so the match is by name, and the policyholder's consent is simulated by the
   scenario file rather than obtained from the policyholder. A claimed power of attorney is routed to a human
   for document review, not checked here.
+- The Reader reads identifiers, dates and requests in any language or format and normalizes the date of birth
+  itself (code still validates it and re-asks when day and month cannot be told apart); replies follow the
+  caller's language, except the templated fallback, the trouble line and the closed-session text, which stay
+  in English. Guideline text exists only in English and the guard recognizes English date forms, so claim
+  ids, dates, amounts, references and the email address are quoted in their English form inside a translated
+  reply, and a date of birth echoed in non-English words would not be caught by the guard.
+- A one-word name is treated as a first name: the assistant asks for the full name as it appears on the
+  policy instead of spending a verification attempt. A policyholder with a mononym would have to verify
+  with three other identifiers.
 - Emotion detection is text-only and coarse (0..3 scales plus booleans).
 
 Not in this build: live persona evaluations, the hosted demo and the OpenAI adapter are stretch items (below).

@@ -17,6 +17,8 @@ FIELD_LABELS = {
     "email": "the email on file", "id_last4": "the last four digits of your SSN or national ID",
 }
 _WORDS = {1: "one", 2: "two", 3: "three", 4: "four", 5: "five"}
+FULL_NAME_NEEDED = "I'll need your full name as it appears on the policy."
+FULL_NAME_ASK = "Could I have your full name, please?"
 GATE_WHY = (
     "Claim details are protected information, so I confirm identity before discussing them; "
     "that protects your claim and your personal information."
@@ -57,6 +59,7 @@ POA_REVIEW = (
     "submitted."
 )
 CONSENT_PENDING = "The policyholder's consent is still pending."
+NOT_PENDING = "Do not say the consent is still pending: it timed out in this conversation."
 CONSENT_TIMED_OUT = (
     "The policyholder's consent could not be obtained in this conversation, so I can't discuss claim details "
     "with you as their representative here; I can still answer general questions about how claim documents "
@@ -86,12 +89,14 @@ def identity_ask(provided: dict[str, str], min_fields: int) -> str:
             "Your policy number also helps me find your record.")
 
 
-def _human_brief(session: Session, goal: str, must_say: list[str]) -> HandlerResult:
+def _human_brief(session: Session, goal: str, must_say: list[str],
+                 extra_must_not: tuple[str, ...] = ()) -> HandlerResult:
     # explained once; a declined offer is not repeated, nor is one after an escalation already happened
     offer = not (session.counters.human_declined or session.escalation.requested)
     session.pending_ask = PendingAsk.HUMAN_OFFER if offer else PendingAsk.NONE
-    brief = ReplyBrief(phase=Phase.VERIFY_ID.value, goal=goal, must_say=must_say, must_not=BASE_MUST_NOT,
-                       offer_human=offer, ask=HUMAN_ASK if offer else None)
+    brief = ReplyBrief(phase=Phase.VERIFY_ID.value, goal=goal, must_say=must_say,
+                       must_not=[*BASE_MUST_NOT, *extra_must_not], offer_human=offer,
+                       ask=HUMAN_ASK if offer else None)
     return HandlerResult(brief=brief)
 
 
@@ -132,7 +137,7 @@ def _representative(session: Session, ctx: TurnContext, repos: Repos, hints_note
         return _approve(session)
     if c.status == "timed_out":  # never re-requested
         return _human_brief(session, "Consent was not obtained; general information only; offer a human.",
-                            lead + [CONSENT_TIMED_OUT])
+                            lead + [CONSENT_TIMED_OUT], extra_must_not=(NOT_PENDING,))
     # spec 7: a claimed power of attorney goes to a person for document review, before any match or consent
     relationship = normalize_name(session.memory.value("rep_relationship") or "")
     if relationship == "poa" or "power of attorney" in relationship or "attorney in fact" in relationship:
@@ -215,6 +220,10 @@ def _handle(
         return _representative(session, ctx, repos, hints_noted)
 
     provided = {n: val for n in IDENTIFIERS if (val := session.memory.value(n))}
+    # a single word is a first name: incomplete rather than wrong, so it costs no attempt
+    first_name_only = "full_name" in provided and len(normalize_name(provided["full_name"]).split()) < 2
+    if first_name_only:
+        provided.pop("full_name")
     if "dob" in provided:
         d, ambiguous = parse_dob(provided["dob"])
         if d is None or ambiguous:  # unreadable, or day and month could swap: re-ask, not an attempt
@@ -229,7 +238,14 @@ def _handle(
             return HandlerResult(brief=brief)
 
     if len(provided) < settings.verify_min_fields:
-        must_say = ([NOTED] if hints_noted else []) + [identity_ask(provided, settings.verify_min_fields)]
+        must_say = [NOTED] if hints_noted else []
+        ask = "Which of those can you share?"
+        if first_name_only and len(provided) == settings.verify_min_fields - 1:
+            must_say.append(FULL_NAME_NEEDED)  # the full name alone completes the set
+            ask = FULL_NAME_ASK
+        else:
+            must_say += ([FULL_NAME_NEEDED] if first_name_only else []) + [
+                identity_ask(provided, settings.verify_min_fields)]
         options: list[str] = []
         if ctx.tone == "de_escalate" and session.counters.gate_explanations < 2:
             must_say += [GATE_WHY, MEANWHILE]
@@ -239,8 +255,7 @@ def _handle(
         brief = ReplyBrief(
             phase=Phase.VERIFY_ID.value,
             goal="Collect the remaining identifiers without confirming that any record exists.",
-            must_say=must_say, must_not=BASE_MUST_NOT, options=options,
-            ask="Which of those can you share?",
+            must_say=must_say, must_not=BASE_MUST_NOT, options=options, ask=ask,
         )
         return HandlerResult(brief=brief)
 

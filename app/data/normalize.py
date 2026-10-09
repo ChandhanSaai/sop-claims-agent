@@ -41,7 +41,7 @@ def parse_dob(s: str) -> tuple[date | None, bool]:
     """Return (date, ambiguous). Ambiguous means a numeric date where day and month could be swapped."""
     s = re.sub(r"(\d)(st|nd|rd|th)\b", r"\1", s.strip())  # "March 15th, 1985" -> "March 15, 1985"
     s = re.sub(r"\b(of|the)\b", " ", s, flags=re.IGNORECASE)  # "15th of March 1985"
-    s = re.sub(r"\s+", " ", s.replace(",", " ")).strip()
+    s = _WS.sub(" ", s.replace(",", " ")).strip()
     for fmt in _DOB_FORMATS:
         try:
             return datetime.strptime(s, fmt).date(), False

@@ -1,0 +1,30 @@
+name: first_name_only
+scenario: default
+today: "2026-10-07"
+turns:
+  - user: "i am margaret and i was born on 1985 march 15th and my ssn is 4472"
+    analysis:
+      identity: {full_name: "margaret", dob: "1985-03-15", id_last4: "4472"}
+      caller_role: policyholder
+      scope: in_scope
+    expect:
+      phase: VERIFY_ID
+      verified: false
+      attempts: 0
+      pending_ask: identity_fields
+      reply_contains: ["full name"]
+      reply_not_contains: ["CL-2048", "pathology", "1985", "4472", "wasn't able", "double-check"]
+      guard_ok: true
+  - user: "Margaret Chen"
+    analysis:
+      identity: {full_name: "Margaret Chen"}
+      scope: in_scope
+    expect:
+      phase: RESOLVE_INTENT
+      verified: true
+      party_id: P9
+      attempts: 0
+      pending_ask: disambiguation
+      reply_contains: ["CL-2048", "CL-2011"]
+      reply_not_contains: ["4472", "1985"]
+      guard_ok: true

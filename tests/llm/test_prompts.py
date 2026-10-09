@@ -24,7 +24,8 @@ def test_writer_prompt_rules():
     assert "Never retract, doubt, correct or" in WRITER_SYSTEM  # no self-correction of earlier turns
     assert "do not comment on them" in WRITER_SYSTEM
     assert "friendly human agent" in WRITER_SYSTEM
-    assert "Digits given as the policy number" in READER_SYSTEM  # bare policy digits are not id_last4
+    assert "Reply in the language of the caller" in WRITER_SYSTEM
+    assert "untranslated" in WRITER_SYSTEM  # facts stay in the form the guard recognizes
     brief = ReplyBrief(phase="VERIFY_ID", goal="g", must_not=["no claim details"])
     block = format_brief(brief, violation="mentioned CL-2048")
     assert '"must_not"' in block and "mentioned CL-2048" in block
@@ -33,3 +34,11 @@ def test_writer_prompt_rules():
 def test_thinking_param_only_for_sonnet_55():
     assert thinking_param("claude-sonnet-5-5") == {"type": "between_tools"}
     assert thinking_param("claude-opus-5-5") is None
+
+
+def test_reader_prompt_identity_rules():
+    assert "Digits given as the policy number" in READER_SYSTEM  # bare policy digits are not id_last4
+    assert "normalized to YYYY-MM-DD" in READER_SYSTEM  # any language or format: the Reader normalizes
+    assert "copy it as written" in READER_SYSTEM  # the ambiguous case still reaches the code re-ask
+    assert "new_value in the same form" in READER_SYSTEM
+    assert "still out_of_scope, not meta" in READER_SYSTEM  # a terse repeat of an off-topic ask

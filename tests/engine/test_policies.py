@@ -1,5 +1,6 @@
 from app.engine.machine import Engine
-from app.engine.policies import BOUNDARY_LINE, CLOSE_LINE, SCOPE_LINE
+from app.engine.phases.verify_id import NOT_PENDING
+from app.engine.policies import BOUNDARY_LINE, CLOSE_LINE, EARLIER_DETAILS_STAND, NEW_DEVELOPMENT, SCOPE_LINE
 from app.engine.state import PendingAsk, Phase, Session, Verification
 from app.llm.schemas import TurnAnalysis
 
@@ -260,3 +261,57 @@ def test_second_abusive_message_that_asks_for_a_human_still_closes(repos, settin
     eng.handle_turn(s, _abusive(), "you useless bot")
     eng.handle_turn(s, _abusive(requests={"wants_human": True}), "get me a human, you idiot")
     assert s.closed and s.escalation.reason == "abusive caller"
+
+
+def test_a_correction_that_resets_verification_marks_the_turn_a_new_development(repos, settings):
+    eng = Engine(repos, settings)
+    s = Session.new()
+    eng.greeting(s)
+    eng.handle_turn(s, A(identity={"full_name": "Margaret Chen", "dob": "1985-03-15", "id_last4": "4472"},
+                         case_hints={"status": "denied", "case_type": "healthcare", "month": 1}),
+                    "Margaret Chen, DOB 1985-03-15, last four 4472, my denied January healthcare claim")
+    assert s.verification.status == "verified"
+    b = eng.handle_turn(s, A(corrections=[{"slot": "dob", "new_value": "1985-03-16"}]), "actually 1985-03-16")
+    assert s.verification.status == "unverified" and NEW_DEVELOPMENT in b.must_not
+    b2 = eng.handle_turn(s, A(identity={"dob": "1985-03-15"}), "sorry, 1985-03-15")
+    assert s.verification.status == "verified" and NEW_DEVELOPMENT not in b2.must_not
+
+
+def test_consent_timeout_turn_is_a_new_development(repos, settings):
+    eng = Engine(repos, settings)
+    s = Session.new("timeout")
+    eng.greeting(s)
+    eng.handle_turn(s, A(caller_role="representative", representative={
+        "name": "David Chen", "relationship": "son", "policyholder_name": "Margaret Chen"}),
+        "David Chen, calling for my mother Margaret Chen")
+    briefs = [eng.handle_turn(s, A(), "still waiting?") for _ in range(6)]
+    assert s.consent.status == "timed_out" and NEW_DEVELOPMENT in briefs[-1].must_not
+    assert NOT_PENDING in briefs[-1].must_not  # the Writer may not soften the timeout into "still pending"
+    assert all(NEW_DEVELOPMENT not in b.must_not for b in briefs[:-1])
+
+
+def test_earlier_claim_details_stand_on_turns_without_claim_facts(repos, settings):
+    eng = Engine(repos, settings)
+    s = Session.new()
+    eng.greeting(s)
+    ident = {"full_name": "Margaret Chen", "dob": "1985-03-15", "id_last4": "4472"}
+    b1 = eng.handle_turn(s, A(identity=ident, intent="denial_question",
+                              case_hints={"status": "denied", "case_type": "healthcare", "month": 1}),
+                         "Margaret Chen, 1985-03-15, 4472, my denied claim")
+    assert "claim_id" in b1.allowed_facts and EARLIER_DETAILS_STAND not in b1.must_not
+    b2 = eng.handle_turn(s, A(requests={"confirmation": "no", "closing": True}), "No, that's all.")
+    assert s.phase == Phase.POST_PROCESS and EARLIER_DETAILS_STAND in b2.must_not
+
+
+def test_a_claim_list_after_an_answer_is_not_told_that_earlier_details_stand(repos, settings):
+    eng = Engine(repos, settings)
+    s = Session.new()
+    eng.greeting(s)
+    ident = {"full_name": "Margaret Chen", "dob": "1985-03-15", "id_last4": "4472"}
+    eng.handle_turn(s, A(identity=ident, intent="denial_question",
+                         case_hints={"status": "denied", "case_type": "healthcare", "month": 1}),
+                    "Margaret Chen, 1985-03-15, 4472, my denied claim")
+    b = eng.handle_turn(s, A(case_hints={"case_type": "healthcare"}, requests={"switch_claim": True}),
+                        "what about my other healthcare claims?")
+    assert s.phase == Phase.RESOLVE_INTENT and any(k.startswith("option_") for k in b.allowed_facts)
+    assert EARLIER_DETAILS_STAND not in b.must_not
