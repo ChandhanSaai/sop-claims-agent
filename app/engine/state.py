@@ -35,9 +35,10 @@ class SlotStatus(StrEnum):
 
 IDENTITY_SLOTS = ("full_name", "dob", "phone", "email", "id_last4", "policy_number")
 HINT_SLOTS = ("case_type", "status_hint", "month", "year", "case_id", "free_text", "intent")
+REP_SLOTS = ("rep_name", "rep_relationship", "rep_policyholder_name")
 # Slot values that are safe to show in the inspector; everything else (free_text is the caller's own words,
 # which may hold an identifier) is masked.
-UNMASKED_SLOTS = ("full_name", "case_type", "status_hint", "month", "year", "case_id", "intent")
+UNMASKED_SLOTS = ("full_name", "case_type", "status_hint", "month", "year", "case_id", "intent", *REP_SLOTS)
 
 
 class Slot(BaseModel):
@@ -83,7 +84,8 @@ class Verification(BaseModel):
     party_id: str | None = None
     attempts: int = 0
     role: Literal["policyholder", "representative"] | None = None
-    # the caller said they are calling for someone else; sticks until they say they are the policyholder
+    # the caller said they are calling for someone else; sticks for the session, so a later claim to be
+    # the policyholder cannot reopen the policyholder path
     declared_representative: bool = False
     # identifiers used in the last verify call; a repeat is not a new attempt
     last_fingerprint: str | None = None
@@ -94,6 +96,9 @@ class Consent(BaseModel):
     representative_name: str | None = None
     polls: int = 0
     consent_id: str | None = None
+    party_id: str | None = None  # the policyholder the consent was requested from
+    # normalized representative, relationship and policyholder names of the last match attempt
+    last_match: str | None = None
 
 
 class CaseState(BaseModel):
@@ -178,7 +183,7 @@ class Session(BaseModel):
             "turn": self.turn,
             "pending_ask": self.pending_ask.value,
             "verification": self.verification.model_dump(exclude={"last_fingerprint"}),
-            "consent": self.consent.model_dump(),
+            "consent": self.consent.model_dump(exclude={"last_match"}),
             "case": self.case.model_dump(),
             "escalation": self.escalation.model_dump(),
             "counters": self.counters.model_dump(),

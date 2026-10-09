@@ -12,7 +12,7 @@ turns:
       phase: VERIFY_ID
       verified: false
       attempts: 0
-      pending_ask: human_offer
+      pending_ask: consent_wait
       reply_contains: ["consent", "representative"]
       reply_not_contains: ["CL-2048", "pathology", "1985-03-15", "POL-9921"]
       guard_ok: true
@@ -24,6 +24,7 @@ turns:
       phase: VERIFY_ID
       verified: false
       attempts: 0
+      pending_ask: consent_wait
       reply_contains: ["consent"]
       reply_not_contains: ["CL-2048", "pathology", "4472"]
       guard_ok: true

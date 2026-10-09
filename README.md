@@ -74,7 +74,7 @@ Every variable in `.env.example`, read by `app/config.py` from the environment o
 | `VERIFY_REQUIRE_STRONG_FIELD` | `false` | When `true`, date of birth or ID last 4 must be among the matches. Off because the brief says any 3 of 5; recommended on in production. |
 | `VERIFY_MAX_ATTEMPTS` | `3` | Failed verify calls allowed per session; then verification is exhausted, the agent stops asking for identifiers and offers a representative. Counted per session, not per record. |
 | `OFFTOPIC_HUMAN_OFFER_AT` | `2` | Off-topic turn on which a human is offered; the next off-topic turn escalates. |
-| `CONSENT_SCENARIO` | `default` | Consent simulation for the representative path (`default` or `timeout`). Not read in this build: the representative path is stretch item S01, and the per-session scenario comes from the UI selector or `POST /api/session`. |
+| `CONSENT_SCENARIO` | `default` | Consent scenario for new sessions when `POST /api/session` sends none or `scripts/chat_cli.py` gets no argument (`default`: pending, then approved; `timeout`: five pendings, then timed out). A scenario in the request body wins (the UI selector always sends its value); an unknown name falls back to `default`. |
 | `SESSION_TTL_MINUTES` | `60` | Idle minutes before an in-memory session expires; later calls on it get 404. |
 | `DEMO_ACCESS_TOKEN` | empty (off) | When set, every `/api/*` request needs header `X-Access-Token` with this value. |
 | `LOG_LEVEL` | `INFO` | Root level for the JSON logs. |
@@ -125,9 +125,27 @@ the facts in it, after which the output guard checks the text against the sessio
 | Phase | Freedom dial | Gate | Exits |
 |---|---|---|---|
 | VERIFY_ID (strict) | Near-canned. May explain why verification is needed (at most twice per session, framed as protecting the caller's claim), list the acceptable identifiers and alternatives, and take them one at a time. Never confirms that any record or claim exists. | `VERIFY_MIN_FIELDS` of 5 identifiers match through the verify tool, which compares in code and never shows stored values to the model; policy number only finds the record. One generic failure message. `VERIFY_MAX_ATTEMPTS` failed calls per session exhaust verification. | Verified: RESOLVE_INTENT in the same turn. Exhausted: stays, stops asking, offers a representative. |
+| VERIFY_ID, representative branch | Near-canned. Collects the representative's name, relationship and the policyholder's name; says a consent request went to the policyholder's contact on file and what the caller can do meanwhile. Never confirms that any record or claim exists, never names the contact, never says which name failed to match. | The representative's and the policyholder's names match `fixtures/representatives.json`, then the policyholder's consent (simulated by `ConsentService`: one request per session, one poll per turn, driven by the session's consent scenario) comes back approved. Identifiers the representative gives for the policyholder are stored but never looked up or verified. | Approved: verified with role `representative`, `consent_reference` in the facts, RESOLVE_INTENT in the same turn. Timed out: stays, general information only, offers a human until the caller declines or a hand-off has happened, never re-requests. No match: one generic sentence and a human offer; changed names retry. |
 | RESOLVE_INTENT (flexible) | Free phrasing; candidate claims are listed with type, opened date and status from data only. | Exactly one of the verified caller's claims fits the remembered hints (type, status, month, year, case id), or the caller picks one by case id or ordinal. No guessing. | One match or a pick: PROCESS_CASE in the same turn. Several or none: a disambiguation question, and the chain stops. |
 | PROCESS_CASE (flexible, grounded) | Free wording around `allowed_facts` that code builds from the selected claim and the guideline: status, denial reason, documents, appeal deadline with a computed passed flag, amounts, guidance text. | A selected claim. Deadlines and money are computed in code; an appeal question after the deadline has passed, or a document the caller cannot get, leads to a human offer. | A switched claim: RESOLVE_INTENT. Closing, or "no" to "anything else?": POST_PROCESS in the same turn. Otherwise it answers and asks "anything else?". |
 | POST_PROCESS (strict offer, flexible wording) | Offer and goodbye wording are free; the summary draft is built by code from the event log and claim data and shown verbatim. | Email offered once, default no; sent only after a yes to the shown draft, and only to the address on file. | A new in-scope question: RESOLVE_INTENT (the same claim reselects at once; verification is kept). Anything else: a short goodbye; the session stays open. |
+
+**Representative callers.** A caller who says they are calling for someone else (role `representative`, or an
+unknown role with a representative detail) is handled on the representative branch for the rest of the
+session, even if they later claim to be the policyholder; a policyholder who merely mentions a helper stays on
+the policyholder path. The branch collects the representative's name, relationship and the policyholder's
+name, matches the names against `fixtures/representatives.json` (David Chen for Margaret Chen), and asks
+`ConsentService` once for the policyholder's consent out of band. The session's consent scenario (`default`:
+pending, then approved; `timeout`: five pendings, then timed out) drives one poll per turn while the caller is
+told that consent is pending and that general questions are still answered. Approval verifies the caller with
+role `representative` and the policyholder's `party_id`, cites the consent id as `consent_reference` in the
+transition facts and on every later disclosure event, and chains into the claim in the same turn. A timeout
+gives general information only, offers a human until the caller declines or a hand-off has happened, and
+never re-requests. A caller who claims a power of
+attorney (relationship "power of attorney", "attorney-in-fact" or "POA") is routed to a human for document
+review before any match or consent request: general information only, one `poa_claimed` event, and the human
+offer under the usual rule. The summary email always goes to the policyholder's address on file, the offer
+says so, and the draft closes with the representative's name and the consent reference.
 
 Cross-cutting policies, applied before the handler chain (state and counters) and after it (tone overlay):
 
@@ -254,6 +272,45 @@ What each reply must and must not do (spec Appendix B):
   reference.
 - **Turn 7:** must give a short goodbye. Must not offer the email again.
 
+### representative_approved
+
+| # | Caller says | Phase after | Verified | Pending ask | Guard |
+|---|---|---|---|---|---|
+| 1 | Hi, I'm David Chen, calling for my mother Margaret Chen, policy POL-9921. Her healthcare claim from January was denied. | VERIFY_ID | unverified | consent_wait | ok |
+| 2 | Has she approved it yet? | VERIFY_ID | unverified | consent_wait | ok |
+| 3 | Anything now? | PROCESS_CASE | verified | anything_else | ok |
+| 4 | No, that's all. | POST_PROCESS | verified | email_offer | ok |
+
+What each reply must and must not do (spec section 7, representative branch; `default` consent scenario):
+
+- **Turn 1:** must note the denied-claim question for later; say a consent request was sent to the
+  policyholder and what the caller can do meanwhile. Must not confirm that a policy or claim exists; name the
+  policyholder's contact; mention CL-2048, the documents, the policy number or the email.
+- **Turn 2:** must say consent is still pending. Must not mention any claim fact.
+- **Turn 3:** must say consent was received and the caller is verified as the authorized representative; give
+  the consent reference; name CL-2048; give the denial reason and the two documents; note the passed deadline;
+  ask anything else.
+- **Turn 4:** must offer the summary to the masked address on file and say it goes to the policyholder.
+
+### representative_timeout
+
+| # | Caller says | Phase after | Verified | Pending ask | Guard |
+|---|---|---|---|---|---|
+| 1 | Hi, I'm David Chen, calling for my mother Margaret Chen, policy POL-9921. Her healthcare claim from January was denied. | VERIFY_ID | unverified | consent_wait | ok |
+| 2 | Still waiting? | VERIFY_ID | unverified | consent_wait | ok |
+| 3 | Still waiting? | VERIFY_ID | unverified | consent_wait | ok |
+| 4 | Still waiting? | VERIFY_ID | unverified | consent_wait | ok |
+| 5 | Still waiting? | VERIFY_ID | unverified | consent_wait | ok |
+| 6 | Still waiting? | VERIFY_ID | unverified | consent_wait | ok |
+| 7 | Anything? | VERIFY_ID | unverified | human_offer | ok |
+| 8 | Yes | VERIFY_ID | unverified | none | ok |
+
+- **Turns 1 to 6** (`timeout` consent scenario): as above; consent stays pending through five polls, with no
+  claim fact in any reply.
+- **Turn 7:** must say consent could not be obtained in this conversation, that general questions are still
+  answered, and offer a human. Must not mention CL-2048 or the documents.
+- **Turn 8:** a yes to the offer escalates once: the `ESC-` reference is given; verification stays unverified.
+
 ### Demo script
 
 With a real `ANTHROPIC_API_KEY` and `LLM_BACKEND=anthropic`, open the UI, click New conversation before each
@@ -286,6 +343,18 @@ reference):
 2. What is reinforcement learning?
 3. What is reinforcement learning?
 
+Representative with consent approved (select the `default` consent scenario before New conversation):
+
+1. Hi, I'm David Chen, calling for my mother Margaret Chen, policy POL-9921. Her healthcare claim from January
+   was denied.
+2. Has she approved it yet?
+3. Anything now?
+4. No, that's all.
+
+Representative with consent timing out (select the `timeout` consent scenario): the same first message, then
+"Still waiting?" five times (consent stays pending), then "Anything?" (timed out, a human is offered), then
+"Yes" (one escalation with an `ESC-` reference).
+
 ## Testing
 
 ```bash
@@ -305,18 +374,22 @@ CI (`.github/workflows/ci.yml`) runs `ruff check .`, then `pytest -q --ignore=te
   transitions and same-turn chaining (Margaret in one turn), attempts and exhaustion, identical wording for
   unknown callers, format-only restatements, the DOB re-ask, the gate explanation cap, memory provenance and
   corrections, the off-topic ladder, a single escalation, meta, mixed and injection turns, the email offer,
-  draft, confirm and decline paths and the route back, the summary, brief merging, and the service's
-  regenerate-once and template fallbacks, trouble line on a Reader failure and tolerance of a failed trace write.
+  draft, confirm and decline paths and the route back, the summary, brief merging, the representative sub-flow
+  (collecting the details, identical no-match wording for either wrong name, one consent request, one poll per
+  turn, approval chaining into the claim, the timeout, the closed policyholder path and the
+  policyholder-address summary), and the service's regenerate-once and template fallbacks, trouble line on a
+  Reader failure and tolerance of a failed trace write.
 - **LLM** (`tests/llm`): prompt content, the Anthropic client's request shape (including both calls through the
   real SDK over an in-memory transport), the Reader's retry with the validation error and the `LLMError` it
   raises on refusal or a failed call, and the FakeLLM.
 - **API** (`tests/api`): the health check, the session, chat, outbox and trace routes, 404 and 422 handling,
   the access-token gate, session expiry, per-session locking under concurrent chats, the UI being served, and
   Margaret's first turn over HTTP end to end.
-- **Replay** (`tests/replay/test_replay.py`): eleven scenarios run turn by turn through the full
+- **Replay** (`tests/replay/test_replay.py`): thirteen scenarios run turn by turn through the full
   `ConversationService`: `margaret_happy_path`, `angry_caller`, `refusing_caller`, `decoy_disambiguation`,
   `dob_correction`, `human_request_then_continue`, `injection_attempt`, `off_topic_three_times`,
-  `question_after_goodbye`, `near_miss_phone_then_more` and `representative_declared`. Each turn can assert
+  `question_after_goodbye`, `near_miss_phone_then_more`, `representative_declared`, `representative_approved`
+  and `representative_timeout`. Each turn can assert
   phase, verification, party, attempts, pending ask, escalation, off-topic count, outbox size, text that must
   and must not appear, and the guard's verdict (`guard_ok: true` also requires no fallback).
 - **Leak checks:** the guard tests (`tests/engine/test_guard.py`) prove a pre-verification reply cannot carry a
@@ -401,17 +474,21 @@ stretch item S02 and not in this build.
 - Escalation is simulated: a reference number and a logged hand-off packet, no live human.
 - The representative scope is "this conversation, this policyholder's claims"; finer minimum-necessary scoping and
   the HIPAA 164.502(g) personal-representative path are documented, not built.
+- The representative's own identity is not verified against any identifier: the representatives file carries
+  only names and the relationship, so the match is by name, and the policyholder's consent is simulated by the
+  scenario file rather than obtained from the policyholder. A claimed power of attorney is routed to a human
+  for document review, not checked here.
 - Emotion detection is text-only and coarse (0..3 scales plus booleans).
 
-Not in this build: the representative path, live persona evaluations, the hosted demo, the abuse policy and the
-OpenAI adapter are stretch items (below). Until S01 lands, a caller who says they are calling for someone else
-is told how consent works and offered a representative.
+Not in this build: live persona evaluations, the hosted demo, the abuse policy and the OpenAI adapter are
+stretch items (below).
 
 ## Stretch roadmap
 
-- **S01 Representative and consent:** match the representative against the representatives file, request the
-  policyholder's consent out of band (approve and timeout scenarios), cite the consent id on every disclosure,
-  and route claimed powers of attorney to a human.
+- **S01 Representative and consent:** built (see Representative callers under How it works): the
+  representative is matched against the representatives file, the policyholder's consent is requested out of
+  band (approve and timeout scenarios), the consent id is cited on every disclosure, and a claimed power of
+  attorney is routed to a human for document review.
 - **S02 Live persona evaluations:** five simulated personas run four times each against the real pipeline, with
   code checks for gates and leaks, an LLM judge for tone and groundedness, and a pass^k report; opt-in, never in
   CI by default.

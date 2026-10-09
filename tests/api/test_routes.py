@@ -18,8 +18,8 @@ class StubResult:
 
 
 class StubService:
-    def start(self, scenario: str) -> Session:
-        s = Session.new(scenario)
+    def start(self, scenario: str | None = None) -> Session:
+        s = Session.new(scenario or "default")
         s.transcript.append(Turn(role="assistant", text="Hello, I'm an automated assistant."))
         return s
 

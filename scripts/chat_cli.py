@@ -11,7 +11,7 @@ from app.observability.logging import configure_logging  # noqa: E402
 settings = get_settings()
 configure_logging(settings.log_level)  # redacted JSON logs, as in the app
 svc = build_service(settings)
-session = svc.start(sys.argv[1] if len(sys.argv) > 1 else "default")
+session = svc.start(sys.argv[1] if len(sys.argv) > 1 else None)  # None: CONSENT_SCENARIO
 print(f"assistant> {session.transcript[-1].text}")
 while True:
     try:

@@ -9,7 +9,7 @@ from app.engine.briefs import HandlerResult
 from app.engine.context import HUMAN_ASK, TurnContext
 from app.engine.phases.post_process import GOODBYE
 from app.engine.phases.process_case import SUBMISSION_TOPICS
-from app.engine.state import IDENTITY_SLOTS, PendingAsk, Phase, Session
+from app.engine.state import IDENTITY_SLOTS, REP_SLOTS, PendingAsk, Phase, Session
 from app.llm.schemas import ReplyBrief
 
 FIELD_LABELS = {
@@ -42,6 +42,31 @@ ALT_OPTIONS = [
 ]
 _NORMALIZERS = {"full_name": normalize_name, "dob": lambda s: parse_dob(s)[0], "phone": normalize_phone,
                 "email": normalize_email, "id_last4": normalize_id4}
+REP_LABELS = {"rep_name": "your full name", "rep_relationship": "your relationship to the policyholder",
+              "rep_policyholder_name": "the policyholder's full name"}
+REP_CALL = "This conversation is being handled as a representative call."
+# one sentence for every no-match, whichever name failed: it must not reveal whether the policyholder exists
+NO_AUTHORIZATION = "I couldn't confirm an authorization on file for that representative and policyholder."
+NO_CONTACT = "Do not name or describe the policyholder's contact details."
+CONSENT_REQUESTED = (
+    "A consent request has been sent to the policyholder's contact on file; once they approve it, I can "
+    "discuss claim details with you as their authorized representative."
+)
+POA_REVIEW = (
+    "A power of attorney has to be reviewed by a person who can check the documents, so I can't discuss "
+    "claim details on that basis here; I can still answer general questions about how claim documents are "
+    "submitted."
+)
+CONSENT_PENDING = "The policyholder's consent is still pending."
+CONSENT_TIMED_OUT = (
+    "The policyholder's consent could not be obtained in this conversation, so I can't discuss claim details "
+    "with you as their representative here; I can still answer general questions about how claim documents "
+    "are submitted."
+)
+CONSENT_FACT = (
+    "Consent was received from the policyholder; you are verified as their authorized representative."
+)
+MEANWHILE_ASK = "Is there a general question I can help with in the meantime?"
 
 
 def _fingerprint(provided: dict[str, str]) -> str:
@@ -63,11 +88,89 @@ def identity_ask(provided: dict[str, str], min_fields: int) -> str:
 
 
 def _human_brief(session: Session, goal: str, must_say: list[str]) -> HandlerResult:
-    offer = not session.counters.human_declined  # explained once; a declined offer is not repeated
+    # explained once; a declined offer is not repeated, nor is one after an escalation already happened
+    offer = not (session.counters.human_declined or session.escalation.requested)
     session.pending_ask = PendingAsk.HUMAN_OFFER if offer else PendingAsk.NONE
     brief = ReplyBrief(phase=Phase.VERIFY_ID.value, goal=goal, must_say=must_say, must_not=BASE_MUST_NOT,
                        offer_human=offer, ask=HUMAN_ASK if offer else None)
     return HandlerResult(brief=brief)
+
+
+def _approve(session: Session) -> HandlerResult:
+    v, c = session.verification, session.consent
+    v.status, v.party_id, v.role = "verified", c.party_id, "representative"
+    session.memory.mark_verified(REP_SLOTS)
+    session.phase = Phase.RESOLVE_INTENT
+    session.pending_ask = PendingAsk.NONE
+    brief = ReplyBrief(phase=Phase.RESOLVE_INTENT.value, goal="Consent received; continue.",
+                       must_say=[CONSENT_FACT], must_not=["Do not repeat identifiers."])
+    return HandlerResult(brief=brief, advanced=True, needs_input=False, transition_fact=CONSENT_FACT,
+                         transition_facts={"consent_reference": c.consent_id})
+
+
+def _representative(session: Session, ctx: TurnContext, repos: Repos, hints_noted: bool) -> HandlerResult:
+    """Sub-flow driven by session.consent: every status comes from a tool result, consent is requested once
+    per session and polled once per turn, and the policyholder's identifiers are never looked up here."""
+    c = session.consent
+    phase = Phase.VERIFY_ID.value
+    lead = [REP_CALL] if ctx.analysis.caller_role == "policyholder" else []
+    if c.status == "pending":
+        status = repos.consent.poll(c.consent_id)
+        c.polls += 1
+        if status == "approved":
+            c.status = "approved"
+            session.log("consent_approved", consent_id=c.consent_id, party_id=c.party_id)
+        elif status == "timed_out":
+            c.status = "timed_out"
+            session.log("consent_timed_out", consent_id=c.consent_id, polls=c.polls)
+        else:
+            session.pending_ask = PendingAsk.CONSENT_WAIT
+            brief = ReplyBrief(phase=phase, goal="Consent is still pending; say what the caller can do.",
+                               must_say=lead + [CONSENT_PENDING, MEANWHILE], must_not=BASE_MUST_NOT,
+                               ask=MEANWHILE_ASK)
+            return HandlerResult(brief=brief)
+    if c.status == "approved":
+        return _approve(session)
+    if c.status == "timed_out":  # never re-requested
+        return _human_brief(session, "Consent was not obtained; general information only; offer a human.",
+                            lead + [CONSENT_TIMED_OUT])
+    # spec 7: a claimed power of attorney goes to a person for document review, before any match or consent
+    relationship = normalize_name(session.memory.value("rep_relationship") or "")
+    if relationship == "poa" or "power of attorney" in relationship or "attorney in fact" in relationship:
+        if not any(e.type == "poa_claimed" for e in session.events):
+            session.log("poa_claimed")
+        return _human_brief(session, "A claimed power of attorney needs document review by a person; "
+                                     "general information only.", lead + [POA_REVIEW])
+    rep = {n: session.memory.value(n) for n in REP_SLOTS}
+    missing = [REP_LABELS[n] for n in REP_SLOTS if not rep[n]]
+    if missing:
+        items = (", ".join(missing[:-1]) + f" and {missing[-1]}") if len(missing) > 1 else missing[0]
+        session.pending_ask = PendingAsk.IDENTITY_FIELDS
+        ask_line = f"To handle this as a representative call, I need {items}."
+        brief = ReplyBrief(
+            phase=phase, goal="Collect the representative details without confirming any record exists.",
+            must_say=lead + ([NOTED] if hints_noted else []) + [ask_line], must_not=BASE_MUST_NOT,
+            ask="Could you share those?",
+        )
+        return HandlerResult(brief=brief)
+    fingerprint = "|".join(normalize_name(x) for x in rep.values())
+    if fingerprint != c.last_match:  # a restated triple is not matched again
+        c.last_match = fingerprint
+        match = repos.representatives.match(rep["rep_name"], rep["rep_policyholder_name"])
+        if match is not None:
+            cid = repos.consent.request(match.buyer_party_id, match.rep_name, session.scenario)
+            c.status, c.consent_id, c.party_id = "pending", cid, match.buyer_party_id
+            c.representative_name = match.rep_name
+            session.log("consent_requested", consent_id=cid, scenario=session.scenario)
+            session.pending_ask = PendingAsk.CONSENT_WAIT
+            brief = ReplyBrief(
+                phase=phase, goal="Say a consent request went to the policyholder; nothing about any claim.",
+                must_say=lead + ([NOTED] if hints_noted else []) + [CONSENT_REQUESTED, MEANWHILE],
+                must_not=BASE_MUST_NOT + [NO_CONTACT], ask=MEANWHILE_ASK,
+            )
+            return HandlerResult(brief=brief)
+    return _human_brief(session, "Say no authorization is on file, without saying which name did not match.",
+                        lead + [NO_AUTHORIZATION])
 
 
 def handle(
@@ -100,16 +203,17 @@ def _handle(
              "details here.",
              "A representative can verify your identity another way."],
         )
-    if a.caller_role == "representative" or a.representative.name:
+    hints_noted = any(
+        session.memory.value(n)
+        for n in ("case_type", "status_hint", "month", "year", "case_id", "free_text", "intent")
+    )
+    rep = a.representative
+    # a policyholder who merely mentions a helper keeps the policyholder path; once set, the flag wins
+    if a.caller_role != "policyholder" and (
+            a.caller_role == "representative" or rep.name or rep.relationship or rep.policyholder_name):
         v.declared_representative = True
-    if v.declared_representative and a.caller_role != "policyholder":
-        return _human_brief(
-            session,
-            "Explain representative access without confirming any record.",
-            ["Claim details can be discussed with the policyholder, or with an authorized representative "
-             "once the policyholder's consent is on record.",
-             "A representative can arrange that consent."],
-        )
+    if v.declared_representative:
+        return _representative(session, ctx, repos, hints_noted)
 
     provided = {n: val for n in IDENTIFIERS if (val := session.memory.value(n))}
     if "dob" in provided:
@@ -125,11 +229,6 @@ def _handle(
                     "for example 4 July 1990?",
             )
             return HandlerResult(brief=brief)
-
-    hints_noted = any(
-        session.memory.value(n)
-        for n in ("case_type", "status_hint", "month", "year", "case_id", "free_text", "intent")
-    )
 
     if len(provided) < settings.verify_min_fields:
         must_say = ([NOTED] if hints_noted else []) + [identity_ask(provided, settings.verify_min_fields)]

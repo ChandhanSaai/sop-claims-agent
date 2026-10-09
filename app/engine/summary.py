@@ -49,6 +49,10 @@ def build_summary(session: Session, repos: Repos, today: date) -> str:
             lines += ["", "Next steps:", *steps]
     if session.escalation.requested:
         lines += ["", f"A representative will follow up. Reference: {session.escalation.reference}."]
+    if session.verification.role == "representative":
+        c = session.consent
+        lines += ["", f"Discussed with your authorized representative {c.representative_name} "
+                      f"(consent reference {c.consent_id})."]
     lines += ["", "This summary contains no identification details. If anything looks wrong, reply to this "
               "email or call support."]
     return "\n".join(lines)
