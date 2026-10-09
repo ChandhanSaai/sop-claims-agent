@@ -1,4 +1,4 @@
-from app.engine.state import IDENTITY_SLOTS, PendingAsk, Phase, Session, SlotStatus, Verification
+from app.engine.state import IDENTITY_SLOTS, CaseState, PendingAsk, Phase, Session, SlotStatus, Verification
 from app.llm.schemas import TurnAnalysis
 
 
@@ -28,6 +28,7 @@ def merge_analysis(session: Session, analysis: TurnAnalysis) -> list[str]:
             changed.append(c.slot)
         if was_verified and session.verification.status == "verified":
             session.verification = Verification()
+            session.case = CaseState()  # a different party may verify next; its claims are re-resolved
             session.memory.reset_identity()
             session.phase = Phase.VERIFY_ID
             session.pending_ask = PendingAsk.NONE

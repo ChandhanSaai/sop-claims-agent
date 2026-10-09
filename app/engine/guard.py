@@ -1,3 +1,4 @@
+import calendar
 import re
 from datetime import date
 
@@ -10,8 +11,15 @@ from app.llm.schemas import ReplyBrief
 
 CLAIM_ID = re.compile(r"\bCL-\d+\b", re.IGNORECASE)
 TAG = re.compile(r"<[^>]+>")
-NUMBER = re.compile(r"\d[\d,]*\.\d+|\d{3,}")
+NUMBER = re.compile(r"\d[\d,]*\.\d+|\d{3,}")  # bare numbers under 100 ("the 2 documents") stay unguarded
 THOUSANDS = re.compile(r"(?<=\d),(?=\d{3}(?!\d))")  # "$1,450.00" -> "$1450.00", not "March 18,2026"
+_MONTHS = {name.casefold(): i for names in (calendar.month_name, calendar.month_abbr)
+           for i, name in enumerate(names) if name}  # "january" -> 1, "jan" -> 1
+_MONTH_WORDS = "|".join(sorted(_MONTHS, key=len, reverse=True))
+# any month-name, ISO or m/d/yyyy date mention, fixture or invented:
+# "April 30, 2026", "apr 30th", "2026-04-30", "4/30/2026"
+GENERIC_DATE = re.compile(rf"\b({_MONTH_WORDS})\.?\s+(\d{{1,2}})(?:st|nd|rd|th)?(?:,?\s+(\d{{4}}))?\b"
+                          r"|\b(\d{4})-(\d{2})-(\d{2})\b|\b(\d{1,2})/(\d{1,2})/(\d{4})\b", re.IGNORECASE)
 
 
 def contains_token(haystack: str, needle: str) -> bool:
@@ -62,7 +70,9 @@ class OutputGuard:
         m = session.memory
         if dob := m.value("dob"):  # the raw value too: memory keeps it as written, parsed or not
             d = parse_dob(dob)[0]
-            if contains_token(text, dob) or (d and any(contains_token(text, v) for v in date_variants(d))):
+            # a partial value ("March") is not an echo to hunt for: the raw check needs two digit runs
+            raw = len(re.findall(r"\d+", dob)) >= 2 and contains_token(text, dob)
+            if raw or (d and any(contains_token(text, v) for v in date_variants(d))):
                 out.append("dob")
         if (ph := m.value("phone")) and (p := normalize_phone(ph)) and p[2:] in digits:
             out.append("phone")
@@ -112,6 +122,17 @@ class OutputGuard:
                 xs = date_variants(d)[:-1] if (d.year, d.month) in allowed_months else date_variants(d)
                 if any(contains_token(text, x) for x in xs):
                     v.append("date_not_allowed")
+                    break
+            for m in GENERIC_DATE.finditer(text):  # an invented date is a violation too, same granularity
+                if m[1]:
+                    month, day, year = _MONTHS[m[1].casefold()], int(m[2]), int(m[3]) if m[3] else None
+                elif m[4]:
+                    month, day, year = int(m[5]), int(m[6]), int(m[4])
+                else:
+                    month, day, year = int(m[7]), int(m[8]), int(m[9])
+                if not any(d.month == month and d.day == day and year in (None, d.year)
+                           for d in allowed_dates):
+                    v.append(f"date_not_allowed:{m[0]}")
                     break
             ref = session.escalation.reference or ""
             for n in NUMBER.findall(plain):

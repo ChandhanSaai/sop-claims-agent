@@ -16,6 +16,8 @@
 - 2026-10-07, dependency correction: Task 3 imports `app.data`, Tasks 4 and 5 import `app.engine`, so the real order is T02 -> T03 -> {T04, T05, T06, T07, T08} -> T09 -> T10 -> {T11, T12}. `docs/tasks.md` carries the re-cut waves.
 - 2026-10-07, Task 10: the HTTP integration test derives `ROOT` from `__file__` because `tests.conftest` is not importable under pytest (already applied in the Task 10 text).
 
+- 2026-10-08: Global Constraints no longer bar guideline text before verification. Spec section 7 lets the Writer answer general process questions from the guideline's default guidance, and the whole-branch review (finding I2) found VERIFY_ID promising that help without giving it; `verify_id.handle` now puts `default_guidance()` in `allowed_facts["submission_guidance"]` for a submission question while unverified. Claim records and policyholder values still never appear before verification.
+
 ## Global Constraints
 
 - `requires-python = ">=3.12"`; Docker base image `python:3.12-slim`; local dev machine has 3.13.
@@ -23,7 +25,7 @@
 - Models: `READER_MODEL` and `WRITER_MODEL` default `claude-sonnet-5-5`. `thinking={"type": "between_tools"}` is sent only when the model id starts with `claude-sonnet-5-5`; for any other model omit `thinking`. `output_config={"effort": "low"}` on both calls.
 - Never put `temperature`, `top_p`, `top_k`, `budget_tokens` or assistant prefills in any request.
 - The LLM never sets `verification.status`, `consent.status`, `phase` or `pending_ask`. Only code does.
-- Claim records, guideline text and policyholder values never appear in any prompt while `verification.status != "verified"`.
+- Claim records and policyholder values never appear in any prompt while `verification.status != "verified"`; the guideline's default guidance may be used for general process questions (spec section 7).
 - Money fields stay strings (`"1450.00"`); never `float`.
 - Dates render as `fmt_date(d)` = `"March 18, 2026"` (month name, unpadded day, year).
 - Email mask: first character of the local part, one `*` per remaining character, domain unchanged (`m*******@email.com`).
@@ -5529,7 +5531,6 @@ Each gets its own plan with the same step format when scheduled. Acceptance crit
 
 Coverage map (spec section -> task): 1 success criteria -> T10 and T11 (criterion 3's live part -> S02); 2 principles -> all; 4 architecture and chaining -> T03, T10; 5 state and `pending_ask` -> T03; 6 contracts, in-scope definition, brief merge, guard -> T01, T04, T03, T09; 7 VERIFY_ID -> T03 (representative -> S01); RESOLVE_INTENT and PROCESS_CASE -> T06; POST_PROCESS -> T08; cross-cutting -> T07 (abuse -> S04); 8 data layer -> T02; 9 LLM layer -> T04; 10 security -> T05 (token), T09 (guard), T01 (redaction); 11 observability -> T01, T09, T10; 12 API and UI -> T05; 13 configuration -> T01; 14 testing -> T11 (live -> S02); 15 deployment -> T12 (hosted -> S03); 17 limitations -> T12 README; Appendix A and B -> T01 fixtures, T10 green.
 
-Known deviations, all deliberate: `structlog` and `mypy` dropped (stdlib logging, ruff only); the email outbox is per process and filtered per session by event ids; `thinking: between_tools` is sent only for Sonnet 5.5 model ids so an Opus override works without edits; the Reader sees the assistant's last message, which is guard-checked output and therefore carries no claim facts before verification.
+Known deviations, all deliberate: `structlog` and `mypy` dropped (stdlib logging, ruff only); the email outbox is per process and filtered per session by event ids; `thinking: between_tools` is sent only for Sonnet 5.5 model ids so an Opus override works without edits; the Reader sees the assistant's last message, which is guard-checked output and therefore carries no claim facts before verification; a Reader failure (API error, refusal, twice-invalid output) drops the turn whole with the canned trouble reply and an `llm_error` event, as spec section 9 says, rather than the empty-analysis fallback spec section 6 mentions.
 
 Type and name consistency checked across tasks: `handle(session, ctx, repos, settings, today)`; `HandlerResult(brief, advanced, needs_input, transition_fact, transition_facts)`; `ReplyBrief` fields incl. `verbatim`; `PendingAsk` values match the YAML `pending_ask` strings (`identity_fields`, `disambiguation`, `anything_else`, `email_offer`, `email_confirm`, `human_offer`, `none`); facts keys listed in Task 6 are the ones Task 8's summary and Task 9's guard read.
-

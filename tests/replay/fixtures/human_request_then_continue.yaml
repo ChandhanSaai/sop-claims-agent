@@ -1,0 +1,13 @@
+name: human_request_then_continue
+scenario: default
+turns:
+  - user: "Can I just talk to a person?"
+    analysis:
+      requests: {wants_human: true}
+    expect: {phase: VERIFY_ID, escalated: true, pending_ask: none, reply_contains: ["ESC-", "available"], guard_ok: true}
+  - user: "Ok fine. Margaret Chen, POL-9921, DOB 1985-03-15, SSN 4472, my denied healthcare claim from January."
+    analysis:
+      identity: {full_name: "Margaret Chen", policy_number: "POL-9921", dob: "1985-03-15", id_last4: "4472"}
+      case_hints: {case_type: healthcare, status: denied, month: 1}
+      intent: denial_question
+    expect: {phase: PROCESS_CASE, verified: true, escalated: true, reply_contains: ["CL-2048"], guard_ok: true}

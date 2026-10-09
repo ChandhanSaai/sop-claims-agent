@@ -62,12 +62,19 @@ class TraceWriter:
     def __init__(self, directory: Path):
         self.directory = directory
 
-    def write(self, record: TraceRecord) -> None:
-        self.directory.mkdir(parents=True, exist_ok=True)
+    @staticmethod
+    def redact(record: TraceRecord) -> dict[str, Any]:
         data = record.model_dump()
         data.update({k: _redact_strings(data[k]) for k in REDACTED_FIELDS})
+        return data
+
+    def write(self, record: TraceRecord) -> dict[str, Any]:
+        """Append the redacted record to the session's JSONL file and return it."""
+        data = self.redact(record)
+        self.directory.mkdir(parents=True, exist_ok=True)
         with open(self.directory / f"{record.session_id}.jsonl", "a", encoding="utf-8") as f:
             f.write(json.dumps(data) + "\n")
+        return data
 
 
 def disclosure_event(session: Session, brief: ReplyBrief) -> None:

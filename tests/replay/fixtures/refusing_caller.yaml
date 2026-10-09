@@ -1,0 +1,25 @@
+name: refusing_caller
+scenario: default
+turns:
+  - user: "I'm not giving you my social security number. I just want to know about my claim."
+    analysis:
+      affect: {frustration: 2, refusal: true}
+      intent: status_inquiry
+    expect:
+      phase: VERIFY_ID
+      verified: false
+      attempts: 0
+      pending_ask: identity_fields
+      reply_contains: ["phone number", "email", "protect"]
+      reply_not_contains: ["CL-", "calm down"]
+      guard_ok: true
+  - user: "Fine. Margaret Chen, 650-521-2836, margaret@email.com."
+    analysis:
+      identity: {full_name: "Margaret Chen", phone: "650-521-2836", email: "margaret@email.com"}
+    expect:
+      phase: RESOLVE_INTENT
+      verified: true
+      pending_ask: disambiguation
+      reply_contains: ["CL-2048", "CL-2102"]
+      reply_not_contains: ["6505212836", "margaret@email.com"]
+      guard_ok: true

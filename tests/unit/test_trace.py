@@ -52,7 +52,8 @@ def test_trace_writer_redacts_free_text_but_keeps_ts_and_session_id(tmp_path):
     sid = "0123456789abcdef0123456789abcdef"
     brief = ReplyBrief(phase="p", goal="g", allowed_facts={"email_on_file": "margaret@email.com"})
     rec = _build(session_id=sid, brief=brief)
-    TraceWriter(tmp_path).write(rec)
+    returned = TraceWriter(tmp_path).write(rec)
     data = json.loads((tmp_path / f"{sid}.jsonl").read_text())
     assert data["ts"] == rec.ts and data["session_id"] == sid
     assert data["brief"]["allowed_facts"]["email_on_file"] == "[REDACTED]"
+    assert returned == data  # the caller keeps the same redacted dict the file got

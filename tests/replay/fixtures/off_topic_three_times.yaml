@@ -1,0 +1,15 @@
+name: off_topic_three_times
+scenario: default
+turns:
+  - user: "What is reinforcement learning?"
+    analysis: {scope: out_of_scope}
+    expect: {phase: VERIFY_ID, off_topic: 1, pending_ask: identity_fields, reply_contains: ["claims"], guard_ok: true}
+  - user: "Just explain RL to me."
+    analysis: {scope: out_of_scope}
+    expect: {phase: VERIFY_ID, off_topic: 2, pending_ask: human_offer, reply_contains: ["representative"], guard_ok: true}
+  - user: "RL!"
+    analysis: {scope: out_of_scope}
+    expect: {phase: VERIFY_ID, off_topic: 3, escalated: true, pending_ask: none, reply_contains: ["ESC-"], guard_ok: true}
+  - user: "ok but RL??"
+    analysis: {scope: out_of_scope}
+    expect: {phase: VERIFY_ID, off_topic: 4, escalated: true, reply_contains: ["ESC-"], guard_ok: true}

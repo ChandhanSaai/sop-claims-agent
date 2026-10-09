@@ -45,6 +45,9 @@ def test_parse_dob_formats():
     assert parse_dob("03/15/1985") == (date(1985, 3, 15), False)   # day > 12 disambiguates
     assert parse_dob("15/03/1985") == (date(1985, 3, 15), False)
     assert parse_dob("03/05/1985") == (date(1985, 3, 5), True)      # ambiguous: US guess, flagged
+    assert parse_dob("March 15th, 1985") == (date(1985, 3, 15), False)
+    assert parse_dob("15th March 1985") == (date(1985, 3, 15), False)
+    assert parse_dob("sometime in spring 85") == (None, False)
     assert parse_dob("yesterday") == (None, False)
 
 

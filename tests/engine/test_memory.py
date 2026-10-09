@@ -1,5 +1,5 @@
 from app.engine.memory import merge_analysis
-from app.engine.state import Phase, Session, SlotStatus, Verification
+from app.engine.state import CaseState, Phase, Session, SlotStatus, Verification
 from app.llm.schemas import TurnAnalysis
 
 
@@ -40,11 +40,12 @@ def test_correction_to_verified_identity_resets_verification():
     s.memory.mark_verified(["dob", "full_name"])
     s.verification = Verification(status="verified", party_id="P9", role="policyholder")
     s.phase = Phase.PROCESS_CASE
+    s.case = CaseState(candidates=["CL-2048"], selected_case_id="CL-2048", intent="denial_question")
     s.turn = 2
     changed = merge_analysis(s, analysis(corrections=[{"slot": "dob", "new_value": "1985-03-16"}]))
     assert changed == ["dob"]
     assert s.memory.value("dob") == "1985-03-16"
     assert s.memory.get("dob").status == SlotStatus.PROVISIONAL
     assert s.verification.status == "unverified" and s.verification.party_id is None
-    assert s.phase == Phase.VERIFY_ID
+    assert s.phase == Phase.VERIFY_ID and s.case == CaseState()  # whoever verifies next re-resolves
     assert s.events[-1].type == "verification_reset"

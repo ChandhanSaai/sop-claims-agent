@@ -35,8 +35,9 @@ class SlotStatus(StrEnum):
 
 IDENTITY_SLOTS = ("full_name", "dob", "phone", "email", "id_last4", "policy_number")
 HINT_SLOTS = ("case_type", "status_hint", "month", "year", "case_id", "free_text", "intent")
-# Slot values that are safe to show in the inspector; everything else is masked.
-UNMASKED_SLOTS = ("full_name", *HINT_SLOTS)
+# Slot values that are safe to show in the inspector; everything else (free_text is the caller's own words,
+# which may hold an identifier) is masked.
+UNMASKED_SLOTS = ("full_name", "case_type", "status_hint", "month", "year", "case_id", "intent")
 
 
 class Slot(BaseModel):
@@ -82,6 +83,8 @@ class Verification(BaseModel):
     party_id: str | None = None
     attempts: int = 0
     role: Literal["policyholder", "representative"] | None = None
+    # the caller said they are calling for someone else; sticks until they say they are the policyholder
+    declared_representative: bool = False
     # identifiers used in the last verify call; a repeat is not a new attempt
     last_fingerprint: str | None = None
 
