@@ -44,7 +44,8 @@ def resolve_pending(session: Session, analysis: TurnAnalysis, user_text: str) ->
         ctx.email_yes = yes or r.email_summary == "yes"
         ctx.email_no = no or r.email_summary == "no"
     elif p == PendingAsk.EMAIL_CONFIRM:
-        ctx.email_confirm_yes, ctx.email_confirm_no = yes, no
+        ctx.email_confirm_yes = yes or r.email_summary == "yes"
+        ctx.email_confirm_no = no or r.email_summary == "no"
     elif p == PendingAsk.ANYTHING_ELSE:
         ctx.anything_else_no = (no or r.closing) and analysis.intent == "none" and not analysis.question
     elif p == PendingAsk.HUMAN_OFFER:
