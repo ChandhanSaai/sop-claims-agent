@@ -1,5 +1,39 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><title>SOP Claims Agent</title></head>
-<body><p>UI arrives in Task 5.</p></body>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SOP Claims Agent</title>
+  <link rel="stylesheet" href="/ui/styles.css">
+</head>
+<body>
+  <header>
+    <h1>Claims support assistant</h1>
+    <div class="controls">
+      <label>Consent scenario
+        <select id="scenario"><option value="default">default</option><option value="timeout">timeout</option></select>
+      </label>
+      <label>Access token <input id="token" type="password" placeholder="if required"></label>
+      <button id="new">New conversation</button>
+    </div>
+  </header>
+  <main>
+    <section id="chat" aria-label="chat">
+      <div id="messages"></div>
+      <form id="form"><input id="input" autocomplete="off" placeholder="Type a message"><button>Send</button></form>
+    </section>
+    <aside id="inspector" aria-label="SOP inspector">
+      <h2>SOP inspector</h2>
+      <div id="phases" class="stepper"></div>
+      <dl id="status"></dl>
+      <h3>Memory</h3><table id="memory"></table>
+      <h3>Last brief</h3><pre id="brief"></pre>
+      <h3>Guard</h3><pre id="guard"></pre>
+      <h3>Outbox</h3><ul id="outbox"></ul>
+      <h3>Events</h3><ul id="events"></ul>
+      <h3>Last trace</h3><pre id="trace"></pre>
+    </aside>
+  </main>
+  <script src="/ui/app.js"></script>
+</body>
 </html>

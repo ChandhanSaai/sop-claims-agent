@@ -1,22 +1,37 @@
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
+from app.api.routes import router
+from app.api.sessions import SessionStore
 from app.config import Settings, get_settings
 from app.observability.logging import configure_logging
 
 UI_DIR = Path(__file__).resolve().parent.parent / "ui"
 
 
-def create_app(settings: Settings | None = None, llm=None) -> FastAPI:
+def create_app(settings: Settings | None = None, llm=None, service=None) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(settings.log_level)
     app = FastAPI(title="SOP Claims Agent", docs_url=None, redoc_url=None)
     app.state.settings = settings
-    app.state.llm = llm
+    app.state.sessions = SessionStore(settings.session_ttl_minutes)
+    if service is None:
+        from app.engine.service import build_service  # Task 10
+
+        service = build_service(settings, llm=llm)
+    app.state.service = service
 
     @app.get("/healthz")
     def healthz() -> dict[str, str]:
         return {"status": "ok"}
 
+    @app.get("/", include_in_schema=False)
+    def index() -> FileResponse:
+        return FileResponse(UI_DIR / "index.html")
+
+    app.include_router(router)
+    app.mount("/ui", StaticFiles(directory=UI_DIR), name="ui")
     return app
