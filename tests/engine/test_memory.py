@@ -274,8 +274,10 @@ def test_no_name_from_an_open_question_is_stored_and_a_labelled_switch_wipes(rep
     b = eng.handle_turn(s, analysis(requests={"confirmation": "yes"}), "Yes.")  # Tom's yes: still Margaret
     assert s.verification.party_id == "P9" and s.memory.value("full_name") == "Margaret"
     b = eng.handle_turn(s, analysis(identity={"full_name": "Tom Chen"}), "I'm Tom Chen, really.")
-    # a yes binds the name to the caller from then on; what matters is that nothing of Tom's was stored
-    assert s.pending_identity is None and s.memory.value("full_name") == "Margaret"
+    # a yes binds the name to the caller from then on; what matters is that no identifier of Tom's was
+    # stored and the verification is still the record that verified
+    assert s.pending_identity is None and s.verification.party_id == "P9"
+    assert s.memory.value("dob") == "1985-03-15" and s.memory.value("phone") == "650-521-2836"
     eng = Engine(repos, settings)  # a labelled correction while the question is open wipes the identifiers
     s = Session.new()
     eng.greeting(s)
