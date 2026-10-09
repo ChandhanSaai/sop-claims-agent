@@ -5,9 +5,11 @@ const EXAMPLES = [
   "I'm David Chen, calling for my mother Margaret Chen, policy POL-9921, about her denied healthcare claim.",
   "What is reinforcement learning?",
 ];
+const NEEDS_TOKEN = "This server needs an access token. Use the Access token button above to enter it.";
 const $ = (id) => document.getElementById(id);
 let sessionId = null;
 let token = "";
+let linkToken = "";  // a token that arrived in the link; used only after the person confirms it in the dialog
 let busy = false;
 
 // Every piece of model or server text is rendered through el() and textContent, never as HTML.
@@ -18,21 +20,23 @@ function el(tag, className, text) {
   return node;
 }
 
-// The token lives in this browser only. A link with #token=... stores it and is cleaned at once.
+// Tokens are printable ASCII; anything else (a zero-width space from a copy, a curly quote) is dropped so the
+// header value stays valid and a bad paste becomes a plain 401 rather than a failed request.
+function cleanToken(value) {
+  return (value || "").replace(/[^\x21-\x7E]/g, "");
+}
+
 function loadToken() {
-  const hash = new URLSearchParams(location.hash.replace(/^#/, ""));
-  const fromLink = hash.get("token");
-  if (fromLink) {
-    token = fromLink.trim();
-    try { localStorage.setItem(TOKEN_KEY, token); } catch (err) { /* private window: keep it in memory */ }
-    history.replaceState(null, "", location.pathname + location.search);
-    return;
+  try { token = cleanToken(localStorage.getItem(TOKEN_KEY)); } catch (err) { token = ""; }
+  const m = location.hash.match(/[#&]token=([^&]*)/);
+  if (m) {
+    try { linkToken = cleanToken(decodeURIComponent(m[1])); } catch (err) { linkToken = ""; }
+    history.replaceState(null, "", location.pathname + location.search);  // the fragment leaves the address bar
   }
-  try { token = localStorage.getItem(TOKEN_KEY) || ""; } catch (err) { token = ""; }
 }
 
 function saveToken(value) {
-  token = value.trim();
+  token = cleanToken(value);
   try {
     if (token) localStorage.setItem(TOKEN_KEY, token); else localStorage.removeItem(TOKEN_KEY);
   } catch (err) { /* storage unavailable: the token still works for this page */ }
@@ -44,12 +48,19 @@ function headers() {
   return h;
 }
 
-function showTokenDialog(rejected) {
+function showTokenState(required) {
+  const button = $("token-button");
+  button.hidden = !required;
+  button.textContent = token ? "Access token: set" : "Access token";
+}
+
+function showTokenDialog({ rejected = false, prefill = "" } = {}) {
   $("token-error").hidden = !rejected;
-  $("token-input").value = rejected ? "" : token;
+  $("token-input").value = prefill || (rejected ? "" : token);
   const dialog = $("token-dialog");
   if (!dialog.open) dialog.showModal();
   $("token-input").focus();
+  $("token-input").select();
 }
 
 function timestamp() {
@@ -73,7 +84,7 @@ function showExamples() {
   EXAMPLES.forEach((text) => {
     const chip = el("button", "chip", text);
     chip.type = "button";
-    chip.addEventListener("click", () => { $("input").value = text; sendMessage(); });
+    chip.addEventListener("click", () => { if (!busy) { $("input").value = text; sendMessage(); } });
     box.appendChild(chip);
   });
   $("messages").appendChild(box);
@@ -240,17 +251,18 @@ function clearInspector() {
 
 function setBusy(on) {
   busy = on;
-  $("send").disabled = on;
-  $("input").disabled = on;
-}
-
-function showTokenState(required) {
-  const button = $("token-button");
-  button.hidden = !required;
-  button.textContent = token ? "Access token: set" : "Access token";
+  ["send", "input", "new", "token-button"].forEach((id) => { $(id).disabled = on; });
 }
 
 async function newConversation() {
+  if (busy) return;
+  if (linkToken) {  // a token from the link is never used silently: the person confirms it first
+    const prefill = linkToken;
+    linkToken = "";
+    showTokenState(true);
+    showTokenDialog({ prefill });
+    return;
+  }
   sessionId = null; // a failed restart must not keep chatting into the old, now cleared, conversation
   $("messages").replaceChildren();
   clearInspector();
@@ -259,7 +271,14 @@ async function newConversation() {
     const r = await fetch("/api/session", {
       method: "POST", headers: headers(), body: JSON.stringify({ scenario: $("scenario").value }),
     });
-    if (r.status === 401) { showTokenState(true); showTokenDialog(Boolean(token)); return; }
+    if (r.status === 401) {
+      const rejected = Boolean(token);
+      if (rejected) saveToken("");
+      showTokenState(true);
+      addMessage("system", NEEDS_TOKEN);
+      showTokenDialog({ rejected });
+      return;
+    }
     if (!r.ok) { addMessage("system", `Could not start a conversation (${r.status}).`); return; }
     data = await r.json();
   } catch (err) {
@@ -288,7 +307,7 @@ async function sendMessage() {
     const r = await fetch("/api/chat", {
       method: "POST", headers: headers(), body: JSON.stringify({ session_id: sessionId, message: text }),
     });
-    if (r.status === 401) { showTokenDialog(true); return; }
+    if (r.status === 401) { saveToken(""); showTokenState(true); showTokenDialog({ rejected: true }); return; }
     if (!r.ok) { addMessage("system", `The request failed (${r.status}).`); return; }
     data = await r.json();
   } catch (err) {
@@ -296,31 +315,40 @@ async function sendMessage() {
   } finally {
     typing.remove();
     setBusy(false);
+    $("input").focus();
   }
   addMessage("assistant", data.reply);
   renderState(data.state);
   $("trace").textContent = JSON.stringify(data.trace, null, 1);
   await refreshOutbox();
-  $("input").focus();
 }
 
 $("form").addEventListener("submit", (ev) => { ev.preventDefault(); sendMessage(); });
 $("input").addEventListener("keydown", (ev) => {
-  if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); sendMessage(); }
+  if (ev.key === "Enter" && !ev.shiftKey && !ev.isComposing) { ev.preventDefault(); sendMessage(); }
 });
 $("input").addEventListener("input", (ev) => {
   const box = ev.target;
   box.style.height = "";
-  box.style.height = `${Math.min(box.scrollHeight, 160)}px`;
+  box.style.height = `${Math.min(box.scrollHeight + box.offsetHeight - box.clientHeight, 160)}px`;
 });
 $("token-form").addEventListener("submit", (ev) => {
   ev.preventDefault();
-  saveToken($("token-input").value);
+  const entered = cleanToken($("token-input").value);
+  const changed = entered !== token;
+  saveToken(entered);
   $("token-dialog").close();
-  newConversation();
+  showTokenState(true);
+  if (!sessionId || changed) newConversation();  // an unchanged token mid-conversation just closes the dialog
 });
-$("token-dialog").addEventListener("cancel", (ev) => ev.preventDefault()); // the token is required here
-$("token-button").addEventListener("click", () => showTokenDialog(false));
+$("token-dialog").addEventListener("cancel", (ev) => {
+  if (!sessionId) {  // nothing works without a token; keep the dialog up, and explain if the browser lets Escape through
+    ev.preventDefault();
+    if (!$("messages").textContent.includes(NEEDS_TOKEN)) addMessage("system", NEEDS_TOKEN);
+  }
+});
+$("token-dialog").addEventListener("close", () => { if (!sessionId && !token) addMessage("system", NEEDS_TOKEN); });
+$("token-button").addEventListener("click", () => showTokenDialog());
 $("new").addEventListener("click", newConversation);
 loadToken();
 newConversation();

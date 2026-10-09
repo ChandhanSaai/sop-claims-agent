@@ -211,7 +211,7 @@ fly secrets set ANTHROPIC_API_KEY=<key> DEMO_ACCESS_TOKEN=<a long random token>
 fly deploy --ha=false
 ```
 
-Visitors paste the token into the page's "Access token" field; `/healthz` stays open. Traces are ephemeral there.
+Visitors enter the token in the dialog the page opens; `/healthz` stays open. Traces are ephemeral there.
 `fly.toml` sets `REQUIRE_ACCESS_TOKEN=true`, so a deploy that skipped the secrets step refuses to start instead of
 serving the API without a token.
 `--ha=false` keeps a single machine: sessions live in one process's memory (`app/api/sessions.py`), so a second
@@ -231,7 +231,7 @@ scripted Reader output through the same pipeline.
 ### Access token (optional)
 
 Set `DEMO_ACCESS_TOKEN` to require an `X-Access-Token` header with that value on every `/api/*` request
-(compared in constant time). In the UI, type the token into the Access token field and click New conversation.
+(compared in constant time). In the UI, enter the token in the dialog the page opens.
 The page itself and `/healthz` stay open, so health checks keep working.
 
 ## Configuration

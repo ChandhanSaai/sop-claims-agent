@@ -79,8 +79,9 @@
       <p>The server is shared and gated. Paste the token you were given to start a conversation; it stays in
         this browser only.</p>
       <label for="token-input">Access token</label>
-      <input id="token-input" type="password" autocomplete="off" placeholder="paste the token">
-      <p id="token-error" class="error" hidden>That token was not accepted. Check it and try again.</p>
+      <input id="token-input" type="password" autocomplete="off" placeholder="paste the token"
+             aria-describedby="token-error">
+      <p id="token-error" class="error" role="alert" hidden>That token was not accepted. Check it and try again.</p>
       <div class="dialog-actions">
         <button id="token-submit" type="submit">Continue</button>
       </div>
