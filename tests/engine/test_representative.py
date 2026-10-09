@@ -400,3 +400,23 @@ def test_a_different_representative_name_after_approval_drops_the_consent_too(re
     ev = [e for e in s.events if e.type == "verification_reset"][-1]
     assert ev.data["slot"] == "rep_name" and ev.data["party_id"] == "P9"
     assert s.consent.match_attempts == 1 and s.pending_ask == PendingAsk.HUMAN_OFFER  # matched on its own
+
+
+def test_a_representative_declaration_after_a_verified_policyholder_is_a_switch(repos, settings):
+    """The live Reader read "Actually, this is David Chen. I'm calling for my mother Margaret Chen" as a
+    representative declaration with a policy-number correction and no name correction: it still names someone
+    else, so Ma Tian's verification resets and the representative flow starts in the same turn."""
+    eng = Engine(repos, settings, lambda: TODAY)
+    s = Session.new()
+    eng.greeting(s)
+    eng.handle_turn(s, analysis(identity={"full_name": "Ma Tian", "dob": "1964-09-10", "id_last4": "6688"},
+                                case_hints={"case_type": "healthcare", "status": "denied", "month": 3},
+                                intent="denial_question"), "Ma Tian, 1964-09-10, 6688, my March claim")
+    assert s.verification.party_id == "P12" and s.case.selected_case_id == "CL-3001"
+    b = eng.handle_turn(s, analysis(caller_role="representative", representative=DAVID,
+                                    identity={"policy_number": "POL-9921"},
+                                    corrections=[{"slot": "policy_number", "new_value": "POL-9921"}]),
+                        "Actually, this is David Chen, calling for my mother Margaret Chen, POL-9921.")
+    assert s.verification.status == "unverified" and s.verification.declared_representative
+    assert s.fence_turn == 2 and s.consent.status == "pending" and s.pending_ask == PendingAsk.CONSENT_WAIT
+    assert "CL-3001" not in render_brief(b) and "consent" in render_brief(b)

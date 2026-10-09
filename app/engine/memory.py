@@ -64,14 +64,21 @@ def _same_person(slot: str, verified: str, given: str) -> bool:
 
 
 def _implicit_corrections(session: Session, analysis: TurnAnalysis) -> None:
-    """\"This is actually Ma Tian, born ...\" read as identity fields rather than corrections still names
-    someone else: verification must reset, not keep answering the earlier party's questions."""
+    """\"This is actually Ma Tian, born ...\" read as identity fields rather than corrections, or \"this is
+    David Chen, calling for my mother\" read as a representative declaration, still names someone else:
+    verification must reset, not keep answering the earlier party's questions. A verified policyholder who
+    merely mentions a helper (caller_role stays policyholder) keeps the policyholder path."""
     labelled = {c.slot for c in analysis.corrections}
     for slot in PERSON_SLOTS:
         given, cur = getattr(analysis.identity, slot), session.memory.get(slot)
         if given and slot not in labelled and cur is not None and cur.status == SlotStatus.VERIFIED:
             if not _same_person(slot, cur.value, str(given)):
                 analysis.corrections.append(Correction(slot=slot, new_value=str(given).strip()))
+    rep, cur = analysis.representative.name, session.memory.get("full_name")
+    if (rep and analysis.caller_role == "representative" and "full_name" not in labelled
+            and session.verification.role == "policyholder" and cur is not None
+            and cur.status == SlotStatus.VERIFIED and not _same_person("full_name", cur.value, rep)):
+        analysis.corrections.append(Correction(slot="full_name", new_value=rep.strip()))
 
 
 def _representative_switch(session: Session, analysis: TurnAnalysis) -> None:
