@@ -6,11 +6,32 @@ const EXAMPLES = [
   "What is reinforcement learning?",
 ];
 const NEEDS_TOKEN = "This server needs an access token. Use the Access token button above to enter it.";
+
+// The guided walkthrough: the same conversation a caller would have, one phase per turn.
+const TOUR = [
+  "Hi, I'm Margaret Chen, policy POL-9921.",
+  "DOB 1985-03-15, SSN last four 4472.",
+  "The denied healthcare claim from January. Why was it denied?",
+  "What do I need to send and how do I submit it?",
+  "No, that's all.",
+  "Yes please.",
+  "Yes, send it.",
+];
+// What code enforces in each phase, shown on the divider when the conversation enters it.
+const PHASE_RULES = {
+  VERIFY_ID: "Nothing about any claim is shared until the caller matches 3 of the 5 identifiers on file.",
+  RESOLVE_INTENT: "Code picks the claim and the intent from the record; the model only reports what was said.",
+  PROCESS_CASE: "Every reply is limited to facts code pulled from the selected claim and the guideline.",
+  POST_PROCESS: "A summary is offered once, drafted by code from the event log, and sent only on a yes.",
+};
+// Event fields the line under a reply may show: ids and counts, never an identifier.
+const CAPTION_KEYS = ["fields", "attempts", "case_id", "intent", "topic", "email_id", "reference", "reason"];
 const $ = (id) => document.getElementById(id);
 let sessionId = null;
 let token = "";
 let linkToken = "";  // a token that arrived in the link; used only after the person confirms it in the dialog
 let busy = false;
+let touring = false;
 
 // Every piece of model or server text is rendered through el() and textContent, never as HTML.
 function el(tag, className, text) {
@@ -78,6 +99,40 @@ function addMessage(role, text) {
   $("messages").appendChild(wrap);
   $("messages").scrollTop = $("messages").scrollHeight;
   return wrap;
+}
+
+// A divider in the chat each time the harness moves the conversation to another phase.
+function addPhaseDivider(before, after) {
+  const idx = PHASES.indexOf(after);
+  const from = before ? PHASES.indexOf(before) : -1;
+  const crossed = from >= 0 && from < idx - 1 ? PHASES.slice(from + 1, idx) : [];
+  const div = el("div", "phase-divider");
+  div.appendChild(el("span", "phase-label",
+    `${from > idx ? "Back to phase" : "Phase"} ${idx + 1} · ${after.replace("_", " ")}`));
+  const through = crossed.length
+    ? `Through ${crossed.map((p) => p.replace("_", " ")).join(" and ")} in the same turn. ` : "";
+  div.appendChild(el("span", "phase-rule", through + PHASE_RULES[after]));
+  $("messages").appendChild(div);
+}
+
+// The line under a reply: what the harness did this turn, from the events, the pending ask and the guard.
+function addDecided(node, data) {
+  const st = data.state;
+  const parts = st.events.filter((e) => e.turn === st.turn).map((e) => {
+    const bits = CAPTION_KEYS.filter((k) => e.data?.[k] != null).map((k) => `${k}=${e.data[k]}`);
+    return bits.length ? `${e.type} (${bits.join(", ")})` : e.type;
+  });
+  if (st.pending_ask !== "none") parts.push(`asks ${st.pending_ask}`);
+  const g = st.last_guard;
+  if (g) {
+    parts.push(g.fallback ? `guard fallback: ${g.fallback}`
+      : g.regenerated ? "guard passed after one regeneration" : "guard passed");
+  }
+  if (data.trace?.latency_ms) parts.push(`${(data.trace.latency_ms / 1000).toFixed(1)} s`);
+  const line = el("div", "decided");
+  line.appendChild(el("span", "decided-label", "harness"));
+  line.appendChild(document.createTextNode(parts.join(" · ")));
+  node.appendChild(line);
 }
 
 function showExamples() {
@@ -260,6 +315,7 @@ function clearInspector() {
 function setBusy(on) {
   busy = on;
   ["send", "input", "new", "token-button"].forEach((id) => { $(id).disabled = on; });
+  $("tour").disabled = on || touring;
 }
 
 async function newConversation() {
@@ -294,6 +350,7 @@ async function newConversation() {
   }
   showTokenState(Boolean(token));
   sessionId = data.session_id;
+  addPhaseDivider(null, data.state.phase);
   addMessage("assistant", data.greeting);
   showExamples();
   renderState(data.state);
@@ -325,10 +382,41 @@ async function sendMessage() {
     setBusy(false);
     $("input").focus();
   }
-  addMessage("assistant", data.reply);
+  if (data.trace.phase_before !== data.trace.phase_after) {
+    addPhaseDivider(data.trace.phase_before, data.trace.phase_after);
+  }
+  addDecided(addMessage("assistant", data.reply), data);
   renderState(data.state);
   $("trace").textContent = JSON.stringify(data.trace, null, 1);
   await refreshOutbox();
+  return true;
+}
+
+// Plays the walkthrough in a fresh conversation; stops if the conversation is replaced or a send fails.
+async function runTour() {
+  if (busy || touring) return;
+  touring = true;
+  $("tour").disabled = true;
+  try {
+    await newConversation();
+    const sid = sessionId;
+    if (!sid) return;
+    addMessage("system", "Guided walkthrough: one phase per turn. Each divider marks the phase the harness moved to, "
+      + "and the line under every reply is what it decided.");
+    for (const text of TOUR) {
+      if (sessionId !== sid) return;
+      $("input").value = text;
+      if (!(await sendMessage())) return;
+      await new Promise((resolve) => setTimeout(resolve, 900));
+    }
+    if (sessionId === sid) {
+      addMessage("system", "Walkthrough complete: four phases, one summary email in the outbox. Keep chatting, or "
+        + "start a new conversation.");
+    }
+  } finally {
+    touring = false;
+    $("tour").disabled = busy;
+  }
 }
 
 $("form").addEventListener("submit", (ev) => { ev.preventDefault(); sendMessage(); });
@@ -357,5 +445,6 @@ $("token-dialog").addEventListener("cancel", (ev) => {
 });
 $("token-button").addEventListener("click", () => showTokenDialog());
 $("new").addEventListener("click", newConversation);
+$("tour").addEventListener("click", runTour);
 loadToken();
 newConversation();

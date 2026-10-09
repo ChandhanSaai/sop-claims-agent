@@ -170,6 +170,21 @@ pre {
 #form button:disabled, #form textarea:disabled { opacity: 0.6; cursor: default; }
 button.secondary { background: transparent; color: var(--ink); border: 1px solid var(--line); font-weight: 500; }
 
+/* Phase dividers and the harness line under each reply */
+.phase-divider {
+  align-self: stretch; display: flex; flex-direction: column; gap: 2px; margin-top: 4px; padding: 8px 0 2px;
+  border-top: 1px dashed var(--line);
+}
+.phase-label {
+  font-size: 11.5px; font-weight: 650; letter-spacing: 0.05em; text-transform: uppercase; color: var(--accent);
+}
+.phase-rule { font-size: 12.5px; color: var(--muted); }
+.decided { font-family: var(--mono); font-size: 11.5px; color: var(--muted); padding: 0 4px; overflow-wrap: anywhere; }
+.decided-label {
+  display: inline-block; margin-right: 6px; padding: 0 6px; border-radius: 4px; background: var(--line);
+  color: var(--ink); font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+}
+
 /* Example prompts shown at the start of a conversation */
 .examples { align-self: stretch; display: flex; flex-direction: column; gap: 8px; padding: 6px 0 0 4px; }
 .examples-title { font-size: 12.5px; color: var(--muted); }

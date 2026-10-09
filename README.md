@@ -17,6 +17,10 @@ owns the SOP; the model reads and phrases:** one LLM call reads each message int
 - **Chat and SOP inspector:** http://localhost:8000 shows the chat beside the inspector, which tracks the
   phase, verification status and attempts, memory slots with their source turn, the brief the Writer got, the
   guard verdict, the outbox and the last redacted trace.
+- **Guided walkthrough:** the **Walk through the procedure** button plays a seven-turn conversation one
+  phase at a time. A divider in the chat marks each phase the harness moves to and the rule it enforces
+  there, and the line under every reply lists what the harness did that turn: the events, the pending ask,
+  the guard verdict and the latency. The script is in [Demo script](#demo-script).
 - **Golden transcripts:** both transcripts from the spec (Margaret in one turn, the angry caller) and the
   representative approve and timeout paths are in [Golden transcripts](#golden-transcripts), with the state
   after each turn and what each reply must and must not say.
@@ -35,7 +39,11 @@ owns the SOP; the model reads and phrases:** one LLM call reads each message int
 
 ![The chat page beside the SOP inspector after Margaret's first turn](docs/demo/chat-and-inspector.jpg)
 
-The inspector on the right is the harness made visible.
+The inspector on the right is the harness made visible. Margaret gave everything in one message, so the
+divider shows the turn passing through RESOLVE_INTENT on its way to PROCESS_CASE. The walkthrough below takes
+the same procedure one phase at a time:
+
+![The guided walkthrough: seven turns through the four phases, ending with the summary email in the outbox](docs/demo/walkthrough.gif)
 
 ## Architecture at a glance
 
@@ -529,6 +537,18 @@ What each reply must and must not do (spec section 7, representative branch; `de
 
 With a real `ANTHROPIC_API_KEY` and `LLM_BACKEND=anthropic`, open the UI, click New conversation before each
 script, and type these messages in order. The inspector should match the tables above turn by turn.
+
+Step by step, one phase per turn (the **Walk through the procedure** button types this script for you):
+
+| # | Caller says | Phase after | Pending ask | Harness line under the reply |
+|---|---|---|---|---|
+| 1 | Hi, I'm Margaret Chen, policy POL-9921. | VERIFY_ID | identity_fields | asks identity_fields (two identifiers given, three needed) |
+| 2 | DOB 1985-03-15, SSN last four 4472. | RESOLVE_INTENT | disambiguation | verified (fields=3), three claims on file |
+| 3 | The denied healthcare claim from January. Why was it denied? | PROCESS_CASE | anything_else | claim_selected (case_id=CL-2048, intent=denial_question), answered |
+| 4 | What do I need to send and how do I submit it? | PROCESS_CASE | anything_else | answered (intent=document_submission, topic=submission_method) |
+| 5 | No, that's all. | POST_PROCESS | email_offer | the summary is offered once |
+| 6 | Yes please. | POST_PROCESS | email_confirm | the draft is shown, built by code from the event log |
+| 7 | Yes, send it. | POST_PROCESS | none | email_sent (email_id=EML-0001), the outbox shows it masked |
 
 Appendix A, Margaret:
 
