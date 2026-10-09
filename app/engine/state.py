@@ -83,6 +83,7 @@ class Memory(BaseModel):
 class Verification(BaseModel):
     status: Literal["unverified", "verified", "exhausted"] = "unverified"
     party_id: str | None = None
+    name: str | None = None  # the verified party's name on file, what a later name is compared with
     attempts: int = 0
     role: Literal["policyholder", "representative"] | None = None
     # the caller said they are calling for someone else; sticks for the session, so a later claim to be
@@ -95,6 +96,7 @@ class Verification(BaseModel):
 class Consent(BaseModel):
     status: Literal["none", "pending", "approved", "timed_out"] = "none"
     representative_name: str | None = None
+    policyholder_name: str | None = None  # both names as matched on file, never a restated slot
     polls: int = 0
     consent_id: str | None = None
     party_id: str | None = None  # the policyholder the consent was requested from

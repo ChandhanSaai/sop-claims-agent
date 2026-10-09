@@ -57,11 +57,16 @@ def _same_person(slot: str, verified: str, given: str) -> bool:
     if slot == "full_name":
         a = set(normalize_name(verified).split()) - _TITLES
         b = set(normalize_name(given).split()) - _TITLES
-        return not b or a <= b or b <= a
+        return not b or _within(a, b) or _within(b, a)
     if slot == "dob":
         d, ambiguous = parse_dob(given)
         return d is None or ambiguous or d == parse_dob(verified)[0]
     return normalize_id4(given) in (None, normalize_id4(verified))
+
+
+def _within(p: set[str], q: set[str]) -> bool:
+    """Every word of p is in q, an initial matching any word it starts ("Margaret C." is Margaret Chen)."""
+    return all(any(x == y or (len(x) == 1 and y.startswith(x)) for y in q) for x in p)
 
 
 def _implicit_corrections(session: Session, analysis: TurnAnalysis) -> None:
@@ -76,18 +81,23 @@ def _implicit_corrections(session: Session, analysis: TurnAnalysis) -> None:
 
 
 def _declaration_switch(session: Session, analysis: TurnAnalysis) -> None:
-    """A verified policyholder followed by a representative declaration for someone else (\"this is David
-    Chen, calling for my mother Margaret Chen\"), however the Reader labels it: a representative whose name
-    is not the verified person's, or a declaration naming another policyholder. A policyholder who merely
-    mentions a helper (caller_role stays policyholder) keeps the policyholder path."""
-    v, rep, cur = session.verification, analysis.representative, session.memory.get("full_name")
+    """A verified policyholder followed by a representative declaration (\"this is David Chen, calling for
+    my mother Margaret Chen\", \"I'm his wife, calling on his behalf\"), however the Reader labels it: a
+    caller who is now a representative, unless the only name given is the verified person's own, or a
+    declaration naming another policyholder. A policyholder who merely mentions a helper (caller_role
+    stays policyholder) keeps the policyholder path."""
+    v, rep = session.verification, analysis.representative
     if v.status != "verified" or v.role != "policyholder" or analysis.caller_role == "policyholder":
         return
+    known = v.name or (session.memory.value("full_name") or "")  # the name on file, not a restated slot
 
     def other(name: str | None) -> bool:
-        return bool(name) and (cur is None or not _same_person("full_name", cur.value, name))
+        return bool(name) and bool(known) and not _same_person("full_name", known, name)
 
-    if (analysis.caller_role == "representative" and other(rep.name)) or other(rep.policyholder_name):
+    switch = other(rep.policyholder_name)
+    if analysis.caller_role == "representative":
+        switch = switch or not (rep.name and not other(rep.name))
+    if switch:
         _reset_verification(session, slot="representative", party_id=v.party_id)
 
 
@@ -101,9 +111,12 @@ def _representative_switch(session: Session, analysis: TurnAnalysis) -> None:
         return
     # compared with the name the consent was requested for, never with the restated slot ("Mr. Chen")
     held = c.representative_name or session.memory.value("rep_name") or ""
-    holder = session.memory.value("rep_policyholder_name") or ""
+    holder = c.policyholder_name or session.memory.value("rep_policyholder_name") or ""
     named = [x.new_value for x in analysis.corrections if x.slot == "full_name"]
-    named += [n for n in (analysis.representative.name, analysis.identity.full_name) if n]
+    # a one-word name ("Dave here") is never read as a new person: it cannot name one, and the consent is
+    # requested once per session; a full nickname still is, a documented limit
+    named += [n for n in (analysis.representative.name, analysis.identity.full_name)
+              if n and len(normalize_name(n).split()) > 1]
     # the policyholder's own name in an identity field names the person consent is asked from, not a caller
     named = [n for n in named if not (holder and _same_person("full_name", holder, n))]
     if not named or all(_same_person("full_name", held, n) for n in named):

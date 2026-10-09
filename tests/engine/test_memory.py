@@ -122,6 +122,7 @@ def test_a_different_person_in_the_identity_fields_is_a_correction_even_when_unl
     assert set(changed) == {"full_name", "dob", "id_last4"} and s.memory.value("full_name") == "Ma Tian"
     for same in ({"full_name": "margaret chen"}, {"full_name": "Margaret"}, {"full_name": "Mrs. Chen"},
                  {"full_name": "Margaret A. Chen"}, {"full_name": "Margaret Ann Chen"},
+                 {"full_name": "Margaret C."}, {"full_name": "M. Chen"},
                  {"dob": "March 15, 1985"}, {"dob": "not sure"}, {"dob": "10/09/1985"},  # ambiguous: re-asked
                  {"id_last4": "4472"}, {"phone": "650-000-0000"}, {"email": "other@example.com"}):
         s = verified_margaret()

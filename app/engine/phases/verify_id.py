@@ -124,7 +124,7 @@ def _new_party_cleanup(session: Session, party_id: str) -> None:
 def _approve(session: Session) -> HandlerResult:
     v, c = session.verification, session.consent
     _new_party_cleanup(session, c.party_id)
-    v.status, v.party_id, v.role = "verified", c.party_id, "representative"
+    v.status, v.party_id, v.role, v.name = "verified", c.party_id, "representative", c.policyholder_name
     session.memory.mark_verified(REP_SLOTS)
     session.phase = Phase.RESOLVE_INTENT
     session.pending_ask = PendingAsk.NONE
@@ -193,7 +193,7 @@ def _representative(session: Session, ctx: TurnContext, repos: Repos, settings: 
             cid = repos.consent.request(match.buyer_party_id, match.rep_name, session.scenario)
             c.status, c.consent_id, c.party_id = "pending", cid, match.buyer_party_id
             c.requests += 1
-            c.representative_name = match.rep_name
+            c.representative_name, c.policyholder_name = match.rep_name, match.buyer_name
             session.log("consent_requested", consent_id=cid, scenario=session.scenario)
             session.pending_ask = PendingAsk.CONSENT_WAIT
             brief = ReplyBrief(
@@ -310,7 +310,7 @@ def _handle(
     if len(passes) == 1:
         rec, result = passes[0]
         _new_party_cleanup(session, rec.party_id)
-        v.status, v.party_id, v.role = "verified", rec.party_id, "policyholder"
+        v.status, v.party_id, v.role, v.name = "verified", rec.party_id, "policyholder", rec.name
         session.memory.mark_verified(result.matched)  # a wrong extra identifier stays provisional
         session.log("verified", party_id=rec.party_id, fields=len(provided))
         session.phase = Phase.RESOLVE_INTENT

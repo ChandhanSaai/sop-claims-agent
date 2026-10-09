@@ -23,7 +23,7 @@ owns the SOP; the model reads and phrases:** one LLM call reads each message int
 - **Live transcripts:** [docs/live-transcripts.md](docs/live-transcripts.md) replays all 22 scenarios against
   the real Reader and Writer (Sonnet 5.5) and shows each reply with its state, guard verdict, latency and
   checks, and [docs/live-reliability.md](docs/live-reliability.md) repeats every scenario and reports pass^N.
-- **Replay suite:** `pytest -q` runs 289 tests offline with no key or network, including the 22 scenarios turn
+- **Replay suite:** `pytest -q` runs 293 tests offline with no key or network, including the 22 scenarios turn
   by turn and a leak check on every reply that ends unverified.
 - **Where each requirement and attack lives:** the [Grader's map](#graders-map) names the code, the test that
   pins each requirement and the live turn that shows it, and [Attacks we tried](#attacks-we-tried) pairs each
@@ -244,7 +244,7 @@ Every variable in `.env.example`, read by `app/config.py` from the environment o
 | `LLM_BACKEND` | `anthropic` | `anthropic` calls the Reader and Writer models; `fake` uses the offline `FakeLLM` (see the offline demo). |
 | `READER_MODEL` | `claude-sonnet-5-5` | Model that reads each caller message into `TurnAnalysis` with structured output. |
 | `WRITER_MODEL` | `claude-sonnet-5-5` | Model that phrases the `ReplyBrief`. `thinking: between_tools` is sent only for `claude-sonnet-5-5` ids, so an Opus id works without code changes. |
-| `VERIFY_MIN_FIELDS` | `3` | Identifiers that must match, out of full name, date of birth, phone, email and SSN or national-ID last 4. A verify call (an attempt) is made only once this many are on hand. Policy number is a lookup key and never counts. |
+| `VERIFY_MIN_FIELDS` | `3` | Identifiers that must match, out of full name, date of birth, phone, email and SSN or national-ID last 4. A verify call (an attempt) is made only once this many are on hand. Policy number is a lookup key and never counts, and it is not part of the attempt fingerprint: with the default of three, one identifier is always a lookup key, so the policy number cannot change the outcome; with two, a corrected policy number alone is not a new attempt. |
 | `VERIFY_REQUIRE_STRONG_FIELD` | `false` | When `true`, date of birth or ID last 4 must be among the matches. Off because the brief says any 3 of 5; recommended on in production. |
 | `VERIFY_MAX_ATTEMPTS` | `3` | Failed verify calls allowed per session; then verification is exhausted, the agent stops asking for identifiers and offers a representative. Counted per session, not per record. Also caps failed representative name-pair matches per session. |
 | `OFFTOPIC_HUMAN_OFFER_AT` | `2` | Off-topic turn on which a human is offered; the next off-topic turn escalates. |
@@ -720,16 +720,18 @@ Live persona evaluations (simulated callers scored as pass^k with an LLM judge) 
   caller's language, except the templated fallback, the trouble line and the closed-session text, which stay
   in English. Guideline text exists only in English, so claim ids, dates, amounts, references and the email
   address are quoted in their English form inside a translated reply. The guard reads month words in
-  Spanish, French, German, Portuguese and Italian and day-first forms; a date written in another language
-  would not be caught.
+  Spanish, French, German, Portuguese and Italian and day-first forms (an English-spelled month in a German
+  day-first date needs a year or one of am, vom, bis, zum, den, der before the day); a date written in another
+  language would not be caught.
 - A switch to another person reaches the engine through corrections, which reset verification and fence off
   the earlier party (claims, hints, hand-off, declined offer and summary); the Reader prompt asks for that
   form, and a different name, birth date or ID returned as plain identity fields is read as a correction
   too (a title, a first name alone or a middle name added is a restatement; a nickname is not, and costs
   a re-verification). On a representative call, a different person while consent is pending or approved
   drops that consent; consent is requested once per session, so the new caller is offered a person rather
-  than a second request, and the representative flag itself stays for the session. Off-topic, frustration
-  and abuse counts belong to the conversation and survive the switch.
+  than a second request, and the representative flag itself stays for the session (a one-word name is
+  never read as a new person there; a full nickname is). Off-topic, frustration and abuse counts belong to
+  the conversation and survive the switch.
 - A one-word name is treated as a first name: the assistant asks for the full name as it appears on the
   policy instead of spending a verification attempt. A policyholder whose legal name is one word cannot use
   it as an identifier and has to verify with three of the other four.
