@@ -28,7 +28,7 @@ def test_verified_slot_is_not_overwritten_by_a_restated_value():
     merge_analysis(s, analysis(identity={"dob": "1985-03-15"}))
     s.memory.mark_verified(["dob"])
     s.turn = 2
-    changed = merge_analysis(s, analysis(identity={"dob": "1990-01-01"}))
+    changed = merge_analysis(s, analysis(identity={"dob": "March 15, 1985"}))  # the same date, restated
     assert changed == []
     assert s.memory.value("dob") == "1985-03-15"
 
@@ -97,3 +97,33 @@ def test_verification_reset_drops_the_hand_off_and_the_declined_offer_but_keeps_
     assert s.escalation == Escalation() and not s.counters.human_declined
     assert (s.counters.off_topic, s.counters.frustration_streak, s.counters.abusive) == (2, 1, 1)
     assert s.counters.gate_explanations == 1 and s.counters.email_offered  # cleared only by another party
+
+
+def test_a_different_person_in_the_identity_fields_is_a_correction_even_when_unlabelled():
+    """The live Reader sometimes reads "this is actually Ma Tian, born ..." as identity fields with no
+    correction; a different name, birth date or ID for a verified slot resets verification all the same.
+    A restatement in another form, a first name alone, or an unreadable date does not."""
+    def verified_margaret():
+        s = Session.new()
+        s.turn = 1
+        merge_analysis(s, analysis(identity={"full_name": "Margaret Chen", "dob": "1985-03-15",
+                                             "id_last4": "4472"}))
+        s.memory.mark_verified(["full_name", "dob", "id_last4"])
+        s.verification = Verification(status="verified", party_id="P9", role="policyholder")
+        s.turn = 2
+        return s
+
+    s = verified_margaret()
+    a = analysis(identity={"full_name": "Ma Tian", "dob": "1964-09-10", "id_last4": "6688"})
+    changed = merge_analysis(s, a)
+    assert [c.slot for c in a.corrections] == ["full_name", "dob", "id_last4"]  # visible in the trace
+    assert s.verification.status == "unverified" and s.events[-1].type == "verification_reset"
+    assert set(changed) == {"full_name", "dob", "id_last4"} and s.memory.value("full_name") == "Ma Tian"
+    for same in ({"full_name": "margaret chen"}, {"full_name": "Margaret"}, {"dob": "March 15, 1985"},
+                 {"dob": "not sure"}, {"id_last4": "4472"}, {"phone": "650-000-0000"},
+                 {"email": "other@example.com"}):
+        s = verified_margaret()
+        a = analysis(identity=same)
+        merge_analysis(s, a)
+        assert a.corrections == [] and s.verification.status == "verified", same
+

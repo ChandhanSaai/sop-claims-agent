@@ -1,3 +1,4 @@
+from app.data.normalize import normalize_id4, normalize_name, parse_dob
 from app.engine.state import (
     IDENTITY_SLOTS,
     REP_SLOTS,
@@ -9,13 +10,18 @@ from app.engine.state import (
     SlotStatus,
     Verification,
 )
-from app.llm.schemas import TurnAnalysis
+from app.llm.schemas import Correction, TurnAnalysis
+
+# a different value for one of these after verification is a different person, whatever the Reader called it;
+# a phone or email can legitimately differ (another contact) and is never read as a correction
+PERSON_SLOTS = ("full_name", "dob", "id_last4")
 
 
 def merge_analysis(session: Session, analysis: TurnAnalysis) -> list[str]:
     """Capture anything early. Only code advances phases; this only records what the caller said."""
     changed: list[str] = []
     t = session.turn
+    _implicit_corrections(session, analysis)
     # corrections first: one that resets verification makes the other identifiers in the same message the
     # new party's values, which the identity loop would otherwise refuse as restatements of verified slots
     _apply_corrections(session, analysis, changed)
@@ -39,6 +45,27 @@ def merge_analysis(session: Session, analysis: TurnAnalysis) -> list[str]:
     if analysis.intent != "none" and session.memory.set("intent", analysis.intent, t):
         changed.append("intent")
     return changed
+
+
+def _same_person(slot: str, verified: str, given: str) -> bool:
+    """A restatement of the verified value in another form, or a first name alone, is not a correction."""
+    if slot == "full_name":
+        return set(normalize_name(given).split()) <= set(normalize_name(verified).split())
+    if slot == "dob":
+        d, _ambiguous = parse_dob(given)
+        return d is None or d == parse_dob(verified)[0]  # unreadable: the phase re-asks, no reset
+    return normalize_id4(given) in (None, normalize_id4(verified))
+
+
+def _implicit_corrections(session: Session, analysis: TurnAnalysis) -> None:
+    """\"This is actually Ma Tian, born ...\" read as identity fields rather than corrections still names
+    someone else: verification must reset, not keep answering the earlier party's questions."""
+    labelled = {c.slot for c in analysis.corrections}
+    for slot in PERSON_SLOTS:
+        given, cur = getattr(analysis.identity, slot), session.memory.get(slot)
+        if given and slot not in labelled and cur is not None and cur.status == SlotStatus.VERIFIED:
+            if not _same_person(slot, cur.value, str(given)):
+                analysis.corrections.append(Correction(slot=slot, new_value=str(given).strip()))
 
 
 def _apply_corrections(session: Session, analysis: TurnAnalysis, changed: list[str]) -> None:
