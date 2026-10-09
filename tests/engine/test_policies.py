@@ -334,4 +334,5 @@ def test_earlier_details_and_the_email_offer_look_only_past_the_verification_fen
     assert s.verification.party_id == "P7" and b.must_say[-1] == NO_CLAIMS  # Ava has no claims
     assert EARLIER_DETAILS_STAND not in b.must_not  # Margaret's answer is behind the fence
     b2 = eng.handle_turn(s, A(requests={"confirmation": "no", "closing": True}), "No, that's all.")
-    assert s.phase == Phase.POST_PROCESS and b2.must_say == [GOODBYE] and not s.counters.email_offered
+    assert s.phase == Phase.POST_PROCESS and b2.must_say == [NO_CLAIMS, GOODBYE]
+    assert not s.counters.email_offered

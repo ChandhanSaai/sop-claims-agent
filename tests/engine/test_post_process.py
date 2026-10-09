@@ -216,4 +216,6 @@ def test_a_reset_turn_never_sends_the_earlier_party_s_draft(repos, settings):
     assert s.verification.party_id == ava.party_id and s.pending_draft is None
     assert repos.outbox.list() == []  # nothing of Margaret's goes to Ava's address
     assert s.phase == Phase.POST_PROCESS and s.pending_ask == PendingAsk.NONE  # a goodbye, no offer
+    assert post_process.NOTHING_SENT not in b.must_say  # the yes was not read against the old confirmation
+    assert resolve_intent.NO_CLAIMS in b.must_say  # the new party still hears that nothing is on file
     assert not any("CL-2048" in v for v in b.allowed_facts.values())

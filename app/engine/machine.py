@@ -38,7 +38,7 @@ class Engine:
         ctx = resolve_pending(session, analysis, user_text)
         if not analysis.injection_suspected:  # an injection-flagged turn never changes memory
             changed = merge_analysis(session, analysis)
-            if any(e.turn == session.turn and e.type == "verification_reset" for e in session.events):
+            if session.fence_turn == session.turn:  # a verification reset happened on this turn
                 # the context was read against the earlier party's pending question; read it again now
                 ctx = resolve_pending(session, analysis, user_text)
             ctx.changed_slots = changed

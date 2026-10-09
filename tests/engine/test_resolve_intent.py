@@ -101,7 +101,7 @@ def test_no_claims_declined_offer_is_not_repeated_and_a_goodbye_leaves_the_phase
     assert not any(k.startswith("option_") for k in b.allowed_facts)
     b2 = eng.handle_turn(s, A(requests={"closing": True}), "ok, bye")
     assert s.phase == Phase.POST_PROCESS and s.pending_ask == PendingAsk.NONE
-    assert b2.must_say == [GOODBYE] and not s.counters.email_offered and repos.outbox.list() == []
+    assert b2.must_say == [NO_CLAIMS, GOODBYE] and not s.counters.email_offered and repos.outbox.list() == []
 
 
 def test_no_claims_no_and_goodbye_in_one_turn_is_a_plain_goodbye(repos, settings):
@@ -109,5 +109,6 @@ def test_no_claims_no_and_goodbye_in_one_turn_is_a_plain_goodbye(repos, settings
     s = verified_session(repos, party_id="P7")
     eng.handle_turn(s, A(intent="status_inquiry"), "what claims do I have?")
     b = eng.handle_turn(s, A(requests={"confirmation": "no", "closing": True}), "No, that's all, thanks.")
-    assert s.phase == Phase.POST_PROCESS and s.pending_ask == PendingAsk.NONE and b.must_say == [GOODBYE]
+    assert s.phase == Phase.POST_PROCESS and s.pending_ask == PendingAsk.NONE
+    assert b.must_say == [NO_CLAIMS, GOODBYE]
     assert "email" not in " ".join(b.must_say).lower() and not b.ask

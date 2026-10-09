@@ -62,7 +62,7 @@ def _no_claims(session: Session, ctx: TurnContext) -> HandlerResult:
         session.phase = Phase.POST_PROCESS
         session.pending_ask = PendingAsk.NONE
         return HandlerResult(brief=ReplyBrief(phase=Phase.POST_PROCESS.value, goal="Wrap up."),
-                             advanced=True, needs_input=False)
+                             advanced=True, needs_input=False, transition_fact=NO_CLAIMS)
     session.log("no_claims")
     offer = not (session.counters.human_declined or session.escalation.requested)
     session.pending_ask = PendingAsk.HUMAN_OFFER if offer else PendingAsk.NONE
