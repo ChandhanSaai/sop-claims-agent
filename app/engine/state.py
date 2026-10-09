@@ -99,6 +99,7 @@ class Consent(BaseModel):
     party_id: str | None = None  # the policyholder the consent was requested from
     # normalized representative, relationship and policyholder names of the last match attempt
     last_match: str | None = None
+    match_attempts: int = 0  # failed name-pair matches; capped so the branch is not an enumeration oracle
 
 
 class CaseState(BaseModel):

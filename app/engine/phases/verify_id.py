@@ -113,7 +113,8 @@ def _approve(session: Session) -> HandlerResult:
                          transition_facts={"consent_reference": c.consent_id})
 
 
-def _representative(session: Session, ctx: TurnContext, repos: Repos, hints_noted: bool) -> HandlerResult:
+def _representative(session: Session, ctx: TurnContext, repos: Repos, settings: Settings,
+                    hints_noted: bool) -> HandlerResult:
     """Sub-flow driven by session.consent: every status comes from a tool result, consent is requested once
     per session and polled once per turn, and the policyholder's identifiers are never looked up here."""
     c = session.consent
@@ -159,7 +160,9 @@ def _representative(session: Session, ctx: TurnContext, repos: Repos, hints_note
         )
         return HandlerResult(brief=brief)
     fingerprint = "|".join(normalize_name(x) for x in rep.values())
-    if fingerprint != c.last_match:  # a restated triple is not matched again
+    # a restated triple is not matched again, and after verify_max_attempts failed pairs nothing is: the
+    # same sentence either way, so the cap cannot be told from a miss
+    if fingerprint != c.last_match and c.match_attempts < settings.verify_max_attempts:
         c.last_match = fingerprint
         match = repos.representatives.match(rep["rep_name"], rep["rep_policyholder_name"])
         if match is not None:
@@ -174,6 +177,8 @@ def _representative(session: Session, ctx: TurnContext, repos: Repos, hints_note
                 must_not=BASE_MUST_NOT + [NO_CONTACT], ask=MEANWHILE_ASK,
             )
             return HandlerResult(brief=brief)
+        c.match_attempts += 1
+        session.log("rep_match_failed", attempts=c.match_attempts)
     return _human_brief(session, "Say no authorization is on file, without saying which name did not match.",
                         lead + [NO_AUTHORIZATION])
 
@@ -218,7 +223,7 @@ def _handle(
             a.caller_role == "representative" or rep.name or rep.relationship or rep.policyholder_name):
         v.declared_representative = True
     if v.declared_representative:
-        return _representative(session, ctx, repos, hints_noted)
+        return _representative(session, ctx, repos, settings, hints_noted)
 
     provided = {n: val for n in IDENTIFIERS if (val := session.memory.value(n))}
     # a single word is a first name: incomplete rather than wrong, so it costs no attempt

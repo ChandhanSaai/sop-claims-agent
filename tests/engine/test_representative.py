@@ -116,6 +116,25 @@ def test_same_failed_triple_is_not_retried_but_a_changed_one_is(repos, settings,
     assert len(calls) == 2 and s.consent.status == "pending" and s.consent.consent_id == "CON-0001"
 
 
+def test_representative_matching_stops_after_the_attempt_cap(repos, settings, monkeypatch):
+    calls = []
+    real = repos.representatives.match
+    monkeypatch.setattr(repos.representatives, "match", lambda *a: calls.append(a) or real(*a))
+    s = Session.new()
+    s.counters.human_declined = True
+    cap = settings.verify_max_attempts
+    for i in range(cap):  # distinct wrong triples: each one is matched and counted
+        r = declare(s, repos, settings, caller_role="representative",
+                    representative={**DAVID, "name": f"Nobody {i}"})
+        assert r.brief.must_say == [NO_AUTHORIZATION] and s.consent.match_attempts == i + 1
+    assert len(calls) == cap and [e.data["attempts"] for e in s.events if e.type == "rep_match_failed"] == [
+        1, 2, 3]
+    r = declare(s, repos, settings, representative={"name": "David Chen"})  # a valid pair now: not matched
+    assert len(calls) == cap and s.consent.status == "none" and s.consent.consent_id is None
+    assert r.brief.must_say == [NO_AUTHORIZATION] and r.brief.ask is None and not r.brief.offer_human
+    assert s.verification.status == "unverified" and s.pending_ask == PendingAsk.NONE
+
+
 def test_match_requests_consent_once_and_waits(repos, settings, no_policyholder_lookup):
     s = Session.new()
     r = declare(s, repos, settings, caller_role="representative", representative=DAVID, identity=MARGARET,
