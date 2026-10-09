@@ -1,6 +1,7 @@
 from datetime import date
 
 from app.engine.machine import Engine
+from app.engine.phases import HANDLERS
 from app.engine.state import PendingAsk, Phase, Session
 from app.llm.schemas import TurnAnalysis
 
@@ -14,7 +15,9 @@ def test_greeting_discloses_automation_and_sets_pending(repos, settings):
     assert s.transcript[0].role == "assistant"
 
 
-def test_handle_turn_runs_verify_and_stops_when_next_phase_has_no_handler(repos, settings):
+def test_handle_turn_runs_verify_and_stops_when_next_phase_has_no_handler(repos, settings, monkeypatch):
+    # RESOLVE_INTENT is registered now; keep this test about chain termination.
+    monkeypatch.delitem(HANDLERS, Phase.RESOLVE_INTENT)
     eng = Engine(repos, settings, today=lambda: date(2026, 10, 7))
     s = Session.new()
     eng.greeting(s)
