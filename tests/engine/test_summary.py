@@ -71,6 +71,10 @@ def test_reverification_as_another_party_fences_off_the_earlier_claim(repos, set
                                           {"slot": "dob", "new_value": "1964-09-10"},
                                           {"slot": "id_last4", "new_value": "6688"}]),
                         "Sorry, this is actually Ma Tian, born 1964-09-10, last four 6688.")
+    assert s.pending_ask == PendingAsk.IDENTITY_CONFIRM  # the question comes first
+    ma_tian = {"full_name": "Ma Tian", "dob": "1964-09-10", "id_last4": "6688"}
+    b = eng.handle_turn(s, A(requests={"confirmation": "no"}, identity=ma_tian),
+                        "No. Ma Tian, born 1964-09-10, last four 6688.")
     assert (s.verification.status, s.verification.party_id) == ("verified", "P12")
     assert s.phase == Phase.PROCESS_CASE and s.case.selected_case_id == "CL-3001"  # his only claim
     assert not any(n in s.memory.slots for n in HINT_SLOTS)  # her hints did not filter his claims
@@ -104,8 +108,11 @@ def test_the_fence_keeps_the_correction_message_and_resets_the_email_offer(repos
     corrections = [{"slot": "full_name", "new_value": tian.name},
                    {"slot": "dob", "new_value": tian.dob.isoformat()},
                    {"slot": "id_last4", "new_value": tian.id_last4}]
-    text = "sorry, this is actually Ma Tian"
-    eng.handle_turn(s, TurnAnalysis.model_validate({"corrections": corrections}), text)
+    eng.handle_turn(s, TurnAnalysis.model_validate({"corrections": corrections}), "sorry, this is Ma Tian")
+    assert s.pending_ask == PendingAsk.IDENTITY_CONFIRM  # the question comes first
+    text = "no, Ma Tian, born 1964-09-10, last four 6688"
+    eng.handle_turn(s, TurnAnalysis.model_validate({"requests": {"confirmation": "no"},
+                                                    "corrections": corrections}), text)
     assert s.verification.party_id == tian.party_id
     assert s.transcript[s.transcript_fence].text == text  # the correction stays in the Writer window
     assert s.counters.email_offered is False

@@ -17,10 +17,23 @@ turns:
       guard_ok: true
   - user: "Sorry, this is actually Ma Tian, born 1964-09-10, last four 6688."
     analysis:
+      identity: {full_name: "Ma Tian", dob: "1964-09-10", id_last4: "6688"}
       corrections:
         - {slot: full_name, new_value: "Ma Tian"}
-        - {slot: dob, new_value: "1964-09-10"}
-        - {slot: id_last4, new_value: "6688"}
+    expect:
+      phase: PROCESS_CASE
+      verified: true
+      party_id: P9
+      pending_ask: identity_confirm
+      reply_contains: ["Margaret Chen"]
+      reply_not_contains: ["CL-2048", "CL-3001", "pathology", "1964-09-10", "6688"]
+      guard_ok: true
+  - user: "No. Ma Tian, born 1964-09-10, last four 6688. Why was my claim denied?"
+    analysis:
+      requests: {confirmation: "no"}
+      identity: {full_name: "Ma Tian", dob: "1964-09-10", id_last4: "6688"}
+      case_hints: {status: denied}
+      intent: denial_question
     expect:
       phase: PROCESS_CASE
       verified: true

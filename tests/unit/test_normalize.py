@@ -75,3 +75,11 @@ def test_parse_ordinal():
     assert parse_ordinal("2") == 2
     assert parse_ordinal("second") == 2
     assert parse_ordinal("the dental one") is None
+
+
+def test_names_in_any_script_keep_their_letters():
+    from app.data.normalize import normalize_name
+
+    assert normalize_name("马天") == "马天"
+    assert normalize_name("Маргарита Чен") == "маргарита чен"
+    assert normalize_name("Margaret, Chen!") == "margaret chen"

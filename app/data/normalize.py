@@ -3,7 +3,7 @@ import unicodedata
 from datetime import date, datetime
 
 _WS = re.compile(r"\s+")
-_NON_ALNUM = re.compile(r"[^a-z0-9 ]")
+_NON_ALNUM = re.compile(r"[^\w ]")  # letters and digits of any script stay
 _STOP = {"the", "a", "an", "of", "and", "or", "to", "for", "in", "on", "at", "by", "with", "original"}
 # not "one": "the denied one" is not a pick
 _ORDINALS = {"first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5}

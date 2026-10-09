@@ -55,6 +55,9 @@ def resolve_pending(session: Session, analysis: TurnAnalysis, user_text: str) ->
         ctx.selection_case_id = analysis.case_hints.case_id
         ctx.selection_ordinal = parse_ordinal(user_text)
     elif p == PendingAsk.IDENTITY_FIELDS and analysis.identity.id_last4 is None:
-        if re.fullmatch(r"\s*\d{4}\s*", user_text):
-            analysis.identity.id_last4 = user_text.strip()
+        if re.fullmatch(r"\s*\d{4}\s*", user_text):  # four bare digits are the last four of the ID
+            digits = user_text.strip()  # unless they are the policy number's digits, restated
+            policy = re.sub(r"\D", "", session.memory.value("policy_number") or "")
+            if digits != policy[-4:]:
+                analysis.identity.id_last4 = digits
     return ctx

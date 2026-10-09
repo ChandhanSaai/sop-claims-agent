@@ -600,13 +600,14 @@ CI (`.github/workflows/ci.yml`) runs `ruff check .`, then `pytest -q --ignore=te
 - **API** (`tests/api`): the health check, the session, chat, outbox and trace routes, 404 and 422 handling,
   the access-token gate, session expiry, per-session locking under concurrent chats, the UI being served with
   a text-only script, and Margaret's first turn over HTTP end to end.
-- **Replay** (`tests/replay/test_replay.py`): twenty-four scenarios run turn by turn through the full
+- **Replay** (`tests/replay/test_replay.py`): twenty-five scenarios run turn by turn through the full
   `ConversationService`: `margaret_happy_path`, `angry_caller`, `refusing_caller`, `decoy_disambiguation`,
   `dob_correction`, `human_request_then_continue`, `injection_attempt`, `off_topic_three_times`,
   `question_after_goodbye`, `near_miss_phone_then_more`, `representative_declared`, `representative_approved`,
   `representative_timeout`, `abusive_caller`, `casual_identity_phrasing`, `spanish_caller`,
   `first_name_only`, `document_checklist`, `no_claims_on_file`, `reverify_as_another_party`,
-  `reverify_then_own_handoff`, `representative_after_policyholder` and `identity_question`, plus
+  `reverify_then_own_handoff`, `representative_after_policyholder`, `identity_question` and
+  `unicode_name_after_verification`, plus
   `guard_catches_a_leaking_writer`, an offline-only scenario whose Writer is scripted to leak a claim id,
   a date of birth and an invented date so the guard's reject, regenerate and template paths run in a test
   that can fail. Each turn
@@ -727,24 +728,26 @@ Live persona evaluations (simulated callers scored as pass^k with an LLM judge) 
   Spanish, French, German, Portuguese and Italian and day-first forms (an English-spelled month in a German
   day-first date needs a year or one of am, vom, bis, zum, den, der before the day); a date written in another
   language would not be caught.
-- A switch to another person reaches the engine through corrections, which reset verification and fence off
-  the earlier party (claims, hints, hand-off, declined offer, summary, identifiers, and the inspector's
-  events, outbox and traces). A name that is partly the verified caller's (a title, an initial, a nickname,
-  a first name alone) opens the question "is this still X?", and nothing about any claim is said until it
-  is answered; a name with nothing in common is someone else, and so is any caller who says they are a
-  representative. On a representative call the same question covers a changed name while consent is
-  pending or approved; consent is requested once per session, so a different representative is offered a
-  person rather than a second request, and the representative flag itself stays for the session. A
-  verified policyholder who asks about someone else's claim is handled as a representative call from then
-  on; their own claims need a new conversation. Off-topic, frustration and abuse counts belong to the
-  conversation and survive the switch.
+- After verification there is one rule for whoever the Reader says is speaking, and no guessing. A name
+  (identity field, labelled correction or representative name) that exactly matches a name the caller is
+  known by (the record name and its aliases, in any script, plus the name they gave) is a restatement. Any
+  other name, any representative detail, or a caller who says they are a representative opens the question
+  "is this still Margaret Chen?", and nothing about any claim is said until it is answered: yes continues
+  (and puts the displaced question again), no switches, anything else asks again. A switch resets
+  verification, wipes identity and representative details together, carries the attempt count, fences off
+  the earlier party (claims, hints, hand-off, declined offer, summary, and the inspector's events, outbox
+  and traces) and drops a representative's consent; consent is requested once per session, so a different
+  representative is offered a person. The representative flag stays for the session. A policyholder who
+  mentions a helper keeps their path. Off-topic, frustration and abuse counts belong to the conversation and
+  survive the switch.
 - A one-word name is treated as a first name: the assistant asks for the full name as it appears on the
   policy instead of spending a verification attempt. A policyholder whose legal name is one word cannot use
   it as an identifier and has to verify with three of the other four.
 - Emotion detection is text-only and coarse (0..3 scales plus booleans).
 
 Not in this build: live persona evaluations with an LLM judge and the OpenAI adapter are stretch items
-(below). Spelled-out numbers ("fourteen hundred") are not checked by the grounding guard.
+(below). Spelled-out numbers and dates ("fourteen hundred", "March fifteenth") are not checked by
+the grounding guard; spaced digits ("4 4 7 2") and "at" or "dot" email phrasing are.
 
 ## Stretch roadmap
 

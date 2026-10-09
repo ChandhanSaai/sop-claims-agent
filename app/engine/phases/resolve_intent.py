@@ -35,7 +35,7 @@ def describe(c: Claim) -> str:
     return f"{c.case_id}, {c.case_type} claim opened {fmt_date(c.created_at)}, status {c.status}"
 
 
-def _select(session: Session, claim: Claim) -> HandlerResult:
+def _select(session: Session, claim: Claim, mentioned: bool = True) -> HandlerResult:
     session.case.selected_case_id = claim.case_id
     session.case.candidates = [claim.case_id]
     session.case.intent = session.memory.value("intent") or "general_claim_question"
@@ -43,7 +43,7 @@ def _select(session: Session, claim: Claim) -> HandlerResult:
     session.log("claim_selected", case_id=claim.case_id, intent=session.case.intent)
     session.phase = Phase.PROCESS_CASE
     session.pending_ask = PendingAsk.NONE
-    fact = f"The claim you mentioned is {describe(claim)}."
+    fact = f"The claim {'you mentioned' if mentioned else 'on file'} is {describe(claim)}."
     facts = {
         "claim_id": claim.case_id, "claim_type": claim.case_type,
         "claim_status": claim.status, "claim_opened": fmt_date(claim.created_at),
@@ -103,7 +103,7 @@ def handle(
     candidates = repos.claims.filter(claims, **hints)
     any_hint = any(v is not None for v in hints.values())
     if len(candidates) == 1:
-        return _select(session, candidates[0])
+        return _select(session, candidates[0], mentioned=any_hint)
     no_match = any_hint and not candidates
     if not candidates:
         candidates = claims

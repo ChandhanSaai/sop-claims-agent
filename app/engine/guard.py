@@ -130,6 +130,8 @@ class OutputGuard:
 
     def _identifier_leaks(self, text: str, session: Session) -> list[str]:
         low, digits, out = text.lower(), re.sub(r"\D", "", text), []
+        tight = re.sub(r"(?<=\d)[\s-]+(?=\d)", "", text)  # "4 4 7 2" and "4-4-7-2" are 4472
+        low_mail = re.sub(r"\s+dot\s+", ".", re.sub(r"\s+at\s+", "@", low))  # "margaret at email dot com"
         m = session.memory
         if dob := m.value("dob"):  # the stored value too: ISO from the Reader, or as written when ambiguous
             d = parse_dob(dob)[0]
@@ -141,9 +143,9 @@ class OutputGuard:
                 out.append("dob")
         if (ph := m.value("phone")) and (p := normalize_phone(ph)) and p[2:] in digits:
             out.append("phone")
-        if (em := m.value("email")) and em.lower() in low:
+        if (em := m.value("email")) and (em.lower() in low or em.lower() in low_mail):
             out.append("email")
-        if (id4 := m.value("id_last4")) and re.search(rf"\b{re.escape(id4)}\b", text):
+        if (id4 := m.value("id_last4")) and re.search(rf"\b{re.escape(id4)}\b", tight):
             out.append("id_last4")
         if pn := m.value("policy_number"):
             digits_pn = re.sub(r"\D", "", pn)

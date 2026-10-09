@@ -261,8 +261,10 @@ def _handle(
         return _representative(session, ctx, repos, settings, hints_noted)
 
     provided = {n: val for n in IDENTIFIERS if (val := session.memory.value(n))}
-    # a single word is a first name: incomplete rather than wrong, so it costs no attempt
-    first_name_only = "full_name" in provided and len(normalize_name(provided["full_name"]).split()) < 2
+    # a single Latin word is a first name: incomplete rather than wrong, so it costs no attempt (a name in
+    # another script has no word boundaries to count)
+    first_name_only = ("full_name" in provided and provided["full_name"].isascii()
+                       and len(normalize_name(provided["full_name"]).split()) < 2)
     if first_name_only:
         provided.pop("full_name")
     if "dob" in provided:

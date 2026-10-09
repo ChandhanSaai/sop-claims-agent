@@ -1,0 +1,40 @@
+name: unicode_name_after_verification
+scenario: default
+today: "2026-10-07"
+turns:
+  - user: "I'm Margaret Chen, DOB 1985-03-15, SSN last four 4472. Why was my healthcare claim from January denied?"
+    analysis:
+      identity: {full_name: "Margaret Chen", dob: "1985-03-15", id_last4: "4472"}
+      caller_role: policyholder
+      case_hints: {case_type: healthcare, status: denied, month: 1}
+      intent: denial_question
+    expect:
+      phase: PROCESS_CASE
+      verified: true
+      party_id: P9
+      reply_contains: ["CL-2048", "pathology report"]
+      guard_ok: true
+  - user: "我是马天, what is the status of my claim?"
+    analysis:
+      identity: {full_name: "马天"}
+      intent: status_inquiry
+    expect:
+      phase: PROCESS_CASE
+      verified: true
+      party_id: P9
+      pending_ask: identity_confirm
+      reply_contains: ["Margaret Chen"]
+      reply_not_contains: ["CL-2048", "denied", "pathology", "CL-3001"]
+      guard_ok: true
+  - user: "不是。Ma Tian, born 1964-09-10, last four 6688. What is the status of my claim?"
+    analysis:
+      requests: {confirmation: "no"}
+      identity: {full_name: "Ma Tian", dob: "1964-09-10", id_last4: "6688"}
+      intent: status_inquiry
+    expect:
+      phase: PROCESS_CASE
+      verified: true
+      party_id: P12
+      reply_contains: ["CL-3001"]
+      reply_not_contains: ["CL-2048", "Margaret", "pathology", "1964-09-10", "6688"]
+      guard_ok: true

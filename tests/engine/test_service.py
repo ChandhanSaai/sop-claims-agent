@@ -158,26 +158,28 @@ class RecordingWriter(FakeLLM):
 
 def test_writer_transcript_starts_at_the_verification_reset(settings):
     llm = RecordingWriter()
-    llm.queue(TurnAnalysis.model_validate({
-        "identity": {"full_name": "Margaret Chen", "dob": "1985-03-15", "id_last4": "4472"},
-        "case_hints": {"case_type": "healthcare", "status": "denied", "month": 1},
-        "intent": "denial_question"}))
-    llm.queue(TurnAnalysis.model_validate({"corrections": [
-        {"slot": "full_name", "new_value": "Ma Tian"}, {"slot": "dob", "new_value": "1964-09-10"},
-        {"slot": "id_last4", "new_value": "6688"}]}))
+    llm.queue(TurnAnalysis.model_validate({"identity": {"full_name": "Margaret Chen", "dob": "1985-03-15",
+                                                        "id_last4": "4472"},
+                                           "case_hints": {"case_type": "healthcare", "status": "denied",
+                                                          "month": 1}, "intent": "denial_question"}))
+    llm.queue(TurnAnalysis.model_validate({"corrections": [{"slot": "full_name", "new_value": "Ma Tian"}]}))
+    llm.queue(TurnAnalysis.model_validate({"requests": {"confirmation": "no"}, "identity": {
+        "full_name": "Ma Tian", "dob": "1964-09-10", "id_last4": "6688"}}))
     llm.queue(TurnAnalysis.model_validate({"requests": {"closing": True}}))
     svc = build_service(settings, llm=llm)
     session = svc.start()
     svc.chat(session, "Margaret Chen, 1985-03-15, 4472, my denied January healthcare claim")
     assert len(llm.seen[0]) == 2 and "Margaret" in llm.seen[0][1]  # the greeting and the caller's message
-    svc.chat(session, "Sorry, this is actually Ma Tian, born 1964-09-10, last four 6688.")
+    svc.chat(session, "Sorry, this is actually Ma Tian.")
+    assert session.pending_ask.value == "identity_confirm"  # the question comes first, still her session
+    answer = "No. Ma Tian, born 1964-09-10, last four 6688."
+    svc.chat(session, answer)
     assert session.verification.party_id == "P12"
-    correction = "Sorry, this is actually Ma Tian, born 1964-09-10, last four 6688."
-    assert llm.seen[1] == [correction]  # only the correction itself, nothing from before the reset
+    assert llm.seen[2] == [answer]  # only the answer itself, nothing from before the reset
     svc.chat(session, "That's all.")
-    assert llm.seen[2] == [correction, session.transcript[-3].text, "That's all."]  # from the correction on
-    assert all("CL-2048" not in t and "Margaret" not in t and "1985" not in t for t in llm.seen[2])
-    assert "CL-3001" in llm.seen[2][1]  # the reset turn's reply answers the new party's claim
+    assert llm.seen[3] == [answer, session.transcript[-3].text, "That's all."]  # from the answer on
+    assert all("CL-2048" not in t and "Margaret" not in t and "1985" not in t for t in llm.seen[3])
+    assert "CL-3001" in llm.seen[3][1]  # the reset turn's reply answers the new party's claim
 
 
 def test_writer_error_fallback_is_checked_by_the_guard(settings):
@@ -199,8 +201,9 @@ def test_the_outbox_stays_behind_the_fence(settings):
               {"requests": {"confirmation": "no", "closing": True}},
               {"requests": {"confirmation": "yes", "email_summary": "yes"}},
               {"requests": {"confirmation": "yes"}},
-              {"identity": {"full_name": "Ma Tian", "dob": "1964-09-10", "id_last4": "6688"},
-               "corrections": [{"slot": "full_name", "new_value": "Ma Tian"}]}):
+              {"identity": {"full_name": "Ma Tian"}},
+              {"requests": {"confirmation": "no"},
+               "identity": {"full_name": "Ma Tian", "dob": "1964-09-10", "id_last4": "6688"}}):
         llm.queue(TurnAnalysis.model_validate(a))
     svc = build_service(settings, llm=llm)
     session = svc.start()
@@ -208,9 +211,11 @@ def test_the_outbox_stays_behind_the_fence(settings):
                  "Send it."):
         svc.chat(session, text)
     assert len(svc.outbox(session)) == 1
-    svc.chat(session, "Sorry, this is actually Ma Tian, born 1964-09-10, last four 6688.")
-    assert session.fence_turn == 5 and svc.outbox(session) == []
-    assert all(e["turn"] >= 5 for e in session.snapshot()["events"])
+    svc.chat(session, "Sorry, this is actually Ma Tian.")
+    assert session.pending_ask.value == "identity_confirm" and len(svc.outbox(session)) == 1
+    svc.chat(session, "No. Ma Tian, born 1964-09-10, last four 6688.")
+    assert session.fence_turn == 6 and svc.outbox(session) == []
+    assert all(e["turn"] >= 6 for e in session.snapshot()["events"])
 
 
 def test_a_confirmed_identity_puts_the_displaced_question_again(settings):
@@ -242,7 +247,8 @@ def test_nothing_said_before_the_question_is_replayed_after_a_switch(settings):
                "case_hints": {"case_id": "CL-2048"}, "intent": "denial_question"},
               {"identity": {"full_name": "Maggie Chen"}},
               {"requests": {"confirmation": "yes", "wants_human": True}},
-              {"identity": {"full_name": "Ma Tian"}, "intent": "status_inquiry"}):
+              {"identity": {"full_name": "Ma Tian"}, "intent": "status_inquiry"},
+              {"requests": {"confirmation": "no"}, "identity": {"full_name": "Ma Tian"}}):
         llm.queue(TurnAnalysis.model_validate(a))
     svc = build_service(settings, llm=llm)
     session = svc.start()
@@ -251,5 +257,7 @@ def test_nothing_said_before_the_question_is_replayed_after_a_switch(settings):
     svc.chat(session, "Yes it's me - can I talk to a person?")
     assert session.escalation.requested and session.pending_identity is None
     res = svc.chat(session, "This is Ma Tian now. What's my claim status?")
-    assert session.verification.status == "unverified" and session.fence_turn == 4
+    assert session.pending_ask.value == "identity_confirm" and "CL-2048" not in res.reply
+    res = svc.chat(session, "No, Ma Tian.")
+    assert session.verification.status == "unverified" and session.fence_turn == 5
     assert "CL-2048" not in res.reply and "pathology" not in res.reply

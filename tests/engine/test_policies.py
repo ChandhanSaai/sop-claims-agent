@@ -331,6 +331,10 @@ def test_earlier_details_and_the_email_offer_look_only_past_the_verification_fen
                                           {"slot": "dob", "new_value": "1990-08-21"},
                                           {"slot": "id_last4", "new_value": "9180"}]),
                         "Sorry, this is Ava Lopez, born 1990-08-21, last four 9180.")
+    assert s.pending_ask == PendingAsk.IDENTITY_CONFIRM  # the question comes first
+    b = eng.handle_turn(s, A(requests={"confirmation": "no"},
+                             identity={"full_name": "Ava Lopez", "dob": "1990-08-21", "id_last4": "9180"}),
+                        "No. Ava Lopez, born 1990-08-21, last four 9180.")
     assert s.verification.party_id == "P7" and b.must_say[-1] == NO_CLAIMS  # Ava has no claims
     assert EARLIER_DETAILS_STAND not in b.must_not  # Margaret's answer is behind the fence
     b2 = eng.handle_turn(s, A(requests={"confirmation": "no", "closing": True}), "No, that's all.")
@@ -350,6 +354,10 @@ def test_a_later_party_gets_its_own_hand_off_packet_and_reference(repos, setting
     eng.handle_turn(s, A(identity={"full_name": "Ma Tian", "dob": "1964-09-10", "id_last4": "6688"},
                          corrections=[{"slot": "full_name", "new_value": "Ma Tian"}]),
                     "Sorry, this is actually Ma Tian, born 1964-09-10, last four 6688.")
+    assert s.pending_ask == PendingAsk.IDENTITY_CONFIRM  # the question comes first
+    ma_tian = {"full_name": "Ma Tian", "dob": "1964-09-10", "id_last4": "6688"}
+    eng.handle_turn(s, A(requests={"confirmation": "no"}, identity=ma_tian),
+                    "No. Ma Tian, born 1964-09-10, last four 6688.")
     assert s.verification.party_id == "P12" and not s.escalation.requested
     b = eng.handle_turn(s, A(requests={"wants_human": True}), "I want a person too.")
     assert s.escalation.requested and s.escalation.reference == first + "-2"
@@ -386,10 +394,16 @@ def test_the_hand_off_comes_back_after_another_party_in_between(repos, settings)
     ref = s.escalation.reference
     eng.handle_turn(s, A(identity={"full_name": "Ma Tian", "dob": "1964-09-10", "id_last4": "6688"},
                          corrections=[{"slot": "full_name", "new_value": "Ma Tian"}]), "This is Ma Tian ...")
+    assert s.pending_ask == PendingAsk.IDENTITY_CONFIRM  # the question comes first
+    ma_tian = {"full_name": "Ma Tian", "dob": "1964-09-10", "id_last4": "6688"}
+    eng.handle_turn(s, A(requests={"confirmation": "no"}, identity=ma_tian),
+                    "No. Ma Tian, born 1964-09-10, last four 6688.")
     assert s.verification.party_id == "P12" and not s.escalation.requested
     eng.handle_turn(s, A(identity=margaret,
                          corrections=[{"slot": "full_name", "new_value": "Margaret Chen"}]),
                     "Sorry, it is Margaret again, 1985-03-15, 4472.")
+    assert s.pending_ask == PendingAsk.IDENTITY_CONFIRM
+    eng.handle_turn(s, A(requests={"confirmation": "no"}, identity=margaret), "No. Margaret Chen, 4472.")
     assert s.verification.party_id == "P9" and s.escalation.requested and s.escalation.reference == ref
 
 

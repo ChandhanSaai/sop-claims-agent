@@ -168,7 +168,6 @@ class Session(BaseModel):
     pending_draft: str | None = None
     pending_identity: IdentityQuestion | None = None  # open until answered, whatever else is asked
     reask: PendingAsk = PendingAsk.NONE  # after a yes: the displaced question to put again, in fixed words
-    confirmed_names: list[str] = Field(default_factory=list)  # names the caller confirmed as their own
     # a verification reset fences off the earlier party: events before fence_turn and transcript entries
     # before transcript_fence are not reused for whoever verifies next
     fence_turn: int = 0
